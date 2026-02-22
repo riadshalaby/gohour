@@ -26,3 +26,7 @@ daily-summary.xlsx
 
 # Logs
 *.log
+
+# Playwright discovery artifacts (may contain auth/session data)
+artifacts/playwright/
+.playwright-cli
