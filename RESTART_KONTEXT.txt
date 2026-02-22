@@ -1,0 +1,65 @@
+We are building a Go CLI application named `gohour`.
+
+Current status:
+- The project uses Cobra and Viper.
+- The app imports source files (initially Excel and CSV), normalizes them, and stores them in a local SQLite database.
+- Example source files: `EPMExportRZ202601.xlsx`, `EPMExportSZ202601.xlsx`.
+
+Configuration:
+- Store these values in the config file:
+  - `user`
+  - `url`
+  - `port`
+  - `auto_reconcile_after_import` (boolean)
+  - `epm.rules[]` with:
+    - `file_template`
+    - `project`
+    - `activity`
+    - `skill`
+- CLI config management includes:
+  - `gohour config create`
+  - `gohour config show`
+  - `gohour config edit` (opens current config in `$VISUAL`/`$EDITOR`/`vi`; creates example config if missing; validates after edit)
+  - `gohour config delete`
+
+Normalized worklog target model in SQLite:
+- `StartDateTime`: date/time when work started
+- `EndDateTime`: date/time when work ended
+- `Billable`: billable time in minutes between start and end
+- `Description`: text describing the work
+- `Project`: project name (default from config)
+- `Activity`: activity name (default from config)
+- `Skill`: skill name (default from config)
+
+Import architecture requirements:
+- Multiple source formats must be supported (currently Excel and CSV).
+- Source file structures may differ and must be mapped into one normalized worklog model.
+- For every importable source format, it must be selectable how data is stored (`csv`, `excel`) and which mapping implementation is used.
+- Mapping logic must convert source-specific fields into the normalized SQLite schema.
+- EPM-specific mapping logic:
+  - `Von` and `Bis` represent the full source-day window, not per-task start/end.
+  - Task entries must be mapped sequentially.
+  - If `Tagessumme` exists, compute one daily break as `(Bis - Von) - Tagessumme`.
+  - Insert that break around the middle of the billable task sequence, so generated task times align to the original day end.
+  - `project/activity/skill` are resolved per imported EPM file via `epm.rules` (pattern match by `file_template`) or explicit import flags.
+  - No default fallback for EPM mapping values: if no matching rule exists and no explicit values are provided, import must fail.
+
+Post-import verification/correction:
+- Add an explicit reconciliation step (`gohour reconcile`) that can be run after additional imports from other sources.
+- The step verifies and corrects overlaps on the same day by adjusting only EPM entries.
+- Goal: for one resource, no overlapping worklogs in time.
+- Reconciliation can also run automatically after every import (configurable and overridable per import command).
+
+Output requirements:
+- Output must be configurable.
+- Initial output targets: CSV and Excel export from normalized SQLite data.
+- A daily summary output format is required with:
+  - `StartTime`: start of the first worklog entry of the day,
+  - `EndTime`: end of the last worklog entry of the day,
+  - total worked hours: sum of `(EndDateTime - StartDateTime)` for each worklog entry of the day,
+  - total billable hours (sum of daily `Billable` values),
+  - break hours (time gaps without worklog coverage between `StartTime` and `EndTime`).
+- Later output target: REST calls to the secured company website for worklog submission.
+
+Language requirement:
+- All user-facing text, logs, command descriptions, comments, and documentation must be in English.
