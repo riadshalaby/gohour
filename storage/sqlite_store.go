@@ -288,3 +288,16 @@ WHERE id = ?;
 
 	return updated, nil
 }
+
+func (s *SQLiteStore) DeleteAllWorklogs() (int64, error) {
+	res, err := s.db.Exec(`DELETE FROM worklogs;`)
+	if err != nil {
+		return 0, fmt.Errorf("delete worklogs: %w", err)
+	}
+
+	rows, err := res.RowsAffected()
+	if err != nil {
+		return 0, fmt.Errorf("read deleted row count: %w", err)
+	}
+	return rows, nil
+}

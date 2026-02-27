@@ -213,6 +213,18 @@ What it does:
 
 This is useful because EPM task times are simulated during import and may collide with precise times from other sources.
 
+## Delete Data / DB
+
+Destructive cleanup command (always deletes the complete SQLite database file):
+
+```bash
+./gohour delete --db ./gohour.db
+```
+
+Notes:
+- The command asks for interactive confirmation.
+- Type exactly `Y` to confirm deletion.
+
 ## OnePoint Authentication (Microsoft SSO)
 
 For direct OnePoint REST calls, `gohour` provides an embedded interactive browser login flow.
