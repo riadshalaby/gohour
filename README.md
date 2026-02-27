@@ -5,7 +5,7 @@
 ## Features
 
 - CLI built with Cobra and Viper
-- Config file support (`onepoint.url`, `import.auto_reconcile_after_import`, `epm.rules`)
+- Config file support (`onepoint.url`, `import.auto_reconcile_after_import`, `rules`)
 - Input formats: Excel (`.xlsx`, `.xlsm`, `.xls`) and CSV (`.csv`)
 - Mapper-based normalization pipeline (`epm`, `generic`)
 - SQLite persistence with duplicate protection
@@ -51,8 +51,10 @@ Edit config in your terminal editor (`$VISUAL`, then `$EDITOR`, fallback `vi`):
 ```bash
 ./gohour config edit
 ```
+If no config exists yet, `config edit` creates one with an example template first, then opens it.
+After closing the editor, the file is validated as gohour YAML config.
 
-Add one EPM rule interactively from OnePoint (project/activity/skill selection):
+Add one rule interactively from OnePoint (project/activity/skill selection):
 
 ```bash
 ./gohour config rule add
@@ -64,8 +66,7 @@ Optional flags:
 - `--include-archived-projects`: include archived projects in selection
 - `--include-locked-activities`: include locked activities in selection
 
-If no config exists yet, `config edit` creates one with an example template first, then opens it.
-After closing the editor, the file is validated as gohour YAML config.
+During `config rule add`, mapper is selected interactively from available mappers.
 
 Delete active config:
 
@@ -82,16 +83,16 @@ onepoint:
 import:
   auto_reconcile_after_import: true
 
-epm:
-  rules:
-    - name: "rz"
-      file_template: "EPMExportRZ*.xlsx"
-      project_id: 432904811
-      project: "MySpecial RZ Project"
-      activity_id: 436142369
-      activity: "Delivery"
-      skill_id: 44498948
-      skill: "Go"
+rules:
+  - name: "rz"
+    mapper: "epm"
+    file_template: "EPMExportRZ*.xlsx"
+    project_id: 432904811
+    project: "MySpecial RZ Project"
+    activity_id: 436142369
+    activity: "Delivery"
+    skill_id: 44498948
+    skill: "Go"
 ```
 
 ## Import
@@ -110,7 +111,7 @@ Flags:
 
 - `-i, --input` (required, repeatable): input file path
 - `-f, --format` (optional): `csv` or `excel` (auto-detected from file extension if omitted)
-- `-m, --mapper` (optional): `epm` (default) or `generic`
+- `-m, --mapper` (optional): fallback mapper when no rule matches (`epm` default, or `generic`)
 - `--project` (optional): explicit project for EPM import (overrides rule)
 - `--activity` (optional): explicit activity for EPM import (overrides rule)
 - `--skill` (optional): explicit skill for EPM import (overrides rule)
@@ -118,7 +119,8 @@ Flags:
 - `--db` (optional): SQLite file path (default `./gohour.db`)
 
 By default (`import.auto_reconcile_after_import: true`), import automatically runs reconciliation after every import, independent of source format/mapper.
-For EPM imports, `project/activity/skill` must come from a matching `epm.rules` entry or explicit `--project/--activity/--skill`.
+If a file matches a `rules` entry by `file_template`, that rule's `mapper` is used for importing that file.
+For EPM-mapped files, `project/activity/skill` must come from a matching `rules` entry or explicit `--project/--activity/--skill`.
 If no rule matches and no explicit values are provided, import fails.
 
 ## Export
@@ -178,7 +180,7 @@ What submit does:
 
 - Reads local rows from SQLite.
 - Resolves `project/activity/skill` names to OnePoint IDs:
-  - first from `epm.rules` IDs in config,
+  - first from `rules` IDs in config,
   - fallback via OnePoint lookup APIs.
 - Groups local rows by day.
 - For each day:
@@ -304,4 +306,4 @@ A unique constraint prevents duplicate imports of the same normalized row.
 
 ## Notes
 
-- REST submission to the company website is planned for a later implementation phase.
+- REST submission is available via `gohour submit`.

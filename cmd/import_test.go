@@ -1,6 +1,9 @@
 package cmd
 
-import "testing"
+import (
+	"gohour/config"
+	"testing"
+)
 
 func TestResolveReconcileMode(t *testing.T) {
 	tests := []struct {
@@ -37,4 +40,28 @@ func TestResolveReconcileMode(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestResolveMapperNameForFile(t *testing.T) {
+	rules := []config.Rule{
+		{
+			Name:         "rz",
+			Mapper:       "epm",
+			FileTemplate: "EPMExportRZ*.xlsx",
+		},
+	}
+
+	t.Run("uses mapper from matching rule", func(t *testing.T) {
+		got := resolveMapperNameForFile("EPMExportRZ202601.xlsx", "generic", rules)
+		if got != "epm" {
+			t.Fatalf("expected rule mapper epm, got %q", got)
+		}
+	})
+
+	t.Run("falls back to CLI mapper when no rule matches", func(t *testing.T) {
+		got := resolveMapperNameForFile("generic.csv", "generic", rules)
+		if got != "generic" {
+			t.Fatalf("expected fallback mapper generic, got %q", got)
+		}
+	})
 }

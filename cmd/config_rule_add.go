@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"gohour/config"
+	"gohour/importer"
 	"gohour/onepoint"
 
 	"github.com/spf13/cobra"
@@ -29,9 +30,9 @@ var (
 
 var configRuleAddCmd = &cobra.Command{
 	Use:   "add",
-	Short: "Interactively add one EPM rule from OnePoint lookups.",
+	Short: "Interactively add one import rule from OnePoint lookups.",
 	Long: `Fetch projects, activities, and skills from OnePoint for the logged-in user,
-let you choose each entry interactively, then store a new epm.rules entry in config.`,
+let you choose each entry interactively, then store a new rules entry in config.`,
 	Example: `
   # Add one rule interactively using onepoint.url from config and default auth state file
   gohour config rule add
@@ -90,6 +91,22 @@ let you choose each entry interactively, then store a new epm.rules entry in con
 			return fmt.Errorf("fetch OnePoint lookup values: %w", err)
 		}
 
+		reader := bufio.NewReader(os.Stdin)
+		mapperNames := importer.SupportedMapperNames()
+		if len(mapperNames) == 0 {
+			return fmt.Errorf("no mappers are available")
+		}
+		selectedMapperIdx, err := promptSelectIndex(
+			reader,
+			os.Stdout,
+			"Select mapper:",
+			mapperNames,
+		)
+		if err != nil {
+			return err
+		}
+		selectedMapper := mapperNames[selectedMapperIdx]
+
 		projects := filterProjects(snapshot.Projects, configRuleAddIncludeArchive)
 		if len(projects) == 0 {
 			return fmt.Errorf("no selectable projects found")
@@ -108,7 +125,6 @@ let you choose each entry interactively, then store a new epm.rules entry in con
 			return left < right
 		})
 
-		reader := bufio.NewReader(os.Stdin)
 		selectedProjectIdx, err := promptSelectIndex(
 			reader,
 			os.Stdout,
@@ -177,8 +193,9 @@ let you choose each entry interactively, then store a new epm.rules entry in con
 			return err
 		}
 
-		newRule := config.EPMRule{
+		newRule := config.Rule{
 			Name:         ruleName,
+			Mapper:       strings.ToLower(strings.TrimSpace(selectedMapper)),
 			FileTemplate: fileTemplate,
 			ProjectID:    selectedProject.ID,
 			Project:      selectedProject.Name,
@@ -193,7 +210,7 @@ let you choose each entry interactively, then store a new epm.rules entry in con
 			return fmt.Errorf("read config file: %w", err)
 		}
 
-		updated, err := appendEPMRuleToConfigYAML(current, newRule)
+		updated, err := appendRuleToConfigYAML(current, newRule)
 		if err != nil {
 			return err
 		}
@@ -205,6 +222,7 @@ let you choose each entry interactively, then store a new epm.rules entry in con
 		fmt.Println("Rule added successfully.")
 		fmt.Printf("Config:   %s\n", configPath)
 		fmt.Printf("Name:     %s\n", newRule.Name)
+		fmt.Printf("Mapper:   %s\n", newRule.Mapper)
 		fmt.Printf("Template: %s\n", newRule.FileTemplate)
 		fmt.Printf("Project:  %s (id=%d)\n", newRule.Project, newRule.ProjectID)
 		fmt.Printf("Activity: %s (id=%d)\n", newRule.Activity, newRule.ActivityID)
@@ -331,9 +349,12 @@ func promptRequiredString(reader *bufio.Reader, out io.Writer, label string) (st
 	}
 }
 
-func appendEPMRuleToConfigYAML(content []byte, rule config.EPMRule) ([]byte, error) {
+func appendRuleToConfigYAML(content []byte, rule config.Rule) ([]byte, error) {
 	if strings.TrimSpace(rule.Name) == "" {
 		return nil, fmt.Errorf("rule name is required")
+	}
+	if strings.TrimSpace(rule.Mapper) == "" {
+		return nil, fmt.Errorf("mapper is required")
 	}
 	if strings.TrimSpace(rule.FileTemplate) == "" {
 		return nil, fmt.Errorf("file template is required")
@@ -352,11 +373,7 @@ func appendEPMRuleToConfigYAML(content []byte, rule config.EPMRule) ([]byte, err
 		}
 	}
 
-	epmMap, err := ensureMapStringAny(doc, "epm")
-	if err != nil {
-		return nil, err
-	}
-	rulesList, err := ensureSliceAny(epmMap, "rules")
+	rulesList, err := ensureSliceAny(doc, "rules")
 	if err != nil {
 		return nil, err
 	}
@@ -368,12 +385,13 @@ func appendEPMRuleToConfigYAML(content []byte, rule config.EPMRule) ([]byte, err
 		}
 		existingName, _ := ruleMap["name"].(string)
 		if strings.EqualFold(strings.TrimSpace(existingName), strings.TrimSpace(rule.Name)) {
-			return nil, fmt.Errorf("epm rule with name %q already exists", rule.Name)
+			return nil, fmt.Errorf("rule with name %q already exists", rule.Name)
 		}
 	}
 
 	rulesList = append(rulesList, map[string]any{
 		"name":          rule.Name,
+		"mapper":        rule.Mapper,
 		"file_template": rule.FileTemplate,
 		"project_id":    rule.ProjectID,
 		"project":       rule.Project,
@@ -382,8 +400,7 @@ func appendEPMRuleToConfigYAML(content []byte, rule config.EPMRule) ([]byte, err
 		"skill_id":      rule.SkillID,
 		"skill":         rule.Skill,
 	})
-	epmMap["rules"] = rulesList
-	doc["epm"] = epmMap
+	doc["rules"] = rulesList
 
 	updated, err := yaml.Marshal(doc)
 	if err != nil {
@@ -393,20 +410,6 @@ func appendEPMRuleToConfigYAML(content []byte, rule config.EPMRule) ([]byte, err
 		return nil, fmt.Errorf("updated config is invalid: %w", err)
 	}
 	return updated, nil
-}
-
-func ensureMapStringAny(doc map[string]any, key string) (map[string]any, error) {
-	raw, exists := doc[key]
-	if !exists || raw == nil {
-		result := map[string]any{}
-		doc[key] = result
-		return result, nil
-	}
-	result, ok := raw.(map[string]any)
-	if !ok {
-		return nil, fmt.Errorf("config key %q must be a map", key)
-	}
-	return result, nil
 }
 
 func ensureSliceAny(doc map[string]any, key string) ([]any, error) {

@@ -45,6 +45,7 @@ func TestBuildSubmitDayBatches_GroupsAndBuildsPayload(t *testing.T) {
 			Project:       "Project A",
 			Activity:      "Delivery",
 			Skill:         "Go",
+			SourceMapper:  "epm",
 		},
 		{
 			ID:            2,
@@ -55,10 +56,12 @@ func TestBuildSubmitDayBatches_GroupsAndBuildsPayload(t *testing.T) {
 			Project:       "Project A",
 			Activity:      "Delivery",
 			Skill:         "Go",
+			SourceMapper:  "epm",
 		},
 	}
 	ids := map[submitNameTuple]submitResolvedIDs{
 		{
+			Mapper:   "epm",
 			Project:  "project a",
 			Activity: "delivery",
 			Skill:    "go",
@@ -120,18 +123,21 @@ func TestResolveIDsForEntries_UsesRulesThenSnapshotFallback(t *testing.T) {
 
 	entries := []worklog.Entry{
 		{
-			Project:  "Project A",
-			Activity: "Delivery",
-			Skill:    "Go",
+			Project:      "Project A",
+			Activity:     "Delivery",
+			Skill:        "Go",
+			SourceMapper: "epm",
 		},
 		{
-			Project:  "Project B",
-			Activity: "Development",
-			Skill:    "Go",
+			Project:      "Project B",
+			Activity:     "Development",
+			Skill:        "Go",
+			SourceMapper: "epm",
 		},
 	}
-	rules := []config.EPMRule{
+	rules := []config.Rule{
 		{
+			Mapper:     "epm",
 			Project:    "Project A",
 			Activity:   "Delivery",
 			Skill:      "Go",
@@ -146,12 +152,12 @@ func TestResolveIDsForEntries_UsesRulesThenSnapshotFallback(t *testing.T) {
 		t.Fatalf("resolve ids: %v", err)
 	}
 
-	ruleTuple := submitNameTuple{Project: "project a", Activity: "delivery", Skill: "go"}
+	ruleTuple := submitNameTuple{Mapper: "epm", Project: "project a", Activity: "delivery", Skill: "go"}
 	if got := resolved[ruleTuple]; got.ProjectID != 11 || got.ActivityID != 12 || got.SkillID != 13 {
 		t.Fatalf("unexpected rule-resolved ids: %+v", got)
 	}
 
-	fallbackTuple := submitNameTuple{Project: "project b", Activity: "development", Skill: "go"}
+	fallbackTuple := submitNameTuple{Mapper: "epm", Project: "project b", Activity: "development", Skill: "go"}
 	if got := resolved[fallbackTuple]; got.ProjectID != 22 || got.ActivityID != 33 || got.SkillID != 44 {
 		t.Fatalf("unexpected fallback-resolved ids: %+v", got)
 	}

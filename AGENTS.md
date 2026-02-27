@@ -35,9 +35,9 @@ Guidance for coding agents working in this repository.
   - `gohour config edit`
   - `gohour config delete`
 - Important config keys:
-  - `user`, `url`, `port`
-  - `auto_reconcile_after_import`
-  - `epm.rules[]` with `name`, `file_template`, `project`, `activity`, `skill`
+  - `onepoint.url`
+  - `import.auto_reconcile_after_import`
+  - `rules[]` with `name`, `mapper`, `file_template`, `project_id`, `project`, `activity_id`, `activity`, `skill_id`, `skill`
 
 ## Architecture Pointers
 - CLI commands: `cmd/`

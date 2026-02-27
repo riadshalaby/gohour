@@ -6,6 +6,7 @@ import (
 	"gohour/importer"
 	"gohour/reconcile"
 	"gohour/storage"
+	"gohour/worklog"
 	"strings"
 
 	"github.com/spf13/cobra"
@@ -30,8 +31,12 @@ var importCmd = &cobra.Command{
 Use mapper "epm" for EPM-style Excel exports and mapper "generic" for structured CSV/Excel inputs.
 When --format is omitted, format is inferred from each input file extension.
 
-For EPM imports, project/activity/skill must be provided by either:
-- matching epm.rules in configuration (file_template match), or
+Mapper selection per input file:
+- if a rule matches by file_template, that rule's mapper is used
+- otherwise the CLI fallback mapper (--mapper) is used.
+
+For EPM-mapped files, project/activity/skill must be provided by either:
+- matching rules in configuration via file_template, or
 - explicit --project/--activity/--skill flags.
 If neither provides all values, import fails.`,
 	Example: `
@@ -59,18 +64,30 @@ If neither provides all values, import fails.`,
 			return err
 		}
 
-		mapper, err := importer.MapperByName(importMapper)
-		if err != nil {
-			return err
-		}
-
-		result, err := importer.Run(importInputs, importFormat, mapper, *cfg, importer.RunOptions{
+		result := &importer.Result{Entries: make([]worklog.Entry, 0, 256)}
+		runOptions := importer.RunOptions{
 			EPMProject:  importProject,
 			EPMActivity: importActivity,
 			EPMSkill:    importSkill,
-		})
-		if err != nil {
-			return err
+		}
+		defaultMapper := strings.TrimSpace(importMapper)
+		for _, path := range importInputs {
+			mapperName := resolveMapperNameForFile(path, defaultMapper, cfg.Rules)
+			mapper, mapErr := importer.MapperByName(mapperName)
+			if mapErr != nil {
+				return mapErr
+			}
+
+			fileResult, runErr := importer.Run([]string{path}, importFormat, mapper, *cfg, runOptions)
+			if runErr != nil {
+				return runErr
+			}
+
+			result.FilesProcessed += fileResult.FilesProcessed
+			result.RowsRead += fileResult.RowsRead
+			result.RowsMapped += fileResult.RowsMapped
+			result.RowsSkipped += fileResult.RowsSkipped
+			result.Entries = append(result.Entries, fileResult.Entries...)
 		}
 
 		store, err := storage.OpenSQLite(importDBPath)
@@ -120,7 +137,7 @@ func init() {
 
 	importCmd.Flags().StringArrayVarP(&importInputs, "input", "i", nil, "Input file path (repeatable)")
 	importCmd.Flags().StringVarP(&importFormat, "format", "f", "", "Input format: csv|excel (optional, inferred from extension when omitted)")
-	importCmd.Flags().StringVarP(&importMapper, "mapper", "m", "epm", "Mapper to normalize input data: epm|generic")
+	importCmd.Flags().StringVarP(&importMapper, "mapper", "m", "epm", "Fallback mapper when no rule matches a file: epm|generic")
 	importCmd.Flags().StringVar(&importProject, "project", "", "Explicit project value for EPM imports (overrides matching config rule)")
 	importCmd.Flags().StringVar(&importActivity, "activity", "", "Explicit activity value for EPM imports (overrides matching config rule)")
 	importCmd.Flags().StringVar(&importSkill, "skill", "", "Explicit skill value for EPM imports (overrides matching config rule)")
@@ -141,4 +158,12 @@ func resolveReconcileMode(mode string, configDefault bool) (bool, error) {
 	default:
 		return false, fmt.Errorf("invalid reconcile mode %q (supported: auto|on|off)", mode)
 	}
+}
+
+func resolveMapperNameForFile(path, fallbackMapper string, rules []config.Rule) string {
+	rule := importer.MatchRuleByTemplate(path, rules)
+	if mapper := strings.TrimSpace(rule.Mapper); mapper != "" {
+		return mapper
+	}
+	return strings.TrimSpace(fallbackMapper)
 }

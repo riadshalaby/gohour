@@ -88,7 +88,7 @@ func resolveConfigForFile(path, mapperName string, cfg config.Config, options Ru
 		return resolved, nil
 	}
 
-	rule := matchEPMRule(path, cfg.EPM.Rules)
+	rule := MatchRuleByTemplate(path, cfg.Rules)
 	resolved.ImportProject = firstNonEmpty(options.EPMProject, rule.Project)
 	resolved.ImportActivity = firstNonEmpty(options.EPMActivity, rule.Activity)
 	resolved.ImportSkill = firstNonEmpty(options.EPMSkill, rule.Skill)
@@ -109,21 +109,21 @@ func resolveConfigForFile(path, mapperName string, cfg config.Config, options Ru
 
 	if rule.FileTemplate == "" {
 		return resolved, fmt.Errorf(
-			"no matching EPM rule for file %s and missing explicit values for: %s (set --project/--activity/--skill or add epm.rules in config)",
+			"no matching rule for file %s; missing explicit values for: %s (set --project/--activity/--skill or add rules in config)",
 			path,
 			strings.Join(missing, ", "),
 		)
 	}
 
 	return resolved, fmt.Errorf(
-		"EPM rule %q matched file %s but is missing values for: %s",
+		"rule %q matched file %s but is missing values for: %s",
 		rule.FileTemplate,
 		path,
 		strings.Join(missing, ", "),
 	)
 }
 
-func matchEPMRule(path string, rules []config.EPMRule) config.EPMRule {
+func MatchRuleByTemplate(path string, rules []config.Rule) config.Rule {
 	baseName := filepath.Base(path)
 	for _, rule := range rules {
 		template := strings.TrimSpace(rule.FileTemplate)
@@ -139,7 +139,7 @@ func matchEPMRule(path string, rules []config.EPMRule) config.EPMRule {
 			return rule
 		}
 	}
-	return config.EPMRule{}
+	return config.Rule{}
 }
 
 func firstNonEmpty(values ...string) string {

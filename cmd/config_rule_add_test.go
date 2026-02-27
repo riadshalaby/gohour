@@ -7,27 +7,28 @@ import (
 	"gohour/config"
 )
 
-func TestAppendEPMRuleToConfigYAML_AppendsRule(t *testing.T) {
+func TestAppendRuleToConfigYAML_AppendsRule(t *testing.T) {
 	t.Parallel()
 
 	input := []byte(`onepoint:
   url: "https://onepoint.virtual7.io"
 import:
   auto_reconcile_after_import: true
-epm:
-  rules:
-    - name: "rz"
-      file_template: "EPMExportRZ*.xlsx"
-      project_id: 1
-      project: "Project A"
-      activity_id: 2
-      activity: "Activity A"
-      skill_id: 3
-      skill: "Skill A"
+rules:
+  - name: "rz"
+    mapper: "epm"
+    file_template: "EPMExportRZ*.xlsx"
+    project_id: 1
+    project: "Project A"
+    activity_id: 2
+    activity: "Activity A"
+    skill_id: 3
+    skill: "Skill A"
 `)
 
-	newRule := config.EPMRule{
+	newRule := config.Rule{
 		Name:         "sz",
+		Mapper:       "epm",
 		FileTemplate: "EPMExportSZ*.xlsx",
 		ProjectID:    10,
 		Project:      "Project B",
@@ -37,7 +38,7 @@ epm:
 		Skill:        "Skill B",
 	}
 
-	updated, err := appendEPMRuleToConfigYAML(input, newRule)
+	updated, err := appendRuleToConfigYAML(input, newRule)
 	if err != nil {
 		t.Fatalf("append rule failed: %v", err)
 	}
@@ -47,36 +48,37 @@ epm:
 		t.Fatalf("updated yaml should validate: %v", err)
 	}
 
-	if len(cfg.EPM.Rules) != 2 {
-		t.Fatalf("expected 2 rules, got %d", len(cfg.EPM.Rules))
+	if len(cfg.Rules) != 2 {
+		t.Fatalf("expected 2 rules, got %d", len(cfg.Rules))
 	}
-	last := cfg.EPM.Rules[1]
-	if last.Name != "sz" || last.FileTemplate != "EPMExportSZ*.xlsx" || last.ProjectID != 10 || last.Project != "Project B" || last.ActivityID != 20 || last.Activity != "Activity B" || last.SkillID != 30 || last.Skill != "Skill B" {
+	last := cfg.Rules[1]
+	if last.Name != "sz" || last.Mapper != "epm" || last.FileTemplate != "EPMExportSZ*.xlsx" || last.ProjectID != 10 || last.Project != "Project B" || last.ActivityID != 20 || last.Activity != "Activity B" || last.SkillID != 30 || last.Skill != "Skill B" {
 		t.Fatalf("unexpected last rule: %+v", last)
 	}
 }
 
-func TestAppendEPMRuleToConfigYAML_DuplicateName(t *testing.T) {
+func TestAppendRuleToConfigYAML_DuplicateName(t *testing.T) {
 	t.Parallel()
 
 	input := []byte(`onepoint:
   url: "https://onepoint.virtual7.io"
 import:
   auto_reconcile_after_import: true
-epm:
-  rules:
-    - name: "rz"
-      file_template: "EPMExportRZ*.xlsx"
-      project_id: 1
-      project: "Project A"
-      activity_id: 2
-      activity: "Activity A"
-      skill_id: 3
-      skill: "Skill A"
+rules:
+  - name: "rz"
+    mapper: "epm"
+    file_template: "EPMExportRZ*.xlsx"
+    project_id: 1
+    project: "Project A"
+    activity_id: 2
+    activity: "Activity A"
+    skill_id: 3
+    skill: "Skill A"
 `)
 
-	_, err := appendEPMRuleToConfigYAML(input, config.EPMRule{
+	_, err := appendRuleToConfigYAML(input, config.Rule{
 		Name:         "RZ",
+		Mapper:       "epm",
 		FileTemplate: "Other*.xlsx",
 		ProjectID:    10,
 		Project:      "Project B",

@@ -101,7 +101,7 @@ Authentication uses session cookies from auth state JSON (created by "gohour aut
 
 		resolveCtx, cancelResolve := context.WithTimeout(context.Background(), submitTimeout)
 		defer cancelResolve()
-		idMap, err := resolveIDsForEntries(resolveCtx, client, cfg.EPM.Rules, entries, onepoint.ResolveOptions{
+		idMap, err := resolveIDsForEntries(resolveCtx, client, cfg.Rules, entries, onepoint.ResolveOptions{
 			IncludeArchivedProjects: submitIncludeArchived,
 			IncludeLockedActivities: submitIncludeLockedActivities,
 		})
@@ -167,6 +167,7 @@ type submitDayBatch struct {
 }
 
 type submitNameTuple struct {
+	Mapper   string
 	Project  string
 	Activity string
 	Skill    string
@@ -239,7 +240,7 @@ func filterEntriesByDayRange(entries []worklog.Entry, from, to *time.Time) []wor
 func resolveIDsForEntries(
 	ctx context.Context,
 	client *onepoint.HTTPClient,
-	rules []config.EPMRule,
+	rules []config.Rule,
 	entries []worklog.Entry,
 	options onepoint.ResolveOptions,
 ) (map[submitNameTuple]submitResolvedIDs, error) {
@@ -273,7 +274,8 @@ func resolveIDsForEntries(
 		ids, err := onepoint.ResolveIDsFromSnapshot(snapshot, tuple.Project, tuple.Activity, tuple.Skill, options)
 		if err != nil {
 			return nil, fmt.Errorf(
-				"resolve ids for project=%q activity=%q skill=%q: %w",
+				"resolve ids for mapper=%q project=%q activity=%q skill=%q: %w",
+				tuple.Mapper,
 				tuple.Project,
 				tuple.Activity,
 				tuple.Skill,
@@ -294,6 +296,7 @@ func collectRequiredNameTuples(entries []worklog.Entry) []submitNameTuple {
 	unique := make(map[submitNameTuple]struct{}, len(entries))
 	for _, entry := range entries {
 		tuple := submitNameTuple{
+			Mapper:   normalizeSubmitMapper(entry.SourceMapper),
 			Project:  normalizeSubmitName(entry.Project),
 			Activity: normalizeSubmitName(entry.Activity),
 			Skill:    normalizeSubmitName(entry.Skill),
@@ -309,6 +312,9 @@ func collectRequiredNameTuples(entries []worklog.Entry) []submitNameTuple {
 		out = append(out, tuple)
 	}
 	sort.Slice(out, func(i, j int) bool {
+		if out[i].Mapper != out[j].Mapper {
+			return out[i].Mapper < out[j].Mapper
+		}
 		if out[i].Project != out[j].Project {
 			return out[i].Project < out[j].Project
 		}
@@ -320,10 +326,11 @@ func collectRequiredNameTuples(entries []worklog.Entry) []submitNameTuple {
 	return out
 }
 
-func buildRuleIDMap(rules []config.EPMRule) map[submitNameTuple]submitResolvedIDs {
+func buildRuleIDMap(rules []config.Rule) map[submitNameTuple]submitResolvedIDs {
 	out := make(map[submitNameTuple]submitResolvedIDs, len(rules))
 	for _, rule := range rules {
 		tuple := submitNameTuple{
+			Mapper:   normalizeSubmitMapper(rule.Mapper),
 			Project:  normalizeSubmitName(rule.Project),
 			Activity: normalizeSubmitName(rule.Activity),
 			Skill:    normalizeSubmitName(rule.Skill),
@@ -361,6 +368,7 @@ func buildSubmitDayBatches(entries []worklog.Entry, idsByTuple map[submitNameTup
 
 	for _, entry := range sortedEntries {
 		tuple := submitNameTuple{
+			Mapper:   normalizeSubmitMapper(entry.SourceMapper),
 			Project:  normalizeSubmitName(entry.Project),
 			Activity: normalizeSubmitName(entry.Activity),
 			Skill:    normalizeSubmitName(entry.Skill),
@@ -371,8 +379,9 @@ func buildSubmitDayBatches(entries []worklog.Entry, idsByTuple map[submitNameTup
 		ids, ok := idsByTuple[tuple]
 		if !ok {
 			return nil, fmt.Errorf(
-				"no resolved ids for worklog id=%d (project=%q, activity=%q, skill=%q)",
+				"no resolved ids for worklog id=%d (mapper=%q, project=%q, activity=%q, skill=%q)",
 				entry.ID,
+				tuple.Mapper,
 				tuple.Project,
 				tuple.Activity,
 				tuple.Skill,
@@ -451,6 +460,10 @@ func buildSubmitDayBatches(entries []worklog.Entry, idsByTuple map[submitNameTup
 
 func normalizeSubmitName(value string) string {
 	return strings.ToLower(strings.Join(strings.Fields(strings.TrimSpace(value)), " "))
+}
+
+func normalizeSubmitMapper(value string) string {
+	return strings.ToLower(strings.TrimSpace(value))
 }
 
 func startOfDay(value time.Time) time.Time {

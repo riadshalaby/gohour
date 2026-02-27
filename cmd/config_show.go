@@ -33,16 +33,17 @@ This command validates the configuration before printing values.`,
 			fmt.Println("Configuration:")
 			fmt.Printf("onepoint.url: %s\n", cfg.OnePoint.URL)
 			fmt.Printf("import.auto_reconcile_after_import: %t\n", cfg.Import.AutoReconcileAfterImport)
-			fmt.Printf("epm.rules: %d\n", len(cfg.EPM.Rules))
-			for i, rule := range cfg.EPM.Rules {
-				fmt.Printf("epm.rules[%d].name: %s\n", i, rule.Name)
-				fmt.Printf("epm.rules[%d].file_template: %s\n", i, rule.FileTemplate)
-				fmt.Printf("epm.rules[%d].project_id: %d\n", i, rule.ProjectID)
-				fmt.Printf("epm.rules[%d].project: %s\n", i, rule.Project)
-				fmt.Printf("epm.rules[%d].activity_id: %d\n", i, rule.ActivityID)
-				fmt.Printf("epm.rules[%d].activity: %s\n", i, rule.Activity)
-				fmt.Printf("epm.rules[%d].skill_id: %d\n", i, rule.SkillID)
-				fmt.Printf("epm.rules[%d].skill: %s\n", i, rule.Skill)
+			fmt.Printf("rules: %d\n", len(cfg.Rules))
+			for i, rule := range cfg.Rules {
+				fmt.Printf("rules[%d].name: %s\n", i, rule.Name)
+				fmt.Printf("rules[%d].mapper: %s\n", i, rule.Mapper)
+				fmt.Printf("rules[%d].file_template: %s\n", i, rule.FileTemplate)
+				fmt.Printf("rules[%d].project_id: %d\n", i, rule.ProjectID)
+				fmt.Printf("rules[%d].project: %s\n", i, rule.Project)
+				fmt.Printf("rules[%d].activity_id: %d\n", i, rule.ActivityID)
+				fmt.Printf("rules[%d].activity: %s\n", i, rule.Activity)
+				fmt.Printf("rules[%d].skill_id: %d\n", i, rule.SkillID)
+				fmt.Printf("rules[%d].skill: %s\n", i, rule.Skill)
 			}
 		}
 

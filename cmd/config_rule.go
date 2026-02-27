@@ -4,10 +4,10 @@ import "github.com/spf13/cobra"
 
 var configRuleCmd = &cobra.Command{
 	Use:   "rule",
-	Short: "Manage EPM mapping rules in config.",
-	Long: `Manage EPM import rules stored under config key epm.rules.
+	Short: "Manage import mapping rules in config.",
+	Long: `Manage import rules stored under config key rules.
 
-Rules map imported EPM files (via file template) to target project/activity/skill.`,
+Rules map imported files (via mapper + file template) to target project/activity/skill.`,
 }
 
 func init() {
