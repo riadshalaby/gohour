@@ -23,6 +23,9 @@ The configuration stores application-wide values and EPM import rules:
   # Open active config in editor (creates example if missing)
   gohour config edit
 
+  # Add one EPM rule interactively from OnePoint lookups
+  gohour config rule add
+
   # Delete active config file
   gohour config delete
 `,

@@ -51,6 +51,18 @@ Edit config in your terminal editor (`$VISUAL`, then `$EDITOR`, fallback `vi`):
 ./gohour config edit
 ```
 
+Add one EPM rule interactively from OnePoint (project/activity/skill selection):
+
+```bash
+./gohour config rule add
+```
+
+Optional flags:
+- `--url`: override OnePoint base URL from config for this run
+- `--state-file`: custom auth state file (default `$HOME/.gohour/onepoint-auth-state.json`)
+- `--include-archived-projects`: include archived projects in selection
+- `--include-locked-activities`: include locked activities in selection
+
 If no config exists yet, `config edit` creates one with an example template first, then opens it.
 After closing the editor, the file is validated as gohour YAML config.
 
@@ -146,6 +158,56 @@ What it does:
 - Persists corrected start/end times back to SQLite.
 
 This is useful because EPM task times are simulated during import and may collide with precise times from other sources.
+
+## OnePoint Authentication (Microsoft SSO)
+
+For direct OnePoint REST calls, `gohour` provides an embedded interactive browser login flow.
+The base URL is taken from `url` in your config (`~/.gohour.yaml`) and can be overridden via `--url`.
+
+1) Start login and save auth state:
+
+```bash
+gohour auth login
+```
+
+Optional override:
+
+```bash
+gohour auth login --url https://onepoint.virtual7.io
+```
+
+Debug cookie detection during login wait:
+
+```bash
+gohour auth login --debug-cookies
+```
+
+This opens a headed browser. Complete Microsoft login manually; the command auto-detects
+successful login by waiting for OnePoint session cookies.
+The auth state is saved by default to:
+
+- `$HOME/.gohour/onepoint-auth-state.json`
+
+2) Print Cookie header for direct API usage:
+
+```bash
+gohour auth show-cookies
+```
+
+Expected output format:
+
+```text
+JSESSIONID=<...>; _WL_AUTHCOOKIE_JSESSIONID=<...>
+```
+
+Notes:
+- Login opens a visible Chrome/Chromium browser window from inside `gohour`.
+- By default, each login run uses a fresh temporary browser profile to avoid profile-lock issues.
+- Use `--profile-dir` only if you explicitly want a reusable browser profile.
+- Use `--browser-bin` if your browser executable is not auto-detected.
+- Use `--timeout` to increase waiting time for MFA/conditional-access flows.
+- Use `--debug-cookies` to print detected cookie names/domains while waiting.
+- Session cookies can rotate; run `auth login` again when REST calls fail with auth/session errors.
 
 ## Normalized SQLite Schema
 
