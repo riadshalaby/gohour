@@ -10,6 +10,7 @@
 - Mapper-based normalization pipeline (`epm`, `generic`)
 - SQLite persistence with duplicate protection
 - Export normalized worklogs to CSV or Excel
+- Submit local SQLite worklogs to OnePoint REST
 
 ## Requirements
 
@@ -147,6 +148,54 @@ Flags:
 - `-f, --format` (optional): `csv` or `excel` (auto-detected from output extension if omitted)
 - `--mode` (optional): `raw` (default) or `daily`
 - `--db` (optional): SQLite file path (default `./gohour.db`)
+
+## Submit To OnePoint
+
+Submit normalized worklogs from SQLite to OnePoint:
+
+```bash
+./gohour submit --db ./gohour.db
+```
+
+Optional filters:
+
+```bash
+./gohour submit --from 2026-03-01 --to 2026-03-31
+```
+
+Dry-run (build/validate payloads without sending):
+
+```bash
+./gohour submit --dry-run
+```
+
+Required prerequisites:
+
+- Valid auth state from `gohour auth login`
+- Reachable OnePoint endpoint (`onepoint.url` in config or `--url`)
+
+What submit does:
+
+- Reads local rows from SQLite.
+- Resolves `project/activity/skill` names to OnePoint IDs:
+  - first from `epm.rules` IDs in config,
+  - fallback via OnePoint lookup APIs.
+- Groups local rows by day.
+- For each day:
+  - loads existing remote day worklogs,
+  - appends non-duplicate local entries,
+  - persists merged day payload via `persistWorklogs`.
+
+Main flags:
+
+- `--db` (optional): SQLite path (default `./gohour.db`)
+- `--from` / `--to` (optional): day range filter, format `YYYY-MM-DD`
+- `--state-file` (optional): auth state JSON path
+- `--url` (optional): override OnePoint home URL for this run
+- `--timeout` (optional): timeout per API operation (default `60s`)
+- `--dry-run` (optional): no API writes
+- `--include-archived-projects` (optional): allow archived project fallback resolution
+- `--include-locked-activities` (optional): allow locked activity fallback resolution
 
 ## Reconcile (Verify + Correct)
 

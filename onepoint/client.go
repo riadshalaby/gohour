@@ -27,6 +27,7 @@ type Client interface {
 	GetFilteredWorklogs(ctx context.Context, from, to time.Time) ([]DayWorklog, error)
 	GetDayWorklogs(ctx context.Context, day time.Time) ([]DayWorklog, error)
 	PersistWorklogs(ctx context.Context, day time.Time, worklogs []PersistWorklog) ([]PersistResult, error)
+	MergeAndPersistWorklogs(ctx context.Context, day time.Time, newWorklogs []PersistWorklog) ([]PersistResult, error)
 	FetchLookupSnapshot(ctx context.Context) (LookupSnapshot, error)
 	ResolveIDs(ctx context.Context, projectName, activityName, skillName string, options ResolveOptions) (ResolvedIDs, error)
 }
@@ -298,6 +299,30 @@ func (c *HTTPClient) PersistWorklogs(ctx context.Context, day time.Time, worklog
 	return out, nil
 }
 
+func (c *HTTPClient) MergeAndPersistWorklogs(ctx context.Context, day time.Time, newWorklogs []PersistWorklog) ([]PersistResult, error) {
+	if len(newWorklogs) == 0 {
+		return nil, errors.New("new worklogs payload must not be empty")
+	}
+
+	existing, err := c.GetDayWorklogs(ctx, day)
+	if err != nil {
+		return nil, fmt.Errorf("load existing day worklogs: %w", err)
+	}
+
+	payload := make([]PersistWorklog, 0, len(existing)+len(newWorklogs))
+	for _, item := range existing {
+		payload = append(payload, item.ToPersistWorklog())
+	}
+	for _, candidate := range newWorklogs {
+		if containsEquivalentPersistWorklog(payload, candidate) {
+			continue
+		}
+		payload = append(payload, candidate)
+	}
+
+	return c.PersistWorklogs(ctx, day, payload)
+}
+
 func (c *HTTPClient) FetchLookupSnapshot(ctx context.Context) (LookupSnapshot, error) {
 	projects, err := c.ListProjects(ctx)
 	if err != nil {
@@ -512,6 +537,36 @@ func equalName(a, b string) bool {
 
 func normalize(value string) string {
 	return strings.Join(strings.Fields(strings.TrimSpace(value)), " ")
+}
+
+func containsEquivalentPersistWorklog(values []PersistWorklog, candidate PersistWorklog) bool {
+	for _, value := range values {
+		if persistWorklogsEquivalent(value, candidate) {
+			return true
+		}
+	}
+	return false
+}
+
+func persistWorklogsEquivalent(a, b PersistWorklog) bool {
+	return equalIntPointer(a.StartTime, b.StartTime) &&
+		equalIntPointer(a.FinishTime, b.FinishTime) &&
+		a.Duration == b.Duration &&
+		a.Billable == b.Billable &&
+		a.ProjectID.Valid == b.ProjectID.Valid &&
+		a.ProjectID.Value == b.ProjectID.Value &&
+		a.ActivityID.Valid == b.ActivityID.Valid &&
+		a.ActivityID.Value == b.ActivityID.Value &&
+		a.SkillID.Valid == b.SkillID.Valid &&
+		a.SkillID.Value == b.SkillID.Value &&
+		equalName(a.Comment, b.Comment)
+}
+
+func equalIntPointer(a, b *int) bool {
+	if a == nil || b == nil {
+		return a == nil && b == nil
+	}
+	return *a == *b
 }
 
 func uniqueProjects(values []Project) []Project {
