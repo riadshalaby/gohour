@@ -95,6 +95,8 @@ rules:
     skill: "Go"
 ```
 
+`gohour config create` creates a standard config with `rules: []` (no demo rule).
+
 ## Import
 
 Import one or more files into SQLite:

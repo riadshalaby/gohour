@@ -68,7 +68,7 @@ func ValidateYAMLContent(content []byte) (*Config, error) {
 	return loadAndValidateFromViper(local)
 }
 
-// ExampleYAML returns an example configuration template.
+// ExampleYAML returns the default configuration template.
 func ExampleYAML() string {
 	return `# gohour configuration
 onepoint:
@@ -77,16 +77,7 @@ onepoint:
 import:
   auto_reconcile_after_import: true
 
-rules:
-  - name: "rz"
-    mapper: "epm"
-    file_template: "EPMExportRZ*.xlsx"
-    project_id: 432904811
-    project: "MySpecial RZ Project"
-    activity_id: 436142369
-    activity: "Delivery"
-    skill_id: 44498948
-    skill: "Go"
+rules: []
 `
 }
 

@@ -94,3 +94,41 @@ rules:
 		t.Fatalf("unexpected error: %v", err)
 	}
 }
+
+func TestAppendRuleToConfigYAML_AddsRulesBlockWhenMissing(t *testing.T) {
+	t.Parallel()
+
+	input := []byte(`onepoint:
+  url: "https://onepoint.virtual7.io/onepoint/faces/home"
+import:
+  auto_reconcile_after_import: true
+`)
+
+	newRule := config.Rule{
+		Name:         "rz",
+		Mapper:       "epm",
+		FileTemplate: "EPMExportRZ*.xlsx",
+		ProjectID:    10,
+		Project:      "Project A",
+		ActivityID:   20,
+		Activity:     "Activity A",
+		SkillID:      30,
+		Skill:        "Skill A",
+	}
+
+	updated, err := appendRuleToConfigYAML(input, newRule)
+	if err != nil {
+		t.Fatalf("append rule failed: %v", err)
+	}
+
+	cfg, err := config.ValidateYAMLContent(updated)
+	if err != nil {
+		t.Fatalf("updated yaml should validate: %v", err)
+	}
+	if len(cfg.Rules) != 1 {
+		t.Fatalf("expected 1 rule, got %d", len(cfg.Rules))
+	}
+	if cfg.Rules[0].Name != "rz" || cfg.Rules[0].Mapper != "epm" {
+		t.Fatalf("unexpected added rule: %+v", cfg.Rules[0])
+	}
+}

@@ -35,6 +35,12 @@ func TestSaveDefaultConfigCreatesExampleTemplate(t *testing.T) {
 	if !strings.Contains(text, "onepoint:") || !strings.Contains(text, "url: \"https://onepoint.virtual7.io/onepoint/faces/home\"") {
 		t.Fatalf("expected onepoint URL example in config file, got:\n%s", text)
 	}
+	if strings.Contains(text, "file_template:") {
+		t.Fatalf("did not expect demo rule in default config template, got:\n%s", text)
+	}
+	if !strings.Contains(text, "rules: []") {
+		t.Fatalf("expected empty rules list in default config template, got:\n%s", text)
+	}
 }
 
 func TestSaveDefaultConfigDoesNotOverwriteExistingFile(t *testing.T) {
