@@ -156,3 +156,42 @@ func TestResolveIDsForEntries_UsesRulesThenSnapshotFallback(t *testing.T) {
 		t.Fatalf("unexpected fallback-resolved ids: %+v", got)
 	}
 }
+
+func TestFormatDryRunWorklog(t *testing.T) {
+	t.Parallel()
+
+	start := 540
+	finish := 615
+	value := onepoint.PersistWorklog{
+		StartTime:  &start,
+		FinishTime: &finish,
+		Duration:   75,
+		Billable:   75,
+		ProjectID:  onepoint.ID(11),
+		ActivityID: onepoint.ID(22),
+		SkillID:    onepoint.ID(33),
+		Comment:    "  Implement feature X  ",
+	}
+
+	got := formatDryRunWorklog(value)
+	if !strings.Contains(got, "time=09:00-10:15") {
+		t.Fatalf("unexpected time output: %s", got)
+	}
+	if !strings.Contains(got, "duration=75") || !strings.Contains(got, "billable=75") {
+		t.Fatalf("missing duration/billable output: %s", got)
+	}
+	if !strings.Contains(got, "projectId=11") || !strings.Contains(got, "activityId=22") || !strings.Contains(got, "skillId=33") {
+		t.Fatalf("missing id output: %s", got)
+	}
+	if !strings.Contains(got, `comment="Implement feature X"`) {
+		t.Fatalf("unexpected comment output: %s", got)
+	}
+}
+
+func TestFormatFlexibleIDForDryRun_Empty(t *testing.T) {
+	t.Parallel()
+
+	if got := formatFlexibleIDForDryRun(onepoint.FlexibleInt64{}); got != "<empty>" {
+		t.Fatalf("expected <empty>, got %q", got)
+	}
+}

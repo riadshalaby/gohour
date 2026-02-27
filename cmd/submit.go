@@ -126,6 +126,9 @@ Authentication uses session cookies from auth state JSON (created by "gohour aut
 			fmt.Printf("Submit dry-run completed. Days: %d, Local entries prepared: %d\n", len(dayBatches), totalLocal)
 			for _, batch := range dayBatches {
 				fmt.Printf("  %s -> %d local entries\n", onepoint.FormatDay(batch.Day), len(batch.Worklogs))
+				for i, worklog := range batch.Worklogs {
+					fmt.Printf("    [%02d] %s\n", i+1, formatDryRunWorklog(worklog))
+				}
 			}
 			return nil
 		}
@@ -460,4 +463,38 @@ func sameDay(a, b time.Time) bool {
 
 func minutesFromMidnight(value time.Time) int {
 	return value.Hour()*60 + value.Minute()
+}
+
+func formatDryRunWorklog(value onepoint.PersistWorklog) string {
+	return fmt.Sprintf(
+		"time=%s-%s duration=%d billable=%d projectId=%s activityId=%s skillId=%s comment=%q",
+		formatMinutesForDryRun(value.StartTime),
+		formatMinutesForDryRun(value.FinishTime),
+		value.Duration,
+		value.Billable,
+		formatFlexibleIDForDryRun(value.ProjectID),
+		formatFlexibleIDForDryRun(value.ActivityID),
+		formatFlexibleIDForDryRun(value.SkillID),
+		strings.TrimSpace(value.Comment),
+	)
+}
+
+func formatMinutesForDryRun(value *int) string {
+	if value == nil {
+		return "?"
+	}
+	if *value < 0 {
+		return fmt.Sprintf("%d", *value)
+	}
+
+	hour := *value / 60
+	minute := *value % 60
+	return fmt.Sprintf("%02d:%02d", hour, minute)
+}
+
+func formatFlexibleIDForDryRun(value onepoint.FlexibleInt64) string {
+	if !value.Valid {
+		return "<empty>"
+	}
+	return fmt.Sprintf("%d", value.Value)
 }
