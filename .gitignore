@@ -12,6 +12,7 @@ coverage.out
 
 # Local binaries
 gohour
+dist/
 
 # Local runtime/config artifacts
 .gohour.yaml
