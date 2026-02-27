@@ -109,6 +109,7 @@ func TestHTTPClient_KnownEndpointsAndHeaders(t *testing.T) {
 
 	client, err := NewClient(ClientConfig{
 		BaseURL:        "https://onepoint.virtual7.io",
+		RefererURL:     "https://onepoint.virtual7.io/onepoint/faces/home",
 		SessionCookies: "JSESSIONID=test; _WL_AUTHCOOKIE_JSESSIONID=test2",
 		UserAgent:      "gohour-test",
 		HTTPClient:     doer,

@@ -32,8 +32,8 @@ func TestSaveDefaultConfigCreatesExampleTemplate(t *testing.T) {
 	if !strings.Contains(text, "# gohour configuration") {
 		t.Fatalf("expected example header in config file, got:\n%s", text)
 	}
-	if !strings.Contains(text, "user: \"your.user\"") {
-		t.Fatalf("expected example user value in config file, got:\n%s", text)
+	if !strings.Contains(text, "onepoint:") || !strings.Contains(text, "url: \"https://onepoint.virtual7.io/onepoint/faces/home\"") {
+		t.Fatalf("expected onepoint URL example in config file, got:\n%s", text)
 	}
 }
 
@@ -44,7 +44,7 @@ func TestSaveDefaultConfigDoesNotOverwriteExistingFile(t *testing.T) {
 	})
 
 	tmpConfig := filepath.Join(t.TempDir(), "existing.yaml")
-	original := "user: \"existing\"\nurl: \"https://company.example\"\nport: 443\n"
+	original := "onepoint:\n  url: \"https://onepoint.virtual7.io/onepoint/faces/home\"\nimport:\n  auto_reconcile_after_import: true\n"
 	if err := os.WriteFile(tmpConfig, []byte(original), 0o644); err != nil {
 		t.Fatalf("failed writing initial config: %v", err)
 	}

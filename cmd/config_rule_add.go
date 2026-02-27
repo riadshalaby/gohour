@@ -33,11 +33,11 @@ var configRuleAddCmd = &cobra.Command{
 	Long: `Fetch projects, activities, and skills from OnePoint for the logged-in user,
 let you choose each entry interactively, then store a new epm.rules entry in config.`,
 	Example: `
-  # Add one rule interactively using config.url and default auth state file
+  # Add one rule interactively using onepoint.url from config and default auth state file
   gohour config rule add
 
-  # Override OnePoint base URL for this run
-  gohour config rule add --url https://onepoint.virtual7.io
+  # Override OnePoint URL for this run
+  gohour config rule add --url https://onepoint.virtual7.io/onepoint/faces/home
 
   # Use custom auth state file
   gohour config rule add --state-file ./artifacts/playwright/onepoint-auth-state.json
@@ -180,8 +180,11 @@ let you choose each entry interactively, then store a new epm.rules entry in con
 		newRule := config.EPMRule{
 			Name:         ruleName,
 			FileTemplate: fileTemplate,
+			ProjectID:    selectedProject.ID,
 			Project:      selectedProject.Name,
+			ActivityID:   selectedActivity.ID,
 			Activity:     selectedActivity.Name,
+			SkillID:      selectedSkill.SkillID,
 			Skill:        selectedSkill.Name,
 		}
 
@@ -203,9 +206,9 @@ let you choose each entry interactively, then store a new epm.rules entry in con
 		fmt.Printf("Config:   %s\n", configPath)
 		fmt.Printf("Name:     %s\n", newRule.Name)
 		fmt.Printf("Template: %s\n", newRule.FileTemplate)
-		fmt.Printf("Project:  %s\n", newRule.Project)
-		fmt.Printf("Activity: %s\n", newRule.Activity)
-		fmt.Printf("Skill:    %s\n", newRule.Skill)
+		fmt.Printf("Project:  %s (id=%d)\n", newRule.Project, newRule.ProjectID)
+		fmt.Printf("Activity: %s (id=%d)\n", newRule.Activity, newRule.ActivityID)
+		fmt.Printf("Skill:    %s (id=%d)\n", newRule.Skill, newRule.SkillID)
 		return nil
 	},
 }
@@ -338,6 +341,9 @@ func appendEPMRuleToConfigYAML(content []byte, rule config.EPMRule) ([]byte, err
 	if strings.TrimSpace(rule.Project) == "" || strings.TrimSpace(rule.Activity) == "" || strings.TrimSpace(rule.Skill) == "" {
 		return nil, fmt.Errorf("project, activity and skill are required")
 	}
+	if rule.ProjectID <= 0 || rule.ActivityID <= 0 || rule.SkillID <= 0 {
+		return nil, fmt.Errorf("project_id, activity_id and skill_id must be > 0")
+	}
 
 	doc := map[string]any{}
 	if strings.TrimSpace(string(content)) != "" {
@@ -369,8 +375,11 @@ func appendEPMRuleToConfigYAML(content []byte, rule config.EPMRule) ([]byte, err
 	rulesList = append(rulesList, map[string]any{
 		"name":          rule.Name,
 		"file_template": rule.FileTemplate,
+		"project_id":    rule.ProjectID,
 		"project":       rule.Project,
+		"activity_id":   rule.ActivityID,
 		"activity":      rule.Activity,
+		"skill_id":      rule.SkillID,
 		"skill":         rule.Skill,
 	})
 	epmMap["rules"] = rulesList
@@ -417,7 +426,7 @@ func ensureSliceAny(doc map[string]any, key string) ([]any, error) {
 func init() {
 	configRuleCmd.AddCommand(configRuleAddCmd)
 
-	configRuleAddCmd.Flags().StringVar(&configRuleAddURL, "url", "", "Override OnePoint base URL from config (example: https://onepoint.virtual7.io)")
+	configRuleAddCmd.Flags().StringVar(&configRuleAddURL, "url", "", "Override OnePoint URL from config (full home URL)")
 	configRuleAddCmd.Flags().StringVar(&configRuleAddAuthStateFile, "state-file", "", "Path to auth state JSON (default: $HOME/.gohour/onepoint-auth-state.json)")
 	configRuleAddCmd.Flags().DurationVar(&configRuleAddTimeout, "timeout", 60*time.Second, "Timeout for OnePoint lookup API calls")
 	configRuleAddCmd.Flags().BoolVar(&configRuleAddIncludeArchive, "include-archived-projects", false, "Include archived projects in project selection")

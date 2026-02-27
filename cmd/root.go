@@ -89,16 +89,8 @@ func init() {
 			return nil
 		}
 
-		cfg, err := config.LoadAndValidate()
-		if err != nil {
-			return err
-		}
-
-		if cfg.User == "" || cfg.URL == "" || cfg.Port == 0 {
-			return fmt.Errorf("invalid configuration: required fields must be set (user, url, port)")
-		}
-
-		return nil
+		_, err := config.LoadAndValidate()
+		return err
 	}
 }
 

@@ -8,11 +8,9 @@ var configCmd = &cobra.Command{
 	Long: `Create, edit, display, and delete the gohour configuration file.
 
 The configuration stores application-wide values and EPM import rules:
-- user
-- url
-- port
-- auto_reconcile_after_import
-- epm.rules[].file_template / project / activity / skill`,
+- onepoint.url
+- import.auto_reconcile_after_import
+- epm.rules[].file_template / project_id+project / activity_id+activity / skill_id+skill`,
 	Example: `
   # Create default config in $HOME/.gohour.yaml
   gohour config create

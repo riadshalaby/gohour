@@ -149,9 +149,6 @@ func newEPMRecord(row int, date, from, bis, tagessumme, hours, description strin
 
 func baseConfig() config.Config {
 	return config.Config{
-		User:           "test-user",
-		URL:            "http://localhost",
-		Port:           8080,
 		ImportProject:  "test-project",
 		ImportActivity: "test-activity",
 		ImportSkill:    "test-skill",

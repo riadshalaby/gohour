@@ -41,8 +41,8 @@ the session with a test API call (list projects).`,
   # Open browser, log in manually, save auth state, verify API access
   gohour auth login
 
-  # Override base URL from config for this run
-  gohour auth login --url https://onepoint.virtual7.io
+  # Override OnePoint URL from config for this run
+  gohour auth login --url https://onepoint.virtual7.io/onepoint/faces/home
 
   # Custom reusable browser profile directory
   gohour auth login --profile-dir ~/.gohour/chrome-profile
@@ -217,15 +217,19 @@ func waitForSessionCookies(ctx context.Context, homeURL, baseURL, preferredHost 
 			if detectedHost == "" {
 				detectedHost = preferredHost
 			}
-			scheme := "https"
-			if parsed, parseErr := url.Parse(strings.TrimSpace(lastURL)); parseErr == nil && parsed.Scheme != "" {
-				scheme = parsed.Scheme
+			detectedBase := baseURL
+			detectedHome := homeURL
+			if parsed, parseErr := url.Parse(strings.TrimSpace(lastURL)); parseErr == nil && parsed.Scheme != "" && parsed.Host != "" {
+				detectedBase = fmt.Sprintf("%s://%s", parsed.Scheme, parsed.Host)
+				path := "/" + strings.Trim(strings.TrimSpace(parsed.Path), "/")
+				if path != "/" {
+					detectedHome = detectedBase + path
+				}
 			}
-			detectedBase := fmt.Sprintf("%s://%s", scheme, detectedHost)
 			return sessionWaitResult{
 				Host:    detectedHost,
 				BaseURL: detectedBase,
-				HomeURL: detectedBase + "/onepoint/faces/home",
+				HomeURL: detectedHome,
 			}, nil
 		}
 
@@ -389,7 +393,7 @@ func onepointCookieDomainMatches(cookieDomain, targetHost string) bool {
 func init() {
 	authCmd.AddCommand(authLoginCmd)
 
-	authLoginCmd.Flags().StringVar(&authLoginURL, "url", "", "Override OnePoint base URL from config (example: https://onepoint.virtual7.io)")
+	authLoginCmd.Flags().StringVar(&authLoginURL, "url", "", "Override OnePoint URL from config (full home URL)")
 	authLoginCmd.Flags().StringVar(&authLoginStateFile, "state-file", "", "Path to save auth state JSON (default: $HOME/.gohour/onepoint-auth-state.json)")
 	authLoginCmd.Flags().StringVar(&authLoginProfileDir, "profile-dir", "", "Browser profile directory (optional; default is a fresh temporary profile per run)")
 	authLoginCmd.Flags().StringVar(&authLoginBrowserBin, "browser-bin", "", "Optional browser binary path (Chrome/Chromium)")

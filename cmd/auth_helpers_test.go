@@ -69,7 +69,19 @@ func TestResolveOnePointURLs_WithOverride(t *testing.T) {
 		cfgFile = ""
 	})
 
-	base, home, host, err := resolveOnePointURLs("https://onepoint.virtual7.io")
+	_, _, _, err := resolveOnePointURLs("https://onepoint.virtual7.io")
+	if err == nil {
+		t.Fatalf("expected error for base URL without path")
+	}
+}
+
+func TestResolveOnePointURLs_WithHomeURLOverride(t *testing.T) {
+	t.Cleanup(func() {
+		viper.Reset()
+		cfgFile = ""
+	})
+
+	base, home, host, err := resolveOnePointURLs("https://onepoint.virtual7.io/onepoint/faces/home")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}

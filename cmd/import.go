@@ -92,7 +92,7 @@ If neither provides all values, import fails.`,
 			inserted,
 		)
 
-		shouldReconcile, err := resolveReconcileMode(importReconcileMode, cfg.AutoReconcileAfterImport)
+		shouldReconcile, err := resolveReconcileMode(importReconcileMode, cfg.Import.AutoReconcileAfterImport)
 		if err != nil {
 			return err
 		}

@@ -16,8 +16,7 @@ import (
 )
 
 const (
-	dayLayout         = "02-01-2006"
-	defaultRefererURI = "/onepoint/faces/home"
+	dayLayout = "02-01-2006"
 )
 
 // Client defines the OnePoint API operations known from discovery.
@@ -66,7 +65,7 @@ func NewClient(cfg ClientConfig) (*HTTPClient, error) {
 
 	refererURL := strings.TrimSpace(cfg.RefererURL)
 	if refererURL == "" {
-		refererURL = baseURL + defaultRefererURI
+		refererURL = baseURL
 	}
 
 	doer := cfg.HTTPClient

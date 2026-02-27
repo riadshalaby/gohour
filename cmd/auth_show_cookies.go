@@ -51,5 +51,5 @@ func init() {
 	authCmd.AddCommand(authShowCookiesCmd)
 
 	authShowCookiesCmd.Flags().StringVar(&authShowCookiesStateFile, "state-file", "", "Path to auth state JSON (default: $HOME/.gohour/onepoint-auth-state.json)")
-	authShowCookiesCmd.Flags().StringVar(&authShowCookiesURL, "url", "", "Override OnePoint base URL from config (example: https://onepoint.virtual7.io)")
+	authShowCookiesCmd.Flags().StringVar(&authShowCookiesURL, "url", "", "Override OnePoint URL from config (full home URL)")
 }

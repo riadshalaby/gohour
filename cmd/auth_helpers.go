@@ -55,13 +55,13 @@ func resolveOnePointURLs(urlOverride string) (string, string, string, error) {
 	rawURL := strings.TrimSpace(urlOverride)
 	if rawURL == "" {
 		if strings.TrimSpace(viper.ConfigFileUsed()) == "" {
-			return "", "", "", errors.New("no config file loaded; set `url` in config or pass --url")
+			return "", "", "", errors.New("no config file loaded; set `onepoint.url` in config or pass --url")
 		}
 		cfg, err := config.LoadAndValidate()
 		if err != nil {
 			return "", "", "", fmt.Errorf("load config: %w", err)
 		}
-		rawURL = strings.TrimSpace(cfg.URL)
+		rawURL = strings.TrimSpace(cfg.OnePoint.URL)
 	}
 
 	parsed, err := url.Parse(rawURL)
@@ -71,8 +71,12 @@ func resolveOnePointURLs(urlOverride string) (string, string, string, error) {
 	if parsed.Scheme == "" || parsed.Host == "" {
 		return "", "", "", fmt.Errorf("invalid url %q", rawURL)
 	}
+	path := "/" + strings.Trim(strings.TrimSpace(parsed.Path), "/")
+	if path == "/" {
+		return "", "", "", fmt.Errorf("invalid onepoint url %q: path is required (expected full home URL)", rawURL)
+	}
 
 	apiBaseURL := parsed.Scheme + "://" + parsed.Host
-	homeURL := apiBaseURL + "/onepoint/faces/home"
+	homeURL := apiBaseURL + path
 	return apiBaseURL, homeURL, parsed.Hostname(), nil
 }

@@ -5,7 +5,7 @@
 ## Features
 
 - CLI built with Cobra and Viper
-- Config file support (`user`, `url`, `port`, `auto_reconcile_after_import`, `epm.rules`)
+- Config file support (`onepoint.url`, `import.auto_reconcile_after_import`, `epm.rules`)
 - Input formats: Excel (`.xlsx`, `.xlsm`, `.xls`) and CSV (`.csv`)
 - Mapper-based normalization pipeline (`epm`, `generic`)
 - SQLite persistence with duplicate protection
@@ -58,7 +58,7 @@ Add one EPM rule interactively from OnePoint (project/activity/skill selection):
 ```
 
 Optional flags:
-- `--url`: override OnePoint base URL from config for this run
+- `--url`: override OnePoint URL from config for this run (full home URL)
 - `--state-file`: custom auth state file (default `$HOME/.gohour/onepoint-auth-state.json`)
 - `--include-archived-projects`: include archived projects in selection
 - `--include-locked-activities`: include locked activities in selection
@@ -75,16 +75,21 @@ Delete active config:
 Example config:
 
 ```yaml
-user: "john.doe"
-url: "https://company.example"
-port: 443
-auto_reconcile_after_import: true
+onepoint:
+  url: "https://onepoint.virtual7.io/onepoint/faces/home"
+
+import:
+  auto_reconcile_after_import: true
+
 epm:
   rules:
     - name: "rz"
       file_template: "EPMExportRZ*.xlsx"
+      project_id: 432904811
       project: "MySpecial RZ Project"
+      activity_id: 436142369
       activity: "Delivery"
+      skill_id: 44498948
       skill: "Go"
 ```
 
@@ -111,7 +116,7 @@ Flags:
 - `--reconcile` (optional): `auto` (default, uses config), `on`, or `off`
 - `--db` (optional): SQLite file path (default `./gohour.db`)
 
-By default (`auto_reconcile_after_import: true`), import automatically runs reconciliation after every import, independent of source format/mapper.
+By default (`import.auto_reconcile_after_import: true`), import automatically runs reconciliation after every import, independent of source format/mapper.
 For EPM imports, `project/activity/skill` must come from a matching `epm.rules` entry or explicit `--project/--activity/--skill`.
 If no rule matches and no explicit values are provided, import fails.
 
@@ -162,7 +167,9 @@ This is useful because EPM task times are simulated during import and may collid
 ## OnePoint Authentication (Microsoft SSO)
 
 For direct OnePoint REST calls, `gohour` provides an embedded interactive browser login flow.
-The base URL is taken from `url` in your config (`~/.gohour.yaml`) and can be overridden via `--url`.
+The URL is taken from `onepoint.url` in your config (`~/.gohour.yaml`) and defaults to:
+`https://onepoint.virtual7.io/onepoint/faces/home`.
+You can override it via `--url`.
 
 1) Start login and save auth state:
 
@@ -173,7 +180,7 @@ gohour auth login
 Optional override:
 
 ```bash
-gohour auth login --url https://onepoint.virtual7.io
+gohour auth login --url https://onepoint.virtual7.io/onepoint/faces/home
 ```
 
 Debug cookie detection during login wait:
@@ -236,5 +243,4 @@ A unique constraint prevents duplicate imports of the same normalized row.
 
 ## Notes
 
-- `url` and `port` are currently configuration fields for planned secured API submission.
 - REST submission to the company website is planned for a later implementation phase.

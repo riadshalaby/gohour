@@ -94,4 +94,3 @@ Artifacts:
 - Keep all user-facing text, logs, docs, and comments in English.
 - Do not commit secrets, cookies, auth state, or traces with session data.
 - Prefer small, test-backed changes.
-- Preserve existing behavior unless the task explicitly requires change.

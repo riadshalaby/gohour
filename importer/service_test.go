@@ -7,9 +7,8 @@ import (
 
 func TestResolveConfigForFile_EPMRuleMatch(t *testing.T) {
 	cfg := config.Config{
-		User: "u", URL: "http://localhost", Port: 8080,
 		EPM: config.EPMConfig{Rules: []config.EPMRule{
-			{FileTemplate: "EPMExportRZ*.xlsx", Project: "RZ Project", Activity: "Delivery", Skill: "Go"},
+			{FileTemplate: "EPMExportRZ*.xlsx", ProjectID: 1, Project: "RZ Project", ActivityID: 2, Activity: "Delivery", SkillID: 3, Skill: "Go"},
 		}},
 	}
 
@@ -25,9 +24,8 @@ func TestResolveConfigForFile_EPMRuleMatch(t *testing.T) {
 
 func TestResolveConfigForFile_EPMExplicitOverridesRule(t *testing.T) {
 	cfg := config.Config{
-		User: "u", URL: "http://localhost", Port: 8080,
 		EPM: config.EPMConfig{Rules: []config.EPMRule{
-			{FileTemplate: "EPMExportRZ*.xlsx", Project: "RZ Project", Activity: "Delivery", Skill: "Go"},
+			{FileTemplate: "EPMExportRZ*.xlsx", ProjectID: 1, Project: "RZ Project", ActivityID: 2, Activity: "Delivery", SkillID: 3, Skill: "Go"},
 		}},
 	}
 
@@ -46,7 +44,7 @@ func TestResolveConfigForFile_EPMExplicitOverridesRule(t *testing.T) {
 }
 
 func TestResolveConfigForFile_EPMNoRuleAndNoExplicitFails(t *testing.T) {
-	cfg := config.Config{User: "u", URL: "http://localhost", Port: 8080}
+	cfg := config.Config{}
 
 	_, err := resolveConfigForFile("EPMExportRZ202601.xlsx", "epm", cfg, RunOptions{})
 	if err == nil {
@@ -55,7 +53,7 @@ func TestResolveConfigForFile_EPMNoRuleAndNoExplicitFails(t *testing.T) {
 }
 
 func TestResolveConfigForFile_EPMNoRuleButExplicitValuesWorks(t *testing.T) {
-	cfg := config.Config{User: "u", URL: "http://localhost", Port: 8080}
+	cfg := config.Config{}
 
 	resolved, err := resolveConfigForFile("EPMExportRZ202601.xlsx", "epm", cfg, RunOptions{
 		EPMProject:  "Manual Project",
@@ -71,7 +69,7 @@ func TestResolveConfigForFile_EPMNoRuleButExplicitValuesWorks(t *testing.T) {
 }
 
 func TestResolveConfigForFile_GenericMapperNeedsNoEPMValues(t *testing.T) {
-	cfg := config.Config{User: "u", URL: "http://localhost", Port: 8080}
+	cfg := config.Config{}
 
 	resolved, err := resolveConfigForFile("generic.csv", "generic", cfg, RunOptions{})
 	if err != nil {
