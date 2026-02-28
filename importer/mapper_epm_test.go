@@ -2,6 +2,7 @@ package importer
 
 import (
 	"gohour/config"
+	"strings"
 	"testing"
 	"time"
 )
@@ -131,6 +132,30 @@ func TestEPMMapper_RestartsWhenSameFileStartsAgain(t *testing.T) {
 
 	assertTime(t, mustParseDateTime(t, "05.01.2026", "08:00 AM"), entryRestarted.StartDateTime, "restarted run start")
 	assertTime(t, mustParseDateTime(t, "05.01.2026", "09:00 AM"), entryRestarted.EndDateTime, "restarted run end")
+}
+
+func TestEPMMapper_ReturnsErrorWhenComputedEndCrossesDayBoundary(t *testing.T) {
+	mapper := &EPMMapper{}
+	cfg := baseConfig()
+
+	summary := newEPMRecord(2, "05.01.2026", "05:00 PM", "06:00 PM", "8,00", "", "")
+	first := newEPMRecord(3, "05.01.2026", "05:00 PM", "06:00 PM", "", "3,00", "Task A")
+	second := newEPMRecord(4, "05.01.2026", "05:00 PM", "06:00 PM", "", "5,00", "Task B")
+
+	_, _, _ = mapper.Map(summary, cfg, "excel", "source.xlsx")
+	_, ok, err := mapper.Map(first, cfg, "excel", "source.xlsx")
+	assertMapped(t, ok, err)
+
+	_, ok, err = mapper.Map(second, cfg, "excel", "source.xlsx")
+	if err == nil {
+		t.Fatalf("expected day-boundary error")
+	}
+	if ok {
+		t.Fatalf("expected mapping to fail")
+	}
+	if !strings.Contains(err.Error(), "exceeds day boundary") {
+		t.Fatalf("unexpected error: %v", err)
+	}
 }
 
 func newEPMRecord(row int, date, from, bis, tagessumme, hours, description string) Record {
