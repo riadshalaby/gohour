@@ -80,15 +80,8 @@ Required request behavior:
 Artifacts:
 - Endpoint notes and checks: `artifacts/playwright/`
 
-## Current Open TODOs
-- Integrate `onepoint` package into a CLI submit workflow.
-- Implement submit orchestration:
-  - Read day worklogs
-  - Merge imported/local records
-  - Persist worklogs
-  - Re-read and verify
-- Improve explicit handling of persist validation/auth-expiry errors.
-- Define and document behavior for placeholder rows (`timerecordId < 0`).
+## Known Issues & Next Steps
+See [NEXTSTEPS.md](NEXTSTEPS.md) for a prioritized list of validation bugs and fix instructions.
 
 ## Working Rules For Agents
 - Keep all user-facing text, logs, docs, and comments in English.
