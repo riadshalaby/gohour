@@ -35,7 +35,8 @@ func (m *GenericMapper) Map(record Record, _ config.Config, sourceFormat, source
 
 	billable := int(end.Sub(start).Minutes())
 	if value := strings.TrimSpace(record.Get("billable", "minutes", "arbeitszeit", "duration")); value != "" {
-		parsed, parseErr := parseMinutesOrHours(value)
+		// The optional override column is interpreted as minutes.
+		parsed, parseErr := parseMinutes(value)
 		if parseErr != nil {
 			return nil, false, fmt.Errorf("row %d: parse billable value: %w", record.RowNumber, parseErr)
 		}
