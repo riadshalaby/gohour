@@ -194,9 +194,7 @@ func countConflicts(entries []worklog.Entry) int {
 			if !sorted[j].StartDateTime.Before(sorted[i].EndDateTime) {
 				break
 			}
-			if isEPMEntry(sorted[i]) || isEPMEntry(sorted[j]) {
-				conflicts++
-			}
+			conflicts++
 		}
 	}
 
