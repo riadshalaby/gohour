@@ -163,6 +163,28 @@ func TestResolveIDsForEntries_UsesRulesThenSnapshotFallback(t *testing.T) {
 	}
 }
 
+func TestResolveIDsForEntries_ErrorsEarlyOnEmptyNames(t *testing.T) {
+	t.Parallel()
+
+	entries := []worklog.Entry{
+		{
+			ID:           42,
+			Project:      "Project A",
+			Activity:     "",
+			Skill:        "Go",
+			SourceMapper: "epm",
+		},
+	}
+
+	_, err := resolveIDsForEntries(context.Background(), nil, nil, entries, onepoint.ResolveOptions{})
+	if err == nil {
+		t.Fatalf("expected validation error")
+	}
+	if !strings.Contains(err.Error(), "worklog id=42") {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
 func TestFormatDryRunWorklog(t *testing.T) {
 	t.Parallel()
 

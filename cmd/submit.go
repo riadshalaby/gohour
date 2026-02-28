@@ -244,7 +244,10 @@ func resolveIDsForEntries(
 	entries []worklog.Entry,
 	options onepoint.ResolveOptions,
 ) (map[submitNameTuple]submitResolvedIDs, error) {
-	requiredTuples := collectRequiredNameTuples(entries)
+	requiredTuples, err := collectRequiredNameTuples(entries)
+	if err != nil {
+		return nil, err
+	}
 	if len(requiredTuples) == 0 {
 		return map[submitNameTuple]submitResolvedIDs{}, nil
 	}
@@ -292,7 +295,7 @@ func resolveIDsForEntries(
 	return resolved, nil
 }
 
-func collectRequiredNameTuples(entries []worklog.Entry) []submitNameTuple {
+func collectRequiredNameTuples(entries []worklog.Entry) ([]submitNameTuple, error) {
 	unique := make(map[submitNameTuple]struct{}, len(entries))
 	for _, entry := range entries {
 		tuple := submitNameTuple{
@@ -302,7 +305,10 @@ func collectRequiredNameTuples(entries []worklog.Entry) []submitNameTuple {
 			Skill:    normalizeSubmitName(entry.Skill),
 		}
 		if tuple.Project == "" || tuple.Activity == "" || tuple.Skill == "" {
-			continue
+			return nil, fmt.Errorf(
+				"worklog id=%d has empty project/activity/skill values and cannot resolve IDs",
+				entry.ID,
+			)
 		}
 		unique[tuple] = struct{}{}
 	}
@@ -323,7 +329,7 @@ func collectRequiredNameTuples(entries []worklog.Entry) []submitNameTuple {
 		}
 		return out[i].Skill < out[j].Skill
 	})
-	return out
+	return out, nil
 }
 
 func buildRuleIDMap(rules []config.Rule) map[submitNameTuple]submitResolvedIDs {
