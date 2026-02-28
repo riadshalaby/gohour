@@ -158,6 +158,24 @@ func TestEPMMapper_ReturnsErrorWhenComputedEndCrossesDayBoundary(t *testing.T) {
 	}
 }
 
+func TestEPMMapper_ReturnsErrorWhenDayStartIsAfterDayEnd(t *testing.T) {
+	mapper := &EPMMapper{}
+	cfg := baseConfig()
+
+	record := newEPMRecord(2, "05.01.2026", "05:00 PM", "08:00 AM", "8,00", "", "")
+
+	_, ok, err := mapper.Map(record, cfg, "excel", "source.xlsx")
+	if err == nil {
+		t.Fatalf("expected Von/Bis validation error")
+	}
+	if ok {
+		t.Fatalf("expected mapping to fail")
+	}
+	if !strings.Contains(err.Error(), "check the Von/Bis columns") {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
 func newEPMRecord(row int, date, from, bis, tagessumme, hours, description string) Record {
 	return Record{
 		RowNumber: row,
