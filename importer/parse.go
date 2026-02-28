@@ -32,20 +32,26 @@ func parseGermanDecimalHoursToMinutes(raw string) (int, error) {
 	return minutes, nil
 }
 
-func parseMinutesOrHours(raw string) (int, error) {
-	value := strings.TrimSpace(raw)
-	if value == "" {
+func parseMinutes(raw string) (int, error) {
+	cleaned := strings.TrimSpace(raw)
+	if cleaned == "" {
 		return 0, nil
 	}
 
-	if !strings.Contains(value, ",") && !strings.Contains(value, ".") {
-		parsed, err := strconv.Atoi(value)
-		if err == nil {
-			return parsed, nil
-		}
+	if strings.Contains(cleaned, ",") {
+		cleaned = strings.ReplaceAll(cleaned, ",", ".")
 	}
 
-	return parseGermanDecimalHoursToMinutes(value)
+	minutes, err := strconv.ParseFloat(cleaned, 64)
+	if err != nil {
+		return 0, fmt.Errorf("parse minutes %q: %w", raw, err)
+	}
+
+	rounded := int(math.Round(minutes))
+	if rounded < 0 {
+		return 0, fmt.Errorf("minutes must not be negative")
+	}
+	return rounded, nil
 }
 
 func parseDateAndTime(dateValue, timeValue string) (time.Time, error) {
