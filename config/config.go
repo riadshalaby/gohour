@@ -105,6 +105,10 @@ func setDefaults(v *viper.Viper) {
 }
 
 func validateRules(rules []Rule) error {
+	validMappers := map[string]bool{
+		"epm":     true,
+		"generic": true,
+	}
 	seen := make(map[string]struct{}, len(rules))
 	for i, rule := range rules {
 		name := strings.TrimSpace(rule.Name)
@@ -116,8 +120,16 @@ func validateRules(rules []Rule) error {
 			return fmt.Errorf("validation failed: duplicate rule name %q", name)
 		}
 		seen[key] = struct{}{}
-		if strings.TrimSpace(rule.Mapper) == "" {
+		mapper := strings.ToLower(strings.TrimSpace(rule.Mapper))
+		if mapper == "" {
 			return fmt.Errorf("validation failed: rules[%d].mapper is required", i)
+		}
+		if !validMappers[mapper] {
+			return fmt.Errorf(
+				"validation failed: rules[%d].mapper %q is not supported (valid: epm, generic)",
+				i,
+				rule.Mapper,
+			)
 		}
 		if strings.TrimSpace(rule.FileTemplate) == "" {
 			return fmt.Errorf("validation failed: rules[%d].file_template is required", i)
