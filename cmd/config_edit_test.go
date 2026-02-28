@@ -61,6 +61,13 @@ func TestEnsureConfigFileWithTemplate(t *testing.T) {
 	if !strings.Contains(string(content), "# gohour configuration") {
 		t.Fatalf("expected example config content, got:\n%s", string(content))
 	}
+	info, err := os.Stat(configPath)
+	if err != nil {
+		t.Fatalf("unexpected error stat config file: %v", err)
+	}
+	if info.Mode().Perm() != 0o600 {
+		t.Fatalf("expected config file mode 0600, got %o", info.Mode().Perm())
+	}
 
 	created, err = ensureConfigFileWithTemplate(configPath)
 	if err != nil {
