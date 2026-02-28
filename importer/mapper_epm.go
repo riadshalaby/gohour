@@ -146,6 +146,13 @@ func (m *EPMMapper) ensureDayState(dayKey string, record Record) (*epmDayState, 
 			return nil, fmt.Errorf("parse day end datetime: %w", endErr)
 		}
 	} else {
+		if !endParsed.After(startParsed) {
+			return nil, fmt.Errorf(
+				"day start time %s is after end time %s - check the Von/Bis columns in the source file",
+				startParsed.Format("2006-01-02 15:04"),
+				endParsed.Format("2006-01-02 15:04"),
+			)
+		}
 		if state.dayStart.IsZero() {
 			state.dayStart = startParsed
 		}
