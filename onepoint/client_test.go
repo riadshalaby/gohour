@@ -455,3 +455,97 @@ func TestHTTPClient_MergeAndPersistWorklogs_DeduplicatesEquivalentLocalEntries(t
 		t.Fatalf("expected existing item to be kept, got %+v", persistPayload[0])
 	}
 }
+
+func TestHTTPClient_MergeAndPersistWorklogs_SkipsLockedExistingEntries(t *testing.T) {
+	t.Parallel()
+
+	var persistPayload []PersistWorklog
+	doer := fakeDoer{fn: func(r *http.Request) (*http.Response, error) {
+		switch fmt.Sprintf("%s %s", r.Method, r.URL.Path) {
+		case "GET /OPServices/resources/OpWorklogs/05-03-2026:05-03-2026/getFilteredWorklogs":
+			return jsonResponse(getFilteredWorklogsResponse{
+				Worklogs: []DayWorklog{
+					{
+						TimeRecordID: 1,
+						WorkSlipID:   10,
+						WorkRecordID: 100,
+						WorklogDate:  "05-03-2026",
+						StartTime:    540,
+						FinishTime:   600,
+						Duration:     60,
+						Billable:     60,
+						ProjectID:    432904811,
+						ActivityID:   436142369,
+						SkillID:      44498948,
+						Comment:      "locked existing",
+						Locked:       1,
+					},
+					{
+						TimeRecordID: 2,
+						WorkSlipID:   20,
+						WorkRecordID: 200,
+						WorklogDate:  "05-03-2026",
+						StartTime:    600,
+						FinishTime:   660,
+						Duration:     60,
+						Billable:     60,
+						ProjectID:    432904811,
+						ActivityID:   436142369,
+						SkillID:      44498948,
+						Comment:      "unlocked existing",
+						Locked:       0,
+					},
+				},
+			}), nil
+		case "POST /OPServices/resources/OpWorklogs/05-03-2026/persistWorklogs":
+			if err := json.NewDecoder(r.Body).Decode(&persistPayload); err != nil {
+				t.Fatalf("decode payload: %v", err)
+			}
+			return jsonResponse([]PersistResult{{Message: "ok"}}), nil
+		default:
+			return nil, fmt.Errorf("unexpected request %s %s", r.Method, r.URL.String())
+		}
+	}}
+
+	client, err := NewClient(ClientConfig{
+		BaseURL:        "https://onepoint.virtual7.io",
+		RefererURL:     "https://onepoint.virtual7.io/onepoint/faces/home",
+		SessionCookies: "JSESSIONID=test",
+		HTTPClient:     doer,
+	})
+	if err != nil {
+		t.Fatalf("new client: %v", err)
+	}
+
+	day := time.Date(2026, 3, 5, 10, 0, 0, 0, time.Local)
+	start := 660
+	finish := 720
+	local := PersistWorklog{
+		TimeRecordID: -1,
+		WorkSlipID:   -1,
+		WorkRecordID: -1,
+		WorklogDate:  "05-03-2026",
+		StartTime:    &start,
+		FinishTime:   &finish,
+		Duration:     60,
+		Billable:     60,
+		ProjectID:    ID(432904811),
+		ActivityID:   ID(436142369),
+		SkillID:      ID(44498948),
+		Comment:      "new local entry",
+	}
+
+	if _, err := client.MergeAndPersistWorklogs(context.Background(), day, []PersistWorklog{local}); err != nil {
+		t.Fatalf("merge and persist: %v", err)
+	}
+
+	if len(persistPayload) != 2 {
+		t.Fatalf("expected payload length 2 (unlocked existing + local), got %d", len(persistPayload))
+	}
+	if persistPayload[0].TimeRecordID != 2 {
+		t.Fatalf("expected unlocked existing entry first, got %+v", persistPayload[0])
+	}
+	if persistPayload[1].TimeRecordID != -1 {
+		t.Fatalf("expected local entry second, got %+v", persistPayload[1])
+	}
+}
