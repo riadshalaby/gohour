@@ -51,6 +51,32 @@ func TestReconcileDay_ShiftsEPMEntriesAfterNonEPMIntervals(t *testing.T) {
 	assertTime(t, mustParse(t, "2026-03-10T15:00:00+01:00"), updatedByID[3].EndDateTime, "entry 3 end")
 }
 
+func TestReconcileDay_SkipsAdjustmentThatWouldCrossMidnight(t *testing.T) {
+	entries := []worklog.Entry{
+		{
+			ID:            1,
+			StartDateTime: mustParse(t, "2026-03-10T23:00:00+01:00"),
+			EndDateTime:   mustParse(t, "2026-03-10T23:45:00+01:00"),
+			SourceMapper:  "generic",
+		},
+		{
+			ID:            2,
+			StartDateTime: mustParse(t, "2026-03-10T23:30:00+01:00"),
+			EndDateTime:   mustParse(t, "2026-03-10T23:50:00+01:00"),
+			SourceMapper:  "epm",
+			Billable:      20,
+		},
+	}
+
+	updates, adjusted := reconcileDay(entries)
+	if adjusted != 0 {
+		t.Fatalf("expected no adjusted entries, got %d", adjusted)
+	}
+	if len(updates) != 0 {
+		t.Fatalf("expected no updates, got %d", len(updates))
+	}
+}
+
 func TestRun_PersistsAdjustedEPMRows(t *testing.T) {
 	dbPath := filepath.Join(t.TempDir(), "reconcile.db")
 	store, err := storage.OpenSQLite(dbPath)
