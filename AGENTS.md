@@ -13,6 +13,7 @@ Guidance for coding agents working in this repository.
 - Mapper pipeline:
   - `epm`
   - `generic`
+  - `atwork`
 - SQLite persistence with duplicate protection.
 - Reconciliation command to resolve overlaps by moving only EPM entries.
 - Export:
@@ -37,7 +38,7 @@ Guidance for coding agents working in this repository.
 - Important config keys:
   - `onepoint.url`
   - `import.auto_reconcile_after_import`
-  - `rules[]` with `name`, `mapper`, `file_template`, `project_id`, `project`, `activity_id`, `activity`, `skill_id`, `skill`
+  - `rules[]` with `name`, `mapper`, `file_template`, `billable` (optional, default true), `project_id`, `project`, `activity_id`, `activity`, `skill_id`, `skill`
 
 ## Architecture Pointers
 - CLI commands: `cmd/`
@@ -81,7 +82,7 @@ Artifacts:
 - Endpoint notes and checks: `artifacts/playwright/`
 
 ## Known Issues & Next Steps
-See [NEXTSTEPS.md](NEXTSTEPS.md) for a prioritized list of validation bugs and fix instructions.
+See [NEXTSTEPS.md](NEXTSTEPS.md) for open items.
 
 ## Working Rules For Agents
 - Keep all user-facing text, logs, docs, and comments in English.
