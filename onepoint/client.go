@@ -311,6 +311,9 @@ func (c *HTTPClient) MergeAndPersistWorklogs(ctx context.Context, day time.Time,
 
 	payload := make([]PersistWorklog, 0, len(existing)+len(newWorklogs))
 	for _, item := range existing {
+		if item.Locked != 0 {
+			continue
+		}
 		payload = append(payload, item.ToPersistWorklog())
 	}
 	for _, candidate := range newWorklogs {
