@@ -215,7 +215,7 @@ let you choose each entry interactively, then store a new rules entry in config.
 			return err
 		}
 
-		if err := os.WriteFile(configPath, updated, 0o644); err != nil {
+		if err := os.WriteFile(configPath, updated, 0o600); err != nil {
 			return fmt.Errorf("write config file: %w", err)
 		}
 
