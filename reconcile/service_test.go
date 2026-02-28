@@ -77,6 +77,26 @@ func TestReconcileDay_SkipsAdjustmentThatWouldCrossMidnight(t *testing.T) {
 	}
 }
 
+func TestCountConflicts_CountsOverlapsForNonEPMEntries(t *testing.T) {
+	entries := []worklog.Entry{
+		{
+			StartDateTime: mustParse(t, "2026-03-10T09:00:00+01:00"),
+			EndDateTime:   mustParse(t, "2026-03-10T10:00:00+01:00"),
+			SourceMapper:  "generic",
+		},
+		{
+			StartDateTime: mustParse(t, "2026-03-10T09:30:00+01:00"),
+			EndDateTime:   mustParse(t, "2026-03-10T10:30:00+01:00"),
+			SourceMapper:  "generic",
+		},
+	}
+
+	conflicts := countConflicts(entries)
+	if conflicts != 1 {
+		t.Fatalf("expected 1 conflict, got %d", conflicts)
+	}
+}
+
 func TestRun_PersistsAdjustedEPMRows(t *testing.T) {
 	dbPath := filepath.Join(t.TempDir(), "reconcile.db")
 	store, err := storage.OpenSQLite(dbPath)
