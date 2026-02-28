@@ -71,6 +71,14 @@ func (m *EPMMapper) Map(record Record, cfg config.Config, sourceFormat, sourceFi
 	}
 
 	end := start.Add(time.Duration(billable) * time.Minute)
+	if !sameCalendarDay(start, end) {
+		return nil, false, fmt.Errorf(
+			"row %d: computed end time %s exceeds day boundary (started at %s)",
+			record.RowNumber,
+			end.Format("2006-01-02 15:04"),
+			start.Format("2006-01-02 15:04"),
+		)
+	}
 	state.previousEnd = end
 	state.consumedBillableMins += billable
 
@@ -201,4 +209,8 @@ func (m *EPMMapper) shouldInsertPauseBeforeCurrent(state *epmDayState, currentBi
 
 func almostEqual(a, b float64) bool {
 	return math.Abs(a-b) < 0.0000001
+}
+
+func sameCalendarDay(a, b time.Time) bool {
+	return a.Year() == b.Year() && a.Month() == b.Month() && a.Day() == b.Day()
 }
