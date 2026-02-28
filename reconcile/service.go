@@ -116,6 +116,10 @@ func reconcileDay(entries []worklog.Entry) ([]worklog.Entry, int) {
 
 		newStart := findNextAvailableStart(busy, entry.StartDateTime, duration)
 		newEnd := newStart.Add(duration)
+		if !sameCalendarDay(entry.StartDateTime, newStart) || !sameCalendarDay(entry.StartDateTime, newEnd) {
+			busy = addInterval(busy, interval{start: entry.StartDateTime, end: entry.EndDateTime})
+			continue
+		}
 		if !newStart.Equal(entry.StartDateTime) || !newEnd.Equal(entry.EndDateTime) {
 			entry.StartDateTime = newStart
 			entry.EndDateTime = newEnd
@@ -226,4 +230,8 @@ func isEPMEntry(entry worklog.Entry) bool {
 		return true
 	}
 	return strings.Contains(strings.ToLower(entry.SourceFile), "epmexport")
+}
+
+func sameCalendarDay(a, b time.Time) bool {
+	return a.Year() == b.Year() && a.Month() == b.Month() && a.Day() == b.Day()
 }
