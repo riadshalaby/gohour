@@ -22,6 +22,40 @@
 go build -o gohour .
 ```
 
+## Quick Start (4 Steps)
+
+If you just want to get started, do this:
+
+1. Add one import rule:
+
+```bash
+./gohour config rule add
+```
+
+2. Log in to OnePoint / Microsoft SSO:
+
+```bash
+./gohour auth login
+```
+
+3. Import your local worklog file(s) into SQLite:
+
+```bash
+./gohour import -i <your-file.xlsx> 
+```
+
+4. Preview what would be submitted to OnePoint:
+
+```bash
+./gohour submit --dry-run 
+```
+
+If dry-run looks good, submit for real:
+
+```bash
+./gohour submit 
+```
+
 ## Configuration
 
 Create a default config file:
