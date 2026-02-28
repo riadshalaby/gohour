@@ -23,6 +23,7 @@ type Config struct {
 	ImportProject  string `mapstructure:"-"`
 	ImportActivity string `mapstructure:"-"`
 	ImportSkill    string `mapstructure:"-"`
+	ImportBillable bool   `mapstructure:"-"`
 }
 
 type OnePointConfig struct {
@@ -37,12 +38,22 @@ type Rule struct {
 	Name         string `mapstructure:"name"`
 	Mapper       string `mapstructure:"mapper"`
 	FileTemplate string `mapstructure:"file_template"`
+	Billable     *bool  `mapstructure:"billable"`
 	ProjectID    int64  `mapstructure:"project_id"`
 	Project      string `mapstructure:"project"`
 	ActivityID   int64  `mapstructure:"activity_id"`
 	Activity     string `mapstructure:"activity"`
 	SkillID      int64  `mapstructure:"skill_id"`
 	Skill        string `mapstructure:"skill"`
+}
+
+// IsBillable returns whether entries from this rule should be billable.
+// Defaults to true when the field is not set.
+func (r Rule) IsBillable() bool {
+	if r.Billable == nil {
+		return true
+	}
+	return *r.Billable
 }
 
 // SetDefaults sets default values if not provided
@@ -106,8 +117,9 @@ func setDefaults(v *viper.Viper) {
 
 func validateRules(rules []Rule) error {
 	validMappers := map[string]bool{
-		"epm":     true,
-		"generic": true,
+		"epm":        true,
+		"generic":    true,
+		"atwork": true,
 	}
 	seen := make(map[string]struct{}, len(rules))
 	for i, rule := range rules {
@@ -126,7 +138,7 @@ func validateRules(rules []Rule) error {
 		}
 		if !validMappers[mapper] {
 			return fmt.Errorf(
-				"validation failed: rules[%d].mapper %q is not supported (valid: epm, generic)",
+				"validation failed: rules[%d].mapper %q is not supported (valid: epm, generic, atwork)",
 				i,
 				rule.Mapper,
 			)

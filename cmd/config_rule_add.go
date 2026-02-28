@@ -193,7 +193,13 @@ let you choose each entry interactively, then store a new rules entry in config.
 			return err
 		}
 
+		billable, err := promptYesNo(reader, os.Stdout, "Should entries from this rule be billable?", true)
+		if err != nil {
+			return err
+		}
+
 		newRule := config.Rule{
+			Billable: &billable,
 			Name:         ruleName,
 			Mapper:       strings.ToLower(strings.TrimSpace(selectedMapper)),
 			FileTemplate: fileTemplate,
@@ -227,6 +233,7 @@ let you choose each entry interactively, then store a new rules entry in config.
 		fmt.Printf("Project:  %s (id=%d)\n", newRule.Project, newRule.ProjectID)
 		fmt.Printf("Activity: %s (id=%d)\n", newRule.Activity, newRule.ActivityID)
 		fmt.Printf("Skill:    %s (id=%d)\n", newRule.Skill, newRule.SkillID)
+		fmt.Printf("Billable: %v\n", newRule.IsBillable())
 		return nil
 	},
 }
@@ -333,6 +340,31 @@ func promptSelectIndex(reader *bufio.Reader, out io.Writer, title string, option
 	}
 }
 
+func promptYesNo(reader *bufio.Reader, out io.Writer, question string, defaultYes bool) (bool, error) {
+	hint := "[Y/n]"
+	if !defaultYes {
+		hint = "[y/N]"
+	}
+	for {
+		fmt.Fprintf(out, "%s %s: ", question, hint)
+		input, err := reader.ReadString('\n')
+		if err != nil {
+			return false, fmt.Errorf("read yes/no: %w", err)
+		}
+		value := strings.ToLower(strings.TrimSpace(input))
+		switch value {
+		case "":
+			return defaultYes, nil
+		case "y", "yes":
+			return true, nil
+		case "n", "no":
+			return false, nil
+		default:
+			fmt.Fprintln(out, "Please enter y or n.")
+		}
+	}
+}
+
 func promptRequiredString(reader *bufio.Reader, out io.Writer, label string) (string, error) {
 	for {
 		fmt.Fprintf(out, "%s: ", strings.TrimSpace(label))
@@ -389,7 +421,7 @@ func appendRuleToConfigYAML(content []byte, rule config.Rule) ([]byte, error) {
 		}
 	}
 
-	rulesList = append(rulesList, map[string]any{
+	ruleMap := map[string]any{
 		"name":          rule.Name,
 		"mapper":        rule.Mapper,
 		"file_template": rule.FileTemplate,
@@ -399,7 +431,11 @@ func appendRuleToConfigYAML(content []byte, rule config.Rule) ([]byte, error) {
 		"activity":      rule.Activity,
 		"skill_id":      rule.SkillID,
 		"skill":         rule.Skill,
-	})
+	}
+	if rule.Billable != nil && !*rule.Billable {
+		ruleMap["billable"] = false
+	}
+	rulesList = append(rulesList, ruleMap)
 	doc["rules"] = rulesList
 
 	updated, err := yaml.Marshal(doc)

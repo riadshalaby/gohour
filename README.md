@@ -7,7 +7,7 @@
 - CLI built with Cobra and Viper
 - Config file support (`onepoint.url`, `import.auto_reconcile_after_import`, `rules`)
 - Input formats: Excel (`.xlsx`, `.xlsm`, `.xls`) and CSV (`.csv`)
-- Mapper-based normalization pipeline (`epm`, `generic`)
+- Mapper-based normalization pipeline (`epm`, `generic`, `atwork`)
 - SQLite persistence with duplicate protection
 - Export normalized worklogs to CSV or Excel
 - Submit local SQLite worklogs to OnePoint REST
@@ -127,7 +127,20 @@ rules:
     activity: "Delivery"
     skill_id: 44498948
     skill: "Go"
+  - name: "atwork-travel"
+    mapper: "atwork"
+    file_template: "excel-export-atwork*.csv"
+    billable: false
+    project_id: 432904811
+    project: "MySpecial RZ Project"
+    activity_id: 436142369
+    activity: "Delivery"
+    skill_id: 44498948
+    skill: "Go"
 ```
+
+Each rule supports an optional `billable` field (default: `true`). When set to `false`, all entries
+imported via that rule get `Billable=0` (entry is imported but not counted as billable time).
 
 `gohour config create` creates a standard config with `rules: []` (no demo rule).
 
@@ -143,11 +156,15 @@ Import one or more files into SQLite:
 ./gohour import -i examples/generic_import_example.csv --format csv --mapper generic --db ./gohour.db
 ```
 
+```bash
+./gohour import -i examples/excel-export-atwork-2026-03-fake.csv --mapper atwork --db ./gohour.db
+```
+
 Flags:
 
 - `-i, --input` (required, repeatable): input file path
 - `-f, --format` (optional): `csv` or `excel` (auto-detected from file extension if omitted)
-- `-m, --mapper` (optional): fallback mapper when no rule matches (`epm` default, or `generic`)
+- `-m, --mapper` (optional): fallback mapper when no rule matches (`epm` default, `generic`, or `atwork`)
 - `--project` (optional): explicit project for EPM import (overrides rule)
 - `--activity` (optional): explicit activity for EPM import (overrides rule)
 - `--skill` (optional): explicit skill for EPM import (overrides rule)
@@ -339,6 +356,11 @@ A unique constraint prevents duplicate imports of the same normalized row.
   - Builds sequential worklogs for the day.
   - If `Tagessumme` is present, computes a single break (`(Bis - Von) - Tagessumme`) and inserts it near the middle of the billable work progression.
 - `generic`: for already structured files with explicit start/end and optional billable value.
+- `atwork`: for UTF-16 tab-separated CSV exports from the atwork time-tracking app.
+  - Reads only the "Einträge" section (stops at "Gesamt" summary row).
+  - Parses `Beginn`/`Ende` as datetimes, `Dauer` as German decimal hours.
+  - Description is built from `Notiz` (with `Projekt`/`Aufgabe` as context prefix).
+  - `Project`/`Activity`/`Skill` come from the matching rule config (like EPM).
 
 ## Notes
 

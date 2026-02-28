@@ -30,7 +30,7 @@ func Run(paths []string, format string, mapper Mapper, cfg config.Config, option
 		if err != nil {
 			return nil, err
 		}
-		reader, err := ReaderForFormat(sourceFormat)
+		reader, err := readerForMapper(mapperName, sourceFormat)
 		if err != nil {
 			return nil, err
 		}
@@ -59,6 +59,9 @@ func Run(paths []string, format string, mapper Mapper, cfg config.Config, option
 
 			result.RowsMapped++
 			entry.SourceMapper = mapperName
+			if !cfgForFile.ImportBillable {
+				entry.Billable = 0
+			}
 			result.Entries = append(result.Entries, *entry)
 		}
 	}
@@ -82,13 +85,28 @@ func inferFormat(path string, format string) (string, error) {
 	}
 }
 
+// mapperNeedsRuleConfig returns true for mappers that require project/activity/skill
+// to be supplied via rule config or CLI flags (rather than from CSV columns).
+func mapperNeedsRuleConfig(mapperName string) bool {
+	switch strings.ToLower(mapperName) {
+	case "epm", "atwork":
+		return true
+	default:
+		return false
+	}
+}
+
 func resolveConfigForFile(path, mapperName string, cfg config.Config, options RunOptions) (config.Config, error) {
 	resolved := cfg
-	if !strings.EqualFold(mapperName, "epm") {
+	resolved.ImportBillable = true // default
+
+	rule := MatchRuleByTemplate(path, cfg.Rules)
+	resolved.ImportBillable = rule.IsBillable()
+
+	if !mapperNeedsRuleConfig(mapperName) {
 		return resolved, nil
 	}
 
-	rule := MatchRuleByTemplate(path, cfg.Rules)
 	resolved.ImportProject = firstNonEmpty(options.EPMProject, rule.Project)
 	resolved.ImportActivity = firstNonEmpty(options.EPMActivity, rule.Activity)
 	resolved.ImportSkill = firstNonEmpty(options.EPMSkill, rule.Skill)
@@ -140,6 +158,16 @@ func MatchRuleByTemplate(path string, rules []config.Rule) config.Rule {
 		}
 	}
 	return config.Rule{}
+}
+
+// readerForMapper returns a specialized reader when the mapper requires a
+// non-standard file format (e.g. atwork uses UTF-16 TSV). For all other
+// mappers it falls back to the format-based reader selection.
+func readerForMapper(mapperName, sourceFormat string) (Reader, error) {
+	if strings.EqualFold(mapperName, "atwork") {
+		return &ATWorkReader{}, nil
+	}
+	return ReaderForFormat(sourceFormat)
 }
 
 func firstNonEmpty(values ...string) string {

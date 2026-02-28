@@ -12,7 +12,7 @@ type Mapper interface {
 }
 
 func SupportedMapperNames() []string {
-	return []string{"epm", "generic"}
+	return []string{"epm", "generic", "atwork"}
 }
 
 func MapperByName(name string) (Mapper, error) {
@@ -21,6 +21,8 @@ func MapperByName(name string) (Mapper, error) {
 		return &EPMMapper{}, nil
 	case "generic":
 		return &GenericMapper{}, nil
+	case "atwork":
+		return &ATWorkMapper{}, nil
 	default:
 		return nil, fmt.Errorf("unsupported mapper: %s", name)
 	}
