@@ -42,25 +42,25 @@ For EPM-mapped files, project/activity/skill must be provided by either:
 If neither provides all values, import fails.`,
 	Example: `
   # Import multiple EPM Excel files
-  gohour import -i EPMExportRZ202601.xlsx -i EPMExportSZ202601.xlsx --mapper epm --db ./gohour.db
+  gohour import -i EPMExportRZ202601.xlsx -i EPMExportSZ202601.xlsx --mapper epm
 
   # Import generic CSV file
-  gohour import -i examples/generic_import_example.csv --format csv --mapper generic --db ./gohour.db
+  gohour import -i examples/generic_import_example.csv --format csv --mapper generic
 
   # Import atwork CSV export
-  gohour import -i examples/excel-export-atwork-2026-03-fake.csv --mapper atwork --db ./gohour.db
+  gohour import -i examples/excel-export-atwork-2026-03-fake.csv --mapper atwork
 
   # Override EPM project/activity/skill explicitly
-  gohour import -i EPMExportRZ202601.xlsx --mapper epm --project "My RZ Project" --activity "Delivery" --skill "Go" --db ./gohour.db
+  gohour import -i EPMExportRZ202601.xlsx --mapper epm --project "My RZ Project" --activity "Delivery" --skill "Go"
 
   # Explicitly enable reconcile after import
-  gohour import -i ./source.csv --format csv --mapper generic --reconcile on --db ./gohour.db
+  gohour import -i ./source.csv --format csv --mapper generic --reconcile on
 
   # Explicitly disable reconcile for this run
-  gohour import -i ./source.xlsx --mapper epm --reconcile off --db ./gohour.db
+  gohour import -i ./source.xlsx --mapper epm --reconcile off
 
   # Import with custom config file
-  gohour --configFile ./custom-gohour.yaml import -i ./source.xlsx --mapper epm --db ./gohour.db
+  gohour --configFile ./custom-gohour.yaml import -i ./source.xlsx --mapper epm
 `,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		cfg, err := config.LoadAndValidate()

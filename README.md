@@ -150,15 +150,15 @@ imported via that rule get `Billable=0` (entry is imported but not counted as bi
 Import one or more files into SQLite:
 
 ```bash
-./gohour import -i examples/EPMExportRZ202601.xlsx -i examples/EPMExportSZ202601.xlsx --mapper epm --db ./gohour.db
+./gohour import -i examples/EPMExportRZ202601.xlsx -i examples/EPMExportSZ202601.xlsx --mapper epm
 ```
 
 ```bash
-./gohour import -i examples/generic_import_example.csv --format csv --mapper generic --db ./gohour.db
+./gohour import -i examples/generic_import_example.csv --format csv --mapper generic
 ```
 
 ```bash
-./gohour import -i examples/excel-export-atwork-2026-03-fake.csv --mapper atwork --db ./gohour.db
+./gohour import -i examples/excel-export-atwork-2026-03-fake.csv --mapper atwork
 ```
 
 Flags:
@@ -182,8 +182,8 @@ If no rule matches and no explicit values are provided, import fails.
 Export normalized records from SQLite:
 
 ```bash
-./gohour export --db ./gohour.db --output ./worklogs.csv
-./gohour export --db ./gohour.db --output ./worklogs.xlsx
+./gohour export --output ./worklogs.csv
+./gohour export --output ./worklogs.xlsx
 ```
 
 Export daily summaries:
@@ -194,8 +194,8 @@ Export daily summaries:
 - `BreakHours`: gaps without worklog coverage between `StartTime` and `EndTime`
 
 ```bash
-./gohour export --mode daily --db ./gohour.db --output ./daily-summary.csv
-./gohour export --mode daily --db ./gohour.db --output ./daily-summary.xlsx
+./gohour export --mode daily --output ./daily-summary.csv
+./gohour export --mode daily --output ./daily-summary.xlsx
 ```
 
 Flags:
@@ -210,7 +210,7 @@ Flags:
 Submit normalized worklogs from SQLite to OnePoint:
 
 ```bash
-./gohour submit --db ./gohour.db
+./gohour submit
 ```
 
 Optional filters:
@@ -266,7 +266,7 @@ Main flags:
 After importing mixed sources (for example `epm` plus `generic`) on the same day, you can run an explicit reconciliation step:
 
 ```bash
-./gohour reconcile --db ./gohour.db
+./gohour reconcile
 ```
 
 What it does:
@@ -282,7 +282,7 @@ This is useful because EPM task times are simulated during import and may collid
 Destructive cleanup command (always deletes the complete SQLite database file):
 
 ```bash
-./gohour delete --db ./gohour.db
+./gohour delete
 ```
 
 Notes:
