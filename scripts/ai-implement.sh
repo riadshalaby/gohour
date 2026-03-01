@@ -5,4 +5,4 @@ echo "idle" > .ai/MODE
 
 echo "Running Codex implementation from PLAN.md"
 
-exec codex run "Implement .ai/PLAN.md following CLAUDE.md. Update tests. Do not invent requirements."
+exec codex "Implement .ai/PLAN.md following CLAUDE.md. Update tests. Do not invent requirements."
