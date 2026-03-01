@@ -3,6 +3,7 @@ package onepoint
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -531,10 +532,10 @@ func TestHTTPClient_MergeAndPersistWorklogs_DeduplicatesWhenBillableDiffers(t *t
 	}
 }
 
-func TestHTTPClient_MergeAndPersistWorklogs_SkipsLockedExistingEntries(t *testing.T) {
+func TestHTTPClient_MergeAndPersistWorklogs_ReturnsErrDayLockedWhenAnyEntryIsLocked(t *testing.T) {
 	t.Parallel()
 
-	var persistPayload []PersistWorklog
+	persistCalled := false
 	doer := fakeDoer{fn: func(r *http.Request) (*http.Response, error) {
 		switch fmt.Sprintf("%s %s", r.Method, r.URL.Path) {
 		case "GET /OPServices/resources/OpWorklogs/05-03-2026:05-03-2026/getFilteredWorklogs":
@@ -573,9 +574,7 @@ func TestHTTPClient_MergeAndPersistWorklogs_SkipsLockedExistingEntries(t *testin
 				},
 			}), nil
 		case "POST /OPServices/resources/OpWorklogs/05-03-2026/persistWorklogs":
-			if err := json.NewDecoder(r.Body).Decode(&persistPayload); err != nil {
-				t.Fatalf("decode payload: %v", err)
-			}
+			persistCalled = true
 			return jsonResponse([]PersistResult{{Message: "ok"}}), nil
 		default:
 			return nil, fmt.Errorf("unexpected request %s %s", r.Method, r.URL.String())
@@ -610,17 +609,18 @@ func TestHTTPClient_MergeAndPersistWorklogs_SkipsLockedExistingEntries(t *testin
 		Comment:      "new local entry",
 	}
 
-	if _, err := client.MergeAndPersistWorklogs(context.Background(), day, []PersistWorklog{local}); err != nil {
-		t.Fatalf("merge and persist: %v", err)
+	_, err = client.MergeAndPersistWorklogs(context.Background(), day, []PersistWorklog{local})
+	if err == nil {
+		t.Fatalf("expected ErrDayLocked, got nil")
 	}
-
-	if len(persistPayload) != 2 {
-		t.Fatalf("expected payload length 2 (unlocked existing + local), got %d", len(persistPayload))
+	var lockedErr *ErrDayLocked
+	if !errors.As(err, &lockedErr) {
+		t.Fatalf("expected ErrDayLocked, got %v", err)
 	}
-	if persistPayload[0].TimeRecordID != 2 {
-		t.Fatalf("expected unlocked existing entry first, got %+v", persistPayload[0])
+	if lockedErr.LockedCount != 1 {
+		t.Fatalf("expected locked count 1, got %d", lockedErr.LockedCount)
 	}
-	if persistPayload[1].TimeRecordID != -1 {
-		t.Fatalf("expected local entry second, got %+v", persistPayload[1])
+	if persistCalled {
+		t.Fatalf("expected no persist call when day is locked")
 	}
 }
