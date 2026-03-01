@@ -40,15 +40,6 @@ the session with a test API call (list projects).`,
 	Example: `
   # Open browser, log in manually, save auth state, verify API access
   gohour auth login
-
-  # Override OnePoint URL from config for this run
-  gohour auth login --url https://onepoint.virtual7.io/onepoint/faces/home
-
-  # Custom reusable browser profile directory
-  gohour auth login --profile-dir ~/.gohour/chrome-profile
-
-  # Custom Chrome binary
-  gohour auth login --browser-bin "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"
 `,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		stateFile, err := resolveDefaultAuthStatePath(authLoginStateFile)

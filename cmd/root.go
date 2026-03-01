@@ -46,26 +46,17 @@ Supported input formats:
   # Create configuration file
   gohour config create
 
-  # Import EPM Excel exports
-  gohour import -i EPMExportRZ202601.xlsx -i EPMExportSZ202601.xlsx --mapper epm
-
-  # Import generic CSV source
-  gohour import -i examples/generic_import_example.csv --format csv --mapper generic
+  # Import source files
+  gohour import -i EPMExportRZ202601.xlsx -i EPMExportSZ202601.xlsx
 
   # Reconcile simulated EPM timings against all other sources
   gohour reconcile
 
-  # Preview submit against remote OnePoint entries (no writes)
-  gohour submit --dry-run
-
   # Submit local worklogs to OnePoint
   gohour submit
 
-  # Export raw rows
-  gohour export --mode raw --output ./worklogs.csv
-
-  # Export daily summary
-  gohour export --mode daily --output ./daily-summary.csv
+  # Export rows
+  gohour export --output ./worklogs.csv
 `,
 }
 

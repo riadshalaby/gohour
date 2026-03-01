@@ -42,20 +42,16 @@ If you just want to get started, do this:
 3. Import your local worklog file(s) into SQLite:
 
 ```bash
-./gohour import -i <your-file.xlsx> 
+./gohour import -i <your-file.xlsx>
 ```
 
-4. Preview what would be submitted to OnePoint:
+4. Submit to OnePoint:
 
 ```bash
-./gohour submit --dry-run 
+./gohour submit
 ```
 
-If dry-run looks good, submit for real:
-
-```bash
-./gohour submit 
-```
+If you want a preview before writing, use the optional `--dry-run` flag.
 
 ## Configuration
 
@@ -150,15 +146,8 @@ imported via that rule get `Billable=0` (entry is imported but not counted as bi
 Import one or more files into SQLite:
 
 ```bash
-./gohour import -i examples/EPMExportRZ202601.xlsx -i examples/EPMExportSZ202601.xlsx --mapper epm
-```
-
-```bash
-./gohour import -i examples/generic_import_example.csv --format csv --mapper generic
-```
-
-```bash
-./gohour import -i examples/excel-export-atwork-2026-03-fake.csv --mapper atwork
+./gohour import -i examples/EPMExportRZ202601.xlsx
+./gohour import -i examples/EPMExportRZ202601.xlsx -i examples/EPMExportSZ202601.xlsx
 ```
 
 Flags:
@@ -176,6 +165,7 @@ By default (`import.auto_reconcile_after_import: true`), import automatically ru
 If a file matches a `rules` entry by `file_template`, that rule's `mapper` is used for importing that file.
 For EPM-mapped files, `project/activity/skill` must come from a matching `rules` entry or explicit `--project/--activity/--skill`.
 If no rule matches and no explicit values are provided, import fails.
+Use optional flags like `--mapper`, `--format`, `--project`, `--activity`, `--skill`, or `--reconcile` only when needed.
 
 ## Export
 
@@ -193,10 +183,7 @@ Export daily summaries:
 - `BillableHours`: sum of billable values of the day
 - `BreakHours`: gaps without worklog coverage between `StartTime` and `EndTime`
 
-```bash
-./gohour export --mode daily --output ./daily-summary.csv
-./gohour export --mode daily --output ./daily-summary.xlsx
-```
+For daily summary export, use the optional `--mode daily` flag.
 
 Flags:
 
@@ -213,17 +200,7 @@ Submit normalized worklogs from SQLite to OnePoint:
 ./gohour submit
 ```
 
-Optional filters:
-
-```bash
-./gohour submit --from 2026-03-01 --to 2026-03-31
-```
-
-Dry-run (validate against existing OnePoint entries without writing):
-
-```bash
-./gohour submit --dry-run
-```
+Use optional flags like `--dry-run`, `--from`, `--to`, `--timeout`, `--url`, and `--state-file` only when needed.
 
 Required prerequisites:
 
@@ -300,18 +277,6 @@ You can override it via `--url`.
 
 ```bash
 gohour auth login
-```
-
-Optional override:
-
-```bash
-gohour auth login --url https://onepoint.virtual7.io/onepoint/faces/home
-```
-
-Debug cookie detection during login wait:
-
-```bash
-gohour auth login --debug-cookies
 ```
 
 This opens a headed browser. Complete Microsoft login manually; the command auto-detects

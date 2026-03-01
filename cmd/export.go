@@ -28,17 +28,11 @@ Modes:
 
 Output format can be selected explicitly via --format or inferred from --output extension.`,
 	Example: `
-  # Export raw rows to CSV
-  gohour export --mode raw --output ./worklogs.csv
+  # Export rows to CSV (default mode: raw)
+  gohour export --output ./worklogs.csv
 
-  # Export raw rows to Excel
-  gohour export --mode raw --output ./worklogs.xlsx
-
-  # Export daily summary to CSV
-  gohour export --mode daily --output ./daily-summary.csv
-
-  # Force Excel format independent of extension
-  gohour export --mode daily --format excel --output ./daily-summary.out
+  # Export rows to Excel (default mode: raw)
+  gohour export --output ./worklogs.xlsx
 `,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		format := exportFormat

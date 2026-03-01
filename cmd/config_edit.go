@@ -27,9 +27,6 @@ After the editor exits, the content is validated as gohour YAML config.`,
 	Example: `
   # Edit active config
   gohour config edit
-
-  # Edit config at a custom path
-  gohour --configFile ./custom-gohour.yaml config edit
 `,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		configPath, err := resolveConfigEditPath(cfgFile, viper.ConfigFileUsed())

@@ -44,17 +44,8 @@ In --dry-run mode, remote day worklogs are still loaded to report locked days an
 but no persist call is made.
 Authentication uses session cookies from auth state JSON (created by "gohour auth login").`,
 	Example: `
-  # Submit all local worklogs from the default DB
+  # Submit all local worklogs
   gohour submit
-
-  # Submit only a date range (inclusive)
-  gohour submit --from 2026-03-01 --to 2026-03-31
-
-  # Dry-run: validate against remote entries without writing
-  gohour submit --dry-run
-
-  # Override OnePoint URL and auth state location
-  gohour submit --url https://onepoint.virtual7.io/onepoint/faces/home --state-file ~/.gohour/onepoint-auth-state.json
 `,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		cfg, err := config.LoadAndValidate()
