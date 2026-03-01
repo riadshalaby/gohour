@@ -1,0 +1,45 @@
+{{ define "page" }}
+<h1>Month overview: {{ .CurrentMonth }}</h1>
+<div class="nav" style="margin-bottom:0.8rem;">
+  <a href="/month/{{ .PreviousMonth }}">Previous</a>
+  <a href="/month/{{ .NextMonth }}">Next</a>
+</div>
+<table>
+  <thead>
+    <tr>
+      <th>Date</th>
+      <th>Local Hours</th>
+      <th>Remote Hours</th>
+      <th>Delta</th>
+      <th>Day</th>
+    </tr>
+  </thead>
+  <tbody>
+    {{ range .Rows }}
+    <tr>
+      <td>{{ .Date }}</td>
+      <td>{{ fmtHours .LocalHours }}</td>
+      <td>{{ fmtHours .RemoteHours }}</td>
+      <td>
+        {{ if ge .DeltaHours 0.0 }}
+        <span class="delta-pos">{{ fmtDelta .DeltaHours }}</span>
+        {{ else }}
+        <span class="delta-neg">{{ fmtDelta .DeltaHours }}</span>
+        {{ end }}
+      </td>
+      <td><a href="{{ .DayLink }}">Open</a></td>
+    </tr>
+    {{ end }}
+  </tbody>
+  <tfoot>
+    <tr>
+      <th>Total</th>
+      <th>{{ fmtHours .TotalLocal }}</th>
+      <th>{{ fmtHours .TotalRemote }}</th>
+      <th>{{ fmtDelta .TotalDelta }}</th>
+      <th></th>
+    </tr>
+  </tfoot>
+</table>
+<div class="footer">Read-only view. No mutations are available.</div>
+{{ end }}

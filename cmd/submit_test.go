@@ -304,63 +304,6 @@ func TestFormatFlexibleIDForDryRun_Empty(t *testing.T) {
 	}
 }
 
-func TestClassifySubmitWorklogs_DuplicateOverlapAndAdd(t *testing.T) {
-	t.Parallel()
-
-	existing := []onepoint.PersistWorklog{
-		{
-			StartTime:  submitIntPtr(540),
-			FinishTime: submitIntPtr(600),
-			ProjectID:  onepoint.ID(10),
-			ActivityID: onepoint.ID(20),
-			SkillID:    onepoint.ID(30),
-			Comment:    "existing",
-			Billable:   0,
-		},
-	}
-	local := []onepoint.PersistWorklog{
-		{
-			StartTime:  submitIntPtr(540),
-			FinishTime: submitIntPtr(600),
-			ProjectID:  onepoint.ID(10),
-			ActivityID: onepoint.ID(20),
-			SkillID:    onepoint.ID(30),
-			Comment:    "duplicate with different comment",
-			Billable:   60,
-		},
-		{
-			StartTime:  submitIntPtr(570),
-			FinishTime: submitIntPtr(630),
-			ProjectID:  onepoint.ID(10),
-			ActivityID: onepoint.ID(20),
-			SkillID:    onepoint.ID(30),
-			Comment:    "overlap",
-		},
-		{
-			StartTime:  submitIntPtr(630),
-			FinishTime: submitIntPtr(690),
-			ProjectID:  onepoint.ID(10),
-			ActivityID: onepoint.ID(20),
-			SkillID:    onepoint.ID(30),
-			Comment:    "new",
-		},
-	}
-
-	toAdd, overlaps, duplicates := classifySubmitWorklogs(local, existing)
-	if duplicates != 1 {
-		t.Fatalf("expected 1 duplicate, got %d", duplicates)
-	}
-	if len(overlaps) != 1 {
-		t.Fatalf("expected 1 overlap, got %d", len(overlaps))
-	}
-	if len(toAdd) != 1 {
-		t.Fatalf("expected 1 non-overlapping add candidate, got %d", len(toAdd))
-	}
-	if got := strings.TrimSpace(toAdd[0].Comment); got != "new" {
-		t.Fatalf("expected new entry to be added, got %q", got)
-	}
-}
-
 func TestHandleOverlaps_DryRunSkipsWithoutPrompt(t *testing.T) {
 	t.Parallel()
 

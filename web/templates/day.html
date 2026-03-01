@@ -1,0 +1,39 @@
+{{ define "page" }}
+<h1>Day detail: {{ .Day }}</h1>
+<div class="nav" style="margin-bottom:0.8rem;">
+  <a href="/month/{{ .CurrentMonth }}">Back to month</a>
+  <a href="/api/day/{{ .Day }}">JSON</a>
+</div>
+<p class="muted" style="margin-top:0;">
+  Local hours: {{ fmtHours .DayRow.LocalHours }} | Remote hours: {{ fmtHours .DayRow.RemoteHours }}
+</p>
+<table>
+  <thead>
+    <tr>
+      <th>Source</th>
+      <th>Start</th>
+      <th>End</th>
+      <th>Project</th>
+      <th>Activity</th>
+      <th>Skill</th>
+      <th>Billable</th>
+      <th>Description</th>
+    </tr>
+  </thead>
+  <tbody>
+    {{ range .DayRow.Entries }}
+    <tr>
+      <td><span class="badge badge-{{ .Source }}">{{ .Source }}</span></td>
+      <td>{{ .Start }}</td>
+      <td>{{ .End }}</td>
+      <td>{{ .Project }}</td>
+      <td>{{ .Activity }}</td>
+      <td>{{ .Skill }}</td>
+      <td>{{ .Billable }}</td>
+      <td>{{ .Description }}</td>
+    </tr>
+    {{ end }}
+  </tbody>
+</table>
+<div class="footer">Read-only view. No mutations are available.</div>
+{{ end }}

@@ -1,0 +1,126 @@
+{{ define "base" }}
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{{ .Title }}</title>
+  <style>
+    :root {
+      --bg: #f4f6f8;
+      --card: #ffffff;
+      --text: #1f2933;
+      --muted: #6b7280;
+      --border: #d5dde5;
+      --new: #166534;
+      --duplicate: #1d4ed8;
+      --overlap: #b45309;
+      --remote: #5b21b6;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      padding: 1.5rem;
+      background: linear-gradient(140deg, #eef2f7 0%, #f8fafc 100%);
+      color: var(--text);
+      font: 15px/1.45 "Iowan Old Style", "Palatino Linotype", "Book Antiqua", serif;
+    }
+    .wrap {
+      max-width: 1080px;
+      margin: 0 auto;
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      overflow: hidden;
+      box-shadow: 0 8px 30px rgba(32, 38, 46, 0.08);
+    }
+    .top {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.75rem;
+      justify-content: space-between;
+      align-items: center;
+      padding: 1rem 1.25rem;
+      border-bottom: 1px solid var(--border);
+      background: #f8fafb;
+    }
+    .brand { font-weight: 700; letter-spacing: 0.02em; }
+    .nav { display: flex; align-items: center; gap: 0.6rem; }
+    .nav a, button {
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      background: white;
+      color: var(--text);
+      text-decoration: none;
+      padding: 0.35rem 0.7rem;
+      cursor: pointer;
+      font: inherit;
+    }
+    input[type="month"] {
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 0.35rem 0.5rem;
+      font: inherit;
+    }
+    .content { padding: 1rem 1.25rem 1.25rem; }
+    h1 { margin: 0 0 0.8rem; font-size: 1.2rem; }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 0.95rem;
+    }
+    th, td {
+      border-bottom: 1px solid var(--border);
+      text-align: left;
+      padding: 0.45rem 0.5rem;
+      vertical-align: top;
+    }
+    th {
+      color: var(--muted);
+      font-weight: 600;
+      font-size: 0.82rem;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+    }
+    .muted { color: var(--muted); }
+    .badge {
+      display: inline-block;
+      border-radius: 999px;
+      padding: 0.1rem 0.55rem;
+      color: white;
+      font-size: 0.75rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.03em;
+    }
+    .badge-new { background: var(--new); }
+    .badge-duplicate { background: var(--duplicate); }
+    .badge-overlap { background: var(--overlap); }
+    .badge-remote { background: var(--remote); }
+    .delta-pos { color: #0a7f3f; font-weight: 600; }
+    .delta-neg { color: #b42318; font-weight: 600; }
+    .footer {
+      margin-top: 0.8rem;
+      color: var(--muted);
+      font-size: 0.85rem;
+    }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <header class="top">
+      <div class="brand"><a href="/" style="text-decoration:none;color:inherit;">gohour serve</a></div>
+      <div class="nav">
+        <form action="/month" method="get" style="display:flex;gap:0.5rem;align-items:center;">
+          <input type="month" name="month" value="{{ .CurrentMonth }}" required>
+          <button type="submit">Go</button>
+        </form>
+      </div>
+    </header>
+    <main class="content">
+      {{ template "page" . }}
+    </main>
+  </div>
+</body>
+</html>
+{{ end }}
