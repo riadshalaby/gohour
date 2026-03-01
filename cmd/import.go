@@ -28,7 +28,8 @@ var importCmd = &cobra.Command{
 	Short: "Import CSV/Excel worklogs into a local SQLite database",
 	Long: `Read source files, normalize each row via the selected mapper, and persist results in SQLite.
 
-Use mapper "epm" for EPM-style Excel exports and mapper "generic" for structured CSV/Excel inputs.
+Use mapper "epm" for EPM-style Excel exports, mapper "generic" for structured CSV/Excel inputs,
+and mapper "atwork" for UTF-16 tab-separated atwork exports.
 When --format is omitted, format is inferred from each input file extension.
 
 Mapper selection per input file:
@@ -45,6 +46,9 @@ If neither provides all values, import fails.`,
 
   # Import generic CSV file
   gohour import -i examples/generic_import_example.csv --format csv --mapper generic --db ./gohour.db
+
+  # Import atwork CSV export
+  gohour import -i examples/excel-export-atwork-2026-03-fake.csv --mapper atwork --db ./gohour.db
 
   # Override EPM project/activity/skill explicitly
   gohour import -i EPMExportRZ202601.xlsx --mapper epm --project "My RZ Project" --activity "Delivery" --skill "Go" --db ./gohour.db
@@ -137,7 +141,7 @@ func init() {
 
 	importCmd.Flags().StringArrayVarP(&importInputs, "input", "i", nil, "Input file path (repeatable)")
 	importCmd.Flags().StringVarP(&importFormat, "format", "f", "", "Input format: csv|excel (optional, inferred from extension when omitted)")
-	importCmd.Flags().StringVarP(&importMapper, "mapper", "m", "epm", "Fallback mapper when no rule matches a file: epm|generic")
+	importCmd.Flags().StringVarP(&importMapper, "mapper", "m", "epm", "Fallback mapper when no rule matches a file: epm|generic|atwork")
 	importCmd.Flags().StringVar(&importProject, "project", "", "Explicit project value for EPM imports (overrides matching config rule)")
 	importCmd.Flags().StringVar(&importActivity, "activity", "", "Explicit activity value for EPM imports (overrides matching config rule)")
 	importCmd.Flags().StringVar(&importSkill, "skill", "", "Explicit skill value for EPM imports (overrides matching config rule)")
