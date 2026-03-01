@@ -29,14 +29,14 @@ var cfgFile string
 // rootCmd represents the base command when called without any subcommands
 var rootCmd = &cobra.Command{
 	Use:   "gohour",
-	Short: "Import, reconcile, and export worklogs from multiple source formats.",
+	Short: "Import, reconcile, submit, and export worklogs from multiple source formats.",
 	Long: `
 **********************************************
 *              GO HOUR GO                    *
 **********************************************
 
 This CLI imports source files (Excel, CSV), normalizes records into a local SQLite database,
-and exports normalized worklogs to CSV or Excel.
+exports normalized worklogs to CSV or Excel, and can submit local worklogs to OnePoint.
 
 Supported input formats:
 - Excel: .xlsx, .xlsm, .xls
@@ -54,6 +54,12 @@ Supported input formats:
 
   # Reconcile simulated EPM timings against all other sources
   gohour reconcile --db ./gohour.db
+
+  # Preview submit against remote OnePoint entries (no writes)
+  gohour submit --dry-run --db ./gohour.db
+
+  # Submit local worklogs to OnePoint
+  gohour submit --db ./gohour.db
 
   # Export raw rows
   gohour export --mode raw --db ./gohour.db --output ./worklogs.csv
@@ -81,7 +87,7 @@ func init() {
 	// Cobra supports persistent flags, which, if defined here,
 	// will be global for your application.
 
-	rootCmd.PersistentFlags().StringVar(&cfgFile, "configFile", "", "config file (default is ./.gohour.yaml)")
+	rootCmd.PersistentFlags().StringVar(&cfgFile, "configFile", "", "Config file override (default discovery: $HOME/.gohour.yaml, then ./.gohour.yaml)")
 
 	// Optional: Validate configuration
 	rootCmd.PreRunE = func(cmd *cobra.Command, args []string) error {

@@ -33,7 +33,15 @@ var submitCmd = &cobra.Command{
 	Short: "Submit worklogs from SQLite to OnePoint",
 	Long: `Read normalized worklogs from SQLite, resolve OnePoint IDs, and submit them via OnePoint REST API.
 
-The command groups local rows by day, merges them with existing remote day entries, and persists the result.
+The command groups local rows by day and validates each day against existing remote entries.
+For each day it:
+- skips the full day if any remote entry is locked
+- skips duplicates (same time + project/activity/skill)
+- detects overlaps with existing entries
+- prompts how to handle overlaps (write/skip/write-all/skip-all/abort), unless --dry-run is used
+
+In --dry-run mode, remote day worklogs are still loaded to report locked days and overlaps,
+but no persist call is made.
 Authentication uses session cookies from auth state JSON (created by "gohour auth login").`,
 	Example: `
   # Submit all local worklogs from the default DB
@@ -42,7 +50,7 @@ Authentication uses session cookies from auth state JSON (created by "gohour aut
   # Submit only a date range (inclusive)
   gohour submit --from 2026-03-01 --to 2026-03-31
 
-  # Dry-run: resolve and build payloads without sending
+  # Dry-run: validate against remote entries without writing
   gohour submit --dry-run
 
   # Override OnePoint URL and auth state location
@@ -254,7 +262,7 @@ func init() {
 	submitCmd.Flags().DurationVar(&submitTimeout, "timeout", 60*time.Second, "Timeout per OnePoint API operation")
 	submitCmd.Flags().StringVar(&submitFromDay, "from", "", "Filter start day (inclusive), format YYYY-MM-DD")
 	submitCmd.Flags().StringVar(&submitToDay, "to", "", "Filter end day (inclusive), format YYYY-MM-DD")
-	submitCmd.Flags().BoolVar(&submitDryRun, "dry-run", false, "Build and validate submit payloads without sending")
+	submitCmd.Flags().BoolVar(&submitDryRun, "dry-run", false, "Validate against remote day worklogs without persisting (warns for locked days/overlaps)")
 	submitCmd.Flags().BoolVar(&submitIncludeArchived, "include-archived-projects", false, "Allow archived projects during name->ID lookup fallback")
 	submitCmd.Flags().BoolVar(&submitIncludeLockedActivities, "include-locked-activities", false, "Allow locked activities during name->ID lookup fallback")
 }
