@@ -554,15 +554,12 @@ func containsEquivalentPersistWorklog(values []PersistWorklog, candidate Persist
 func persistWorklogsEquivalent(a, b PersistWorklog) bool {
 	return equalIntPointer(a.StartTime, b.StartTime) &&
 		equalIntPointer(a.FinishTime, b.FinishTime) &&
-		a.Duration == b.Duration &&
-		a.Billable == b.Billable &&
 		a.ProjectID.Valid == b.ProjectID.Valid &&
 		a.ProjectID.Value == b.ProjectID.Value &&
 		a.ActivityID.Valid == b.ActivityID.Valid &&
 		a.ActivityID.Value == b.ActivityID.Value &&
 		a.SkillID.Valid == b.SkillID.Valid &&
-		a.SkillID.Value == b.SkillID.Value &&
-		equalName(a.Comment, b.Comment)
+		a.SkillID.Value == b.SkillID.Value
 }
 
 func equalIntPointer(a, b *int) bool {
