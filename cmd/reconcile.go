@@ -22,13 +22,13 @@ Why this exists:
 This command adjusts EPM rows only, so one resource is not assigned to overlapping work at the same time.`,
 	Example: `
   # Reconcile overlaps in the default database
-  gohour reconcile --db ./gohour.db
+  gohour reconcile
 
   # Typical workflow: import, import, reconcile, export
-  gohour import -i EPMExportRZ202601.xlsx --mapper epm --db ./gohour.db
-  gohour import -i examples/generic_import_example.csv --format csv --mapper generic --db ./gohour.db
-  gohour reconcile --db ./gohour.db
-  gohour export --mode daily --db ./gohour.db --output ./daily-summary.csv
+  gohour import -i EPMExportRZ202601.xlsx --mapper epm
+  gohour import -i examples/generic_import_example.csv --format csv --mapper generic
+  gohour reconcile
+  gohour export --mode daily --output ./daily-summary.csv
 `,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		store, err := storage.OpenSQLite(reconcileDBPath)

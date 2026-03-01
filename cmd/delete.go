@@ -29,7 +29,7 @@ This command always deletes the complete SQLite database file.
 Before deletion, an interactive security prompt requires typing exactly "Y".`,
 	Example: `
   # Delete the complete SQLite file (requires interactive confirmation)
-  gohour delete --db ./gohour.db
+  gohour delete
 `,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		confirmed, err := confirmDeletePrompt(deletePromptInput, deletePromptOutput, deleteDBPath)
