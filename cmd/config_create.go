@@ -15,9 +15,6 @@ If a configuration file is already in use, no new file is written.`,
 	Example: `
   # Create default config at $HOME/.gohour.yaml
   gohour config create
-
-  # Use a custom config path and create that file
-  gohour --configFile ./custom-gohour.yaml config create
 `,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		return saveDefaultConfig()

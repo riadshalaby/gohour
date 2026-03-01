@@ -17,9 +17,6 @@ This command validates the configuration before printing values.`,
 	Example: `
   # Show active configuration
   gohour config show
-
-  # Show configuration from a specific file
-  gohour --configFile ./custom-gohour.yaml config show
 `,
 	Run: func(cmd *cobra.Command, args []string) {
 		cfg, err := config.LoadAndValidate()

@@ -36,12 +36,6 @@ let you choose each entry interactively, then store a new rules entry in config.
 	Example: `
   # Add one rule interactively using onepoint.url from config and default auth state file
   gohour config rule add
-
-  # Override OnePoint URL for this run
-  gohour config rule add --url https://onepoint.virtual7.io/onepoint/faces/home
-
-  # Use custom auth state file
-  gohour config rule add --state-file ./artifacts/playwright/onepoint-auth-state.json
 `,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		configPath, err := resolveConfigEditPath(cfgFile, viper.ConfigFileUsed())
@@ -199,7 +193,7 @@ let you choose each entry interactively, then store a new rules entry in config.
 		}
 
 		newRule := config.Rule{
-			Billable: &billable,
+			Billable:     &billable,
 			Name:         ruleName,
 			Mapper:       strings.ToLower(strings.TrimSpace(selectedMapper)),
 			FileTemplate: fileTemplate,

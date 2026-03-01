@@ -23,9 +23,6 @@ JSESSIONID=<...>; _WL_AUTHCOOKIE_JSESSIONID=<...>`,
 	Example: `
   # Print cookie header from default auth state file
   gohour auth show-cookies
-
-  # Read from a custom state file
-  gohour auth show-cookies --state-file ./artifacts/playwright/onepoint-auth-state.json
 `,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		stateFile, err := resolveDefaultAuthStatePath(authShowCookiesStateFile)

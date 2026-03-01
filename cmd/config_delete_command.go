@@ -16,9 +16,6 @@ If no configuration file is active, the command returns an error.`,
 	Example: `
   # Delete active config
   gohour config delete
-
-  # Delete config at a custom path
-  gohour --configFile ./custom-gohour.yaml config delete
 `,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		configPath := viper.ConfigFileUsed()
