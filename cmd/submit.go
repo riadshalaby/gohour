@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"gohour/config"
 	"gohour/onepoint"
@@ -138,6 +139,11 @@ Authentication uses session cookies from auth state JSON (created by "gohour aut
 			dayCtx, cancelDay := context.WithTimeout(context.Background(), submitTimeout)
 			results, submitErr := client.MergeAndPersistWorklogs(dayCtx, batch.Day, batch.Worklogs)
 			cancelDay()
+			var lockedErr *onepoint.ErrDayLocked
+			if errors.As(submitErr, &lockedErr) {
+				fmt.Printf("Skipping day %s: %s\n", onepoint.FormatDay(batch.Day), lockedErr.Error())
+				continue
+			}
 			if submitErr != nil {
 				return fmt.Errorf("submit day %s failed: %w", onepoint.FormatDay(batch.Day), submitErr)
 			}

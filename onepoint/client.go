@@ -19,6 +19,16 @@ const (
 	dayLayout = "02-01-2006"
 )
 
+// ErrDayLocked is returned when a day has locked entries and must not be modified.
+type ErrDayLocked struct {
+	Day         time.Time
+	LockedCount int
+}
+
+func (e *ErrDayLocked) Error() string {
+	return fmt.Sprintf("day %s has %d locked entry/entries - skipping", FormatDay(e.Day), e.LockedCount)
+}
+
 // Client defines the OnePoint API operations known from discovery.
 type Client interface {
 	ListProjects(ctx context.Context) ([]Project, error)
@@ -308,12 +318,21 @@ func (c *HTTPClient) MergeAndPersistWorklogs(ctx context.Context, day time.Time,
 	if err != nil {
 		return nil, fmt.Errorf("load existing day worklogs: %w", err)
 	}
+	lockedCount := 0
+	for _, item := range existing {
+		if item.Locked != 0 {
+			lockedCount++
+		}
+	}
+	if lockedCount > 0 {
+		return nil, &ErrDayLocked{
+			Day:         day,
+			LockedCount: lockedCount,
+		}
+	}
 
 	payload := make([]PersistWorklog, 0, len(existing)+len(newWorklogs))
 	for _, item := range existing {
-		if item.Locked != 0 {
-			continue
-		}
 		payload = append(payload, item.ToPersistWorklog())
 	}
 	for _, candidate := range newWorklogs {
