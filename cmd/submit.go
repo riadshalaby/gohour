@@ -416,11 +416,8 @@ func buildSubmitDayBatches(entries []worklog.Entry, idsByTuple map[submitNameTup
 		}
 
 		billable := entry.Billable
-		if billable <= 0 {
-			billable = duration
-		}
-		if billable <= 0 {
-			return nil, fmt.Errorf("worklog id=%d has invalid billable value", entry.ID)
+		if billable < 0 {
+			return nil, fmt.Errorf("worklog id=%d has negative billable value (%d)", entry.ID, billable)
 		}
 
 		dayKey := onepoint.FormatDay(day)

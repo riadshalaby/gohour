@@ -95,6 +95,85 @@ func TestBuildSubmitDayBatches_GroupsAndBuildsPayload(t *testing.T) {
 	}
 }
 
+func TestBuildSubmitDayBatches_PreservesZeroBillable(t *testing.T) {
+	t.Parallel()
+
+	entries := []worklog.Entry{
+		{
+			ID:            1,
+			StartDateTime: time.Date(2026, 3, 5, 9, 0, 0, 0, time.Local),
+			EndDateTime:   time.Date(2026, 3, 5, 10, 0, 0, 0, time.Local),
+			Billable:      0,
+			Description:   "Internal support",
+			Project:       "Project A",
+			Activity:      "Delivery",
+			Skill:         "Go",
+			SourceMapper:  "epm",
+		},
+	}
+	ids := map[submitNameTuple]submitResolvedIDs{
+		{
+			Mapper:   "epm",
+			Project:  "project a",
+			Activity: "delivery",
+			Skill:    "go",
+		}: {
+			ProjectID:  100,
+			ActivityID: 200,
+			SkillID:    300,
+		},
+	}
+
+	batches, err := buildSubmitDayBatches(entries, ids)
+	if err != nil {
+		t.Fatalf("build day batches: %v", err)
+	}
+	if len(batches) != 1 || len(batches[0].Worklogs) != 1 {
+		t.Fatalf("expected one worklog, got %+v", batches)
+	}
+	if got := batches[0].Worklogs[0].Billable; got != 0 {
+		t.Fatalf("expected billable to stay 0, got %d", got)
+	}
+}
+
+func TestBuildSubmitDayBatches_RejectsNegativeBillable(t *testing.T) {
+	t.Parallel()
+
+	entries := []worklog.Entry{
+		{
+			ID:            77,
+			StartDateTime: time.Date(2026, 3, 5, 9, 0, 0, 0, time.Local),
+			EndDateTime:   time.Date(2026, 3, 5, 10, 0, 0, 0, time.Local),
+			Billable:      -1,
+			Description:   "Invalid billable",
+			Project:       "Project A",
+			Activity:      "Delivery",
+			Skill:         "Go",
+			SourceMapper:  "epm",
+		},
+	}
+	ids := map[submitNameTuple]submitResolvedIDs{
+		{
+			Mapper:   "epm",
+			Project:  "project a",
+			Activity: "delivery",
+			Skill:    "go",
+		}: {
+			ProjectID:  100,
+			ActivityID: 200,
+			SkillID:    300,
+		},
+	}
+
+	_, err := buildSubmitDayBatches(entries, ids)
+	if err == nil {
+		t.Fatalf("expected error for negative billable")
+	}
+	if !strings.Contains(err.Error(), "negative billable value") {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
 func TestResolveIDsForEntries_UsesRulesThenSnapshotFallback(t *testing.T) {
 	t.Parallel()
 
