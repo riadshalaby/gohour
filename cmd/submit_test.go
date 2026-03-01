@@ -13,6 +13,7 @@ import (
 
 	"gohour/config"
 	"gohour/onepoint"
+	"gohour/submitter"
 	"gohour/worklog"
 )
 
@@ -456,7 +457,7 @@ func TestDayWorklogsToPersistPayload_SkipsLocked(t *testing.T) {
 		},
 	}
 
-	payload := dayWorklogsToPersistPayload(existing)
+	payload := submitter.DayWorklogsToPersistPayload(existing)
 	if len(payload) != 1 {
 		t.Fatalf("expected one unlocked payload entry, got %d", len(payload))
 	}

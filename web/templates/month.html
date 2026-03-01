@@ -3,7 +3,22 @@
 <div class="nav" style="margin-bottom:0.8rem;">
   <a href="/month/{{ .PreviousMonth }}">Previous</a>
   <a href="/month/{{ .NextMonth }}">Next</a>
+  <button type="button" class="btn-primary" onclick="submitMonth('{{ .CurrentMonth }}')">Submit month</button>
+  <button type="button" onclick="toggleImportForm('month-import-form')">Import file</button>
 </div>
+<form id="month-import-form" class="inline-form" hidden onsubmit="handleImportSubmit(event, { refreshURL: '/month/{{ .CurrentMonth }}' })">
+  <input type="file" name="file" required>
+  <select name="mapper">
+    <option value="epm">epm</option>
+    <option value="generic">generic</option>
+    <option value="atwork">atwork</option>
+  </select>
+  <input type="text" name="project" placeholder="project (optional)">
+  <input type="text" name="activity" placeholder="activity (optional)">
+  <input type="text" name="skill" placeholder="skill (optional)">
+  <button type="submit">Upload</button>
+</form>
+<div id="month-submit-result"></div>
 <table>
   <thead>
     <tr>
@@ -17,14 +32,14 @@
   <tbody>
     {{ range .Rows }}
     <tr>
-      <td>{{ .Date }}</td>
-      <td>{{ fmtHours .LocalHours }}</td>
-      <td>{{ fmtHours .RemoteHours }}</td>
+      <td><span class="js-fmt-date" data-iso="{{ .Date }}">{{ .Date }}</span></td>
+      <td><span class="js-fmt-hours" data-mins="{{ toMins .LocalHours }}">{{ toMins .LocalHours }}</span></td>
+      <td><span class="js-fmt-hours" data-mins="{{ toMins .RemoteHours }}">{{ toMins .RemoteHours }}</span></td>
       <td>
         {{ if ge .DeltaHours 0.0 }}
-        <span class="delta-pos">{{ fmtDelta .DeltaHours }}</span>
+        <span class="delta-pos js-fmt-delta" data-hours="{{ .DeltaHours }}">{{ fmtDelta .DeltaHours }}</span>
         {{ else }}
-        <span class="delta-neg">{{ fmtDelta .DeltaHours }}</span>
+        <span class="delta-neg js-fmt-delta" data-hours="{{ .DeltaHours }}">{{ fmtDelta .DeltaHours }}</span>
         {{ end }}
       </td>
       <td><a href="{{ .DayLink }}">Open</a></td>
@@ -34,12 +49,12 @@
   <tfoot>
     <tr>
       <th>Total</th>
-      <th>{{ fmtHours .TotalLocal }}</th>
-      <th>{{ fmtHours .TotalRemote }}</th>
-      <th>{{ fmtDelta .TotalDelta }}</th>
+      <th><span class="js-fmt-hours" data-mins="{{ toMins .TotalLocal }}">{{ toMins .TotalLocal }}</span></th>
+      <th><span class="js-fmt-hours" data-mins="{{ toMins .TotalRemote }}">{{ toMins .TotalRemote }}</span></th>
+      <th><span class="js-fmt-delta" data-hours="{{ .TotalDelta }}">{{ fmtDelta .TotalDelta }}</span></th>
       <th></th>
     </tr>
   </tfoot>
 </table>
-<div class="footer">Read-only view. No mutations are available.</div>
+<div class="footer">Use month or day actions to import, edit, and submit.</div>
 {{ end }}

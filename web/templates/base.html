@@ -45,7 +45,7 @@
       background: #f8fafb;
     }
     .brand { font-weight: 700; letter-spacing: 0.02em; }
-    .nav { display: flex; align-items: center; gap: 0.6rem; }
+    .nav { display: flex; align-items: center; gap: 0.6rem; flex-wrap: wrap; }
     .nav a, button {
       border: 1px solid var(--border);
       border-radius: 8px;
@@ -56,12 +56,16 @@
       cursor: pointer;
       font: inherit;
     }
-    input[type="month"] {
+    button.btn-danger { border-color: #fca5a5; color: #991b1b; }
+    button.btn-primary { border-color: #1d4ed8; color: #1d4ed8; }
+    input, select {
       border: 1px solid var(--border);
       border-radius: 8px;
       padding: 0.35rem 0.5rem;
       font: inherit;
+      min-width: 0;
     }
+    input[type="month"] { padding: 0.35rem 0.5rem; }
     .content { padding: 1rem 1.25rem 1.25rem; }
     h1 { margin: 0 0 0.8rem; font-size: 1.2rem; }
     table {
@@ -104,6 +108,35 @@
       color: var(--muted);
       font-size: 0.85rem;
     }
+    .inline-form {
+      display: flex;
+      gap: 0.5rem;
+      align-items: center;
+      flex-wrap: wrap;
+      margin-bottom: 0.8rem;
+    }
+    .actions { white-space: nowrap; }
+    .toast {
+      position: fixed;
+      right: 1rem;
+      bottom: 1rem;
+      background: #0f172a;
+      color: #fff;
+      border-radius: 8px;
+      padding: 0.55rem 0.8rem;
+      box-shadow: 0 6px 24px rgba(0, 0, 0, 0.25);
+      z-index: 999;
+      max-width: 420px;
+    }
+    .toast.error { background: #991b1b; }
+    .result-box {
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 0.65rem 0.8rem;
+      margin: 0.6rem 0;
+      background: #fbfdff;
+    }
+    .nowrap { white-space: nowrap; }
   </style>
 </head>
 <body>
@@ -121,6 +154,601 @@
       {{ template "page" . }}
     </main>
   </div>
+  <script>
+    let _lookup = null;
+
+    async function apiFetch(method, url, body, options) {
+      const fetchOptions = { method: method, headers: {}, body: undefined };
+      if (options && options.formData) {
+        fetchOptions.body = options.formData;
+      } else if (body !== undefined && body !== null) {
+        fetchOptions.headers['Content-Type'] = 'application/json';
+        fetchOptions.body = JSON.stringify(body);
+      }
+      const response = await fetch(url, fetchOptions);
+      const contentType = response.headers.get('content-type') || '';
+      const payload = contentType.includes('application/json') ? await response.json() : await response.text();
+      if (!response.ok) {
+        const message = typeof payload === 'string' ? payload : JSON.stringify(payload);
+        throw new Error(message || ('HTTP ' + response.status));
+      }
+      return payload;
+    }
+
+    function showToast(msg, isError) {
+      const existing = document.getElementById('toast');
+      if (existing) {
+        existing.remove();
+      }
+      const toast = document.createElement('div');
+      toast.id = 'toast';
+      toast.className = 'toast' + (isError ? ' error' : '');
+      toast.textContent = msg;
+      document.body.appendChild(toast);
+      setTimeout(() => {
+        const current = document.getElementById('toast');
+        if (current) {
+          current.remove();
+        }
+      }, 2600);
+    }
+
+    function fmtHours(mins) {
+      return new Intl.NumberFormat(navigator.language, {
+        minimumFractionDigits: 2,
+        maximumFractionDigits: 2,
+      }).format(Number(mins) / 60);
+    }
+
+    function fmtTime(hhmm) {
+      const parts = String(hhmm || '').split(':');
+      if (parts.length !== 2) return String(hhmm || '');
+      const d = new Date(2000, 0, 1, Number(parts[0]), Number(parts[1]));
+      return new Intl.DateTimeFormat(navigator.language, { timeStyle: 'short' }).format(d);
+    }
+
+    function fmtDate(iso) {
+      const parts = String(iso || '').split('-');
+      if (parts.length !== 3) return String(iso || '');
+      const d = new Date(Number(parts[0]), Number(parts[1]) - 1, Number(parts[2]));
+      return new Intl.DateTimeFormat(navigator.language, { dateStyle: 'medium' }).format(d);
+    }
+
+    function toMins(hhmm) {
+      const parts = String(hhmm || '').split(':');
+      if (parts.length !== 2) return NaN;
+      const h = Number(parts[0]);
+      const m = Number(parts[1]);
+      if (!Number.isInteger(h) || !Number.isInteger(m) || h < 0 || h > 23 || m < 0 || m > 59) {
+        return NaN;
+      }
+      return h * 60 + m;
+    }
+
+    function recalcBillable(container) {
+      const startInput = container.querySelector('[name=start]');
+      const endInput = container.querySelector('[name=end]');
+      const billableHoursInput = container.querySelector('[name=billableHours]');
+      if (!startInput || !endInput || !billableHoursInput) return;
+
+      const startMins = toMins(startInput.value);
+      const endMins = toMins(endInput.value);
+      const diff = endMins - startMins;
+      if (Number.isFinite(diff) && diff > 0) {
+        billableHoursInput.value = (diff / 60).toFixed(2);
+      }
+    }
+
+    async function getLookup(refresh) {
+      if (!_lookup || refresh) {
+        const url = refresh ? '/api/lookup?refresh=1' : '/api/lookup';
+        _lookup = await apiFetch('GET', url);
+      }
+      return _lookup;
+    }
+
+    function applyLocaleFormatting(root) {
+      const target = root || document;
+      target.querySelectorAll('.js-fmt-hours').forEach((el) => {
+        const mins = Number(el.dataset.mins || '0');
+        if (Number.isFinite(mins)) {
+          el.textContent = fmtHours(mins);
+        }
+      });
+      target.querySelectorAll('.js-fmt-time').forEach((el) => {
+        el.textContent = fmtTime(el.dataset.hhmm || el.textContent);
+      });
+      target.querySelectorAll('.js-fmt-date').forEach((el) => {
+        el.textContent = fmtDate(el.dataset.iso || el.textContent);
+      });
+      target.querySelectorAll('.js-fmt-delta').forEach((el) => {
+        const value = Number(el.dataset.hours || '0');
+        const formatted = new Intl.NumberFormat(navigator.language, {
+          minimumFractionDigits: 2,
+          maximumFractionDigits: 2,
+          signDisplay: 'always',
+        }).format(value);
+        el.textContent = formatted;
+      });
+    }
+
+    function toggleImportForm(id) {
+      const form = document.getElementById(id);
+      if (!form) return;
+      form.hidden = !form.hidden;
+    }
+
+    async function handleImportSubmit(event, options) {
+      event.preventDefault();
+      const form = event.target;
+      const formData = new FormData(form);
+      try {
+        const result = await apiFetch('POST', '/api/import', null, { formData: formData });
+        showToast('Imported ' + result.rowsPersisted + ' row(s).', false);
+        if (options && options.day) {
+          await reloadDayTable(options.day);
+        } else if (options && options.refreshURL) {
+          window.location.href = options.refreshURL;
+        }
+      } catch (err) {
+        showToast(String(err.message || err), true);
+      }
+    }
+
+    function normalizeName(value) {
+      return String(value || '').trim().toLowerCase();
+    }
+
+    function escapeHtml(value) {
+      return String(value)
+        .replaceAll('&', '&amp;')
+        .replaceAll('<', '&lt;')
+        .replaceAll('>', '&gt;')
+        .replaceAll('"', '&quot;')
+        .replaceAll("'", '&#39;');
+    }
+
+    function fillSelectByName(select, items, currentName, getID, getName) {
+      select.innerHTML = '';
+      const currentNorm = normalizeName(currentName);
+      let found = false;
+      for (const item of items) {
+        const name = getName(item);
+        const option = document.createElement('option');
+        option.value = String(getID(item));
+        option.textContent = name;
+        option.dataset.name = name;
+        if (currentNorm && normalizeName(name) === currentNorm && !found) {
+          option.selected = true;
+          found = true;
+        }
+        select.appendChild(option);
+      }
+      if (!found && currentName) {
+        const option = document.createElement('option');
+        option.value = '';
+        option.textContent = currentName + ' (unavailable)';
+        option.dataset.name = currentName;
+        option.disabled = true;
+        option.selected = true;
+        select.appendChild(option);
+      }
+      if (!select.options.length) {
+        const option = document.createElement('option');
+        option.value = '';
+        option.textContent = 'No options';
+        option.disabled = true;
+        option.selected = true;
+        select.appendChild(option);
+      }
+      if (!found && !currentName && select.options.length > 0) {
+        select.selectedIndex = 0;
+      }
+    }
+
+    async function buildLookupSelects(currentProject, currentActivity, currentSkill) {
+      const lookup = await getLookup();
+      const projects = (lookup.projects || []).filter((project) => !project.archived);
+      const activitiesAll = (lookup.activities || []);
+      const skillsAll = (lookup.skills || []);
+
+      const projectSelect = document.createElement('select');
+      projectSelect.name = 'project';
+      const activitySelect = document.createElement('select');
+      activitySelect.name = 'activity';
+      const skillSelect = document.createElement('select');
+      skillSelect.name = 'skill';
+
+      fillSelectByName(projectSelect, projects, currentProject, (item) => item.id, (item) => item.name);
+
+      const rebuildSkills = (selectedSkill) => {
+        const activityID = projectSelect.value && activitySelect.value ? Number(activitySelect.value) : NaN;
+        const skills = skillsAll.filter((skill) => Number(skill.activityId) === activityID);
+        fillSelectByName(skillSelect, skills, selectedSkill || '', (item) => item.id, (item) => item.name);
+      };
+
+      const rebuildActivities = (selectedActivity, selectedSkill) => {
+        const projectID = projectSelect.value ? Number(projectSelect.value) : NaN;
+        const activities = activitiesAll.filter((activity) => Number(activity.projectId) === projectID && !activity.locked);
+        fillSelectByName(activitySelect, activities, selectedActivity || '', (item) => item.id, (item) => item.name);
+        rebuildSkills(selectedSkill || '');
+      };
+
+      rebuildActivities(currentActivity, currentSkill);
+      projectSelect.addEventListener('change', () => rebuildActivities('', ''));
+      activitySelect.addEventListener('change', () => rebuildSkills(''));
+
+      return { projectSelect, activitySelect, skillSelect };
+    }
+
+    function parseDayRow(row) {
+      return {
+        id: Number(row.dataset.id || '0'),
+        date: row.dataset.date,
+        source: row.dataset.source,
+        start: row.dataset.start,
+        end: row.dataset.end,
+        durationMins: Number(row.dataset.durationMins || '0'),
+        project: row.dataset.project,
+        activity: row.dataset.activity,
+        skill: row.dataset.skill,
+        billableMins: Number(row.dataset.billableMins || '0'),
+        description: row.dataset.description || ''
+      };
+    }
+
+    function recalcDuration(row) {
+      const startInput = row.querySelector('[name=start]');
+      const endInput = row.querySelector('[name=end]');
+      const durationCell = row.querySelector('[data-col="duration"]');
+      if (!startInput || !endInput || !durationCell) return;
+      const diff = toMins(endInput.value) - toMins(startInput.value);
+      if (!Number.isFinite(diff) || diff < 0) {
+        return;
+      }
+      row.dataset.durationMins = String(diff);
+      durationCell.innerHTML = '<span class="js-fmt-hours" data-mins="' + diff + '">' + diff + '</span>';
+      applyLocaleFormatting(row);
+    }
+
+    function renderDayRowCells(row, values) {
+      row.dataset.id = String(values.id || 0);
+      row.dataset.date = values.date || row.dataset.date || '';
+      row.dataset.source = values.source || '';
+      row.dataset.start = values.start || '';
+      row.dataset.end = values.end || '';
+      row.dataset.durationMins = String(Number(values.durationMins || 0));
+      row.dataset.project = values.project || '';
+      row.dataset.activity = values.activity || '';
+      row.dataset.skill = values.skill || '';
+      row.dataset.billableMins = String(Number(values.billableMins || 0));
+      row.dataset.description = values.description || '';
+
+      row.querySelector('[data-col="source"]').innerHTML = '<span class="badge badge-' + escapeHtml(row.dataset.source) + '">' + escapeHtml(row.dataset.source) + '</span>';
+      row.querySelector('[data-col="date"]').innerHTML = '<span class="js-fmt-date" data-iso="' + escapeHtml(row.dataset.date) + '">' + escapeHtml(row.dataset.date) + '</span>';
+      row.querySelector('[data-col="start"]').innerHTML = '<span class="js-fmt-time" data-hhmm="' + escapeHtml(row.dataset.start) + '">' + escapeHtml(row.dataset.start) + '</span>';
+      row.querySelector('[data-col="end"]').innerHTML = '<span class="js-fmt-time" data-hhmm="' + escapeHtml(row.dataset.end) + '">' + escapeHtml(row.dataset.end) + '</span>';
+      row.querySelector('[data-col="duration"]').innerHTML = '<span class="js-fmt-hours" data-mins="' + escapeHtml(row.dataset.durationMins) + '">' + escapeHtml(row.dataset.durationMins) + '</span>';
+      row.querySelector('[data-col="project"]').textContent = row.dataset.project;
+      row.querySelector('[data-col="activity"]').textContent = row.dataset.activity;
+      row.querySelector('[data-col="skill"]').textContent = row.dataset.skill;
+      row.querySelector('[data-col="billable"]').innerHTML = '<span class="js-fmt-hours" data-mins="' + escapeHtml(row.dataset.billableMins) + '">' + escapeHtml(row.dataset.billableMins) + '</span>';
+      row.querySelector('[data-col="description"]').textContent = row.dataset.description;
+
+      const actions = row.querySelector('[data-col="actions"]');
+      if (row.dataset.source !== 'remote') {
+        actions.innerHTML = '<button type="button" onclick="editRow(this)">Edit</button> <button type="button" class="btn-danger" onclick="deleteRow(this)">Delete</button>';
+      } else {
+        actions.innerHTML = '<span class="muted">-</span>';
+      }
+      row.dataset.editing = '0';
+      applyLocaleFormatting(row);
+    }
+
+    async function editRow(button) {
+      const row = button.closest('tr');
+      if (!row || row.dataset.source === 'remote' || row.dataset.editing === '1') return;
+      row.dataset.editing = '1';
+
+      const values = parseDayRow(row);
+      let selects;
+      try {
+        selects = await buildLookupSelects(values.project, values.activity, values.skill);
+      } catch (err) {
+        row.dataset.editing = '0';
+        showToast(String(err.message || err), true);
+        return;
+      }
+
+      row.querySelector('[data-col="date"]').innerHTML = '<span class="js-fmt-date" data-iso="' + escapeHtml(values.date) + '">' + escapeHtml(values.date) + '</span>';
+      row.querySelector('[data-col="start"]').innerHTML = '<input type="time" name="start" value="' + escapeHtml(values.start) + '">';
+      row.querySelector('[data-col="end"]').innerHTML = '<input type="time" name="end" value="' + escapeHtml(values.end) + '">';
+      row.querySelector('[data-col="duration"]').innerHTML = '<span class="js-fmt-hours" data-mins="' + escapeHtml(String(values.durationMins)) + '">' + escapeHtml(String(values.durationMins)) + '</span>';
+
+      const projectCell = row.querySelector('[data-col="project"]');
+      projectCell.innerHTML = '';
+      projectCell.appendChild(selects.projectSelect);
+
+      const activityCell = row.querySelector('[data-col="activity"]');
+      activityCell.innerHTML = '';
+      activityCell.appendChild(selects.activitySelect);
+
+      const skillCell = row.querySelector('[data-col="skill"]');
+      skillCell.innerHTML = '';
+      skillCell.appendChild(selects.skillSelect);
+
+      row.querySelector('[data-col="billable"]').innerHTML = '<input type="number" name="billableHours" min="0" step="0.25" value="' + (values.billableMins / 60).toFixed(2) + '" style="width:7rem;"> <span class="muted">hours</span>';
+      row.querySelector('[data-col="description"]').innerHTML = '<input type="text" name="description" value="' + escapeHtml(values.description) + '">';
+      row.querySelector('[data-col="actions"]').innerHTML = '<button type="button" onclick="saveRow(this)">Save</button> <button type="button" onclick="cancelEditRow(this)">Cancel</button>';
+
+      const startInput = row.querySelector('[name=start]');
+      const endInput = row.querySelector('[name=end]');
+      startInput.addEventListener('change', () => { recalcDuration(row); recalcBillable(row); });
+      endInput.addEventListener('change', () => { recalcDuration(row); recalcBillable(row); });
+
+      applyLocaleFormatting(row);
+    }
+
+    function cancelEditRow(button) {
+      const row = button.closest('tr');
+      if (!row) return;
+      renderDayRowCells(row, parseDayRow(row));
+    }
+
+    function selectedName(select, fallback) {
+      if (!select || !select.options.length) return fallback || '';
+      const selected = select.options[select.selectedIndex];
+      return selected.dataset.name || selected.textContent || fallback || '';
+    }
+
+    function collectEditablePayload(row) {
+      const source = parseDayRow(row);
+      const startInput = row.querySelector('[name=start]');
+      const endInput = row.querySelector('[name=end]');
+      const descInput = row.querySelector('[name=description]');
+      const billableHoursInput = row.querySelector('[name=billableHours]');
+      const projectSelect = row.querySelector('[name=project]');
+      const activitySelect = row.querySelector('[name=activity]');
+      const skillSelect = row.querySelector('[name=skill]');
+
+      let billableMins = source.billableMins;
+      if (billableHoursInput) {
+        const hours = Number.parseFloat(billableHoursInput.value);
+        if (Number.isFinite(hours) && hours >= 0) {
+          billableMins = Math.round(hours * 60);
+        }
+      }
+
+      return {
+        date: source.date,
+        start: startInput ? startInput.value : source.start,
+        end: endInput ? endInput.value : source.end,
+        project: selectedName(projectSelect, source.project),
+        activity: selectedName(activitySelect, source.activity),
+        skill: selectedName(skillSelect, source.skill),
+        billable: billableMins,
+        description: descInput ? descInput.value.trim() : source.description
+      };
+    }
+
+    async function saveRow(button) {
+      const row = button.closest('tr');
+      if (!row) return;
+      const id = row.dataset.id;
+      const payload = collectEditablePayload(row);
+      try {
+        await apiFetch('PATCH', '/api/worklog/' + id, payload);
+        renderDayRowCells(row, {
+          id: Number(id),
+          source: row.dataset.source,
+          date: payload.date,
+          start: payload.start,
+          end: payload.end,
+          durationMins: Math.max(0, toMins(payload.end) - toMins(payload.start)),
+          project: payload.project,
+          activity: payload.activity,
+          skill: payload.skill,
+          billableMins: payload.billable,
+          description: payload.description
+        });
+        showToast('Entry updated.', false);
+      } catch (err) {
+        showToast(String(err.message || err), true);
+      }
+    }
+
+    async function deleteRow(button) {
+      const row = button.closest('tr');
+      if (!row) return;
+      if (!confirm('Delete this local entry?')) return;
+      try {
+        await apiFetch('DELETE', '/api/worklog/' + row.dataset.id);
+        row.remove();
+        showToast('Entry deleted.', false);
+      } catch (err) {
+        showToast(String(err.message || err), true);
+      }
+    }
+
+    async function addEntryRow(day) {
+      const tbody = document.getElementById('day-entries');
+      if (!tbody) return;
+
+      let selects;
+      try {
+        selects = await buildLookupSelects('', '', '');
+      } catch (err) {
+        showToast(String(err.message || err), true);
+        return;
+      }
+
+      const row = document.createElement('tr');
+      row.dataset.source = 'new';
+      row.dataset.date = day;
+      row.dataset.start = '09:00';
+      row.dataset.end = '17:00';
+      row.dataset.durationMins = '480';
+      row.dataset.billableMins = '480';
+      row.dataset.description = '';
+      row.innerHTML = '' +
+        '<td data-col="source"><span class="badge badge-new">new</span></td>' +
+        '<td data-col="date"><span class="js-fmt-date" data-iso="' + escapeHtml(day) + '">' + escapeHtml(day) + '</span></td>' +
+        '<td data-col="start"><input type="time" name="start" value="09:00"></td>' +
+        '<td data-col="end"><input type="time" name="end" value="17:00"></td>' +
+        '<td data-col="duration"><span class="js-fmt-hours" data-mins="480">480</span></td>' +
+        '<td data-col="project"></td>' +
+        '<td data-col="activity"></td>' +
+        '<td data-col="skill"></td>' +
+        '<td data-col="billable"><input type="number" name="billableHours" min="0" step="0.25" value="8.00" style="width:7rem;"> <span class="muted">hours</span></td>' +
+        '<td data-col="description"><input type="text" name="description" placeholder="Description"></td>' +
+        '<td data-col="actions" class="actions"><button type="button" onclick="saveNewRow(this)">Save</button> <button type="button" onclick="this.closest(\'tr\').remove()">Cancel</button></td>';
+
+      row.querySelector('[data-col="project"]').appendChild(selects.projectSelect);
+      row.querySelector('[data-col="activity"]').appendChild(selects.activitySelect);
+      row.querySelector('[data-col="skill"]').appendChild(selects.skillSelect);
+
+      const startInput = row.querySelector('[name=start]');
+      const endInput = row.querySelector('[name=end]');
+      startInput.addEventListener('change', () => { recalcDuration(row); recalcBillable(row); });
+      endInput.addEventListener('change', () => { recalcDuration(row); recalcBillable(row); });
+
+      tbody.appendChild(row);
+      applyLocaleFormatting(row);
+    }
+
+    async function saveNewRow(button) {
+      const row = button.closest('tr');
+      if (!row) return;
+      const payload = collectEditablePayload(row);
+      try {
+        const result = await apiFetch('POST', '/api/worklog', payload);
+        renderDayRowCells(row, {
+          id: Number(result.id),
+          source: 'new',
+          date: payload.date,
+          start: payload.start,
+          end: payload.end,
+          durationMins: Math.max(0, toMins(payload.end) - toMins(payload.start)),
+          project: payload.project,
+          activity: payload.activity,
+          skill: payload.skill,
+          billableMins: payload.billable,
+          description: payload.description
+        });
+        showToast('Entry created.', false);
+      } catch (err) {
+        showToast(String(err.message || err), true);
+      }
+    }
+
+    async function reloadDayTable(day) {
+      const payload = await apiFetch('GET', '/api/day/' + encodeURIComponent(day));
+      const entries = payload.entries || payload.Entries || [];
+      const tbody = document.getElementById('day-entries');
+      if (!tbody) return;
+      tbody.innerHTML = '';
+      for (const entry of entries) {
+        appendDayEntryRow(entry, day);
+      }
+
+      const localHours = Number(payload.localHours !== undefined ? payload.localHours : payload.LocalHours || 0);
+      const remoteHours = Number(payload.remoteHours !== undefined ? payload.remoteHours : payload.RemoteHours || 0);
+      const localNode = document.getElementById('day-local-hours');
+      const remoteNode = document.getElementById('day-remote-hours');
+      if (localNode) {
+        localNode.dataset.mins = String(Math.round(localHours * 60));
+      }
+      if (remoteNode) {
+        remoteNode.dataset.mins = String(Math.round(remoteHours * 60));
+      }
+      applyLocaleFormatting(document);
+    }
+
+    function appendDayEntryRow(entry, day) {
+      const tbody = document.getElementById('day-entries');
+      if (!tbody) return;
+      const row = document.createElement('tr');
+      row.innerHTML = '' +
+        '<td data-col="source"></td>' +
+        '<td data-col="date"></td>' +
+        '<td data-col="start"></td>' +
+        '<td data-col="end"></td>' +
+        '<td data-col="duration"></td>' +
+        '<td data-col="project"></td>' +
+        '<td data-col="activity"></td>' +
+        '<td data-col="skill"></td>' +
+        '<td data-col="billable"></td>' +
+        '<td data-col="description"></td>' +
+        '<td data-col="actions" class="actions"></td>';
+
+      renderDayRowCells(row, {
+        id: Number(entry.ID || entry.id || 0),
+        source: String(entry.Source || entry.source || ''),
+        date: day,
+        start: String(entry.Start || entry.start || ''),
+        end: String(entry.End || entry.end || ''),
+        durationMins: Number(entry.DurationMins !== undefined ? entry.DurationMins : entry.durationMins || 0),
+        project: String(entry.Project || entry.project || ''),
+        activity: String(entry.Activity || entry.activity || ''),
+        skill: String(entry.Skill || entry.skill || ''),
+        billableMins: Number(entry.BillableMins !== undefined ? entry.BillableMins : entry.billableMins || 0),
+        description: String(entry.Description || entry.description || '')
+      });
+      tbody.appendChild(row);
+    }
+
+    async function submitDay(date) {
+      const target = document.getElementById('day-submit-result');
+      if (target) target.textContent = 'Submitting...';
+      try {
+        const result = await apiFetch('POST', '/api/submit/day/' + encodeURIComponent(date));
+        if (target) {
+          target.className = 'result-box';
+          target.textContent = 'Added: ' + result.submitted + ' | Duplicates: ' + result.duplicates + ' | Overlaps: ' + result.overlaps + ' | Locked days: ' + result.lockedDays.length;
+        }
+        await reloadDayTable(date);
+        showToast('Day submission finished.', false);
+      } catch (err) {
+        if (target) {
+          target.className = 'result-box';
+          target.textContent = String(err.message || err);
+        }
+        showToast(String(err.message || err), true);
+      }
+    }
+
+    async function submitMonth(month) {
+      const target = document.getElementById('month-submit-result');
+      if (target) target.innerHTML = '<div class="result-box">Submitting month...</div>';
+      try {
+        const result = await apiFetch('POST', '/api/submit/month/' + encodeURIComponent(month));
+        if (target) {
+          target.innerHTML = renderMonthSubmitResult(result);
+          applyLocaleFormatting(target);
+        }
+        showToast('Month submission finished.', false);
+      } catch (err) {
+        if (target) {
+          target.innerHTML = '<div class="result-box">' + escapeHtml(String(err.message || err)) + '</div>';
+        }
+        showToast(String(err.message || err), true);
+      }
+    }
+
+    function renderMonthSubmitResult(result) {
+      let html = '<div class="result-box">Added: ' + result.submitted + ' | Duplicates: ' + result.duplicates + ' | Overlaps: ' + result.overlaps + ' | Locked days: ' + result.lockedDays.length + '</div>';
+      html += '<table><thead><tr><th>Date</th><th>Added</th><th>Duplicates</th><th>Overlaps</th><th>Locked</th></tr></thead><tbody>';
+      for (const day of (result.days || [])) {
+        html += '<tr><td><span class="js-fmt-date" data-iso="' + escapeHtml(day.date) + '">' + escapeHtml(day.date) + '</span></td><td>' + day.added + '</td><td>' + day.duplicates + '</td><td>' + day.overlaps + '</td><td>' + (day.locked ? 'yes' : 'no') + '</td></tr>';
+      }
+      html += '</tbody></table>';
+      return html;
+    }
+
+    document.addEventListener('DOMContentLoaded', () => {
+      applyLocaleFormatting(document);
+    });
+  </script>
 </body>
 </html>
 {{ end }}

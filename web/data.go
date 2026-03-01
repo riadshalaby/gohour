@@ -5,6 +5,7 @@ import (
 	"sort"
 	"time"
 
+	"gohour/internal/timeutil"
 	"gohour/onepoint"
 	"gohour/worklog"
 )
@@ -17,14 +18,16 @@ type DayRow struct {
 }
 
 type EntryRow struct {
-	Source      string
-	Start       string
-	End         string
-	Project     string
-	Activity    string
-	Skill       string
-	Billable    int
-	Description string
+	ID           int64
+	Source       string
+	Start        string
+	End          string
+	DurationMins int
+	Project      string
+	Activity     string
+	Skill        string
+	BillableMins int
+	Description  string
 }
 
 type MonthDayRow struct {
@@ -47,7 +50,7 @@ func BuildDailyView(local []worklog.Entry, remote []onepoint.DayWorklog) []DayRo
 	days := make(map[string]time.Time)
 
 	for _, entry := range local {
-		day := startOfDay(entry.StartDateTime)
+		day := timeutil.StartOfDay(entry.StartDateTime)
 		key := day.Format("2006-01-02")
 		localByDay[key] = append(localByDay[key], entry)
 		days[key] = day
@@ -57,7 +60,7 @@ func BuildDailyView(local []worklog.Entry, remote []onepoint.DayWorklog) []DayRo
 		if err != nil {
 			continue
 		}
-		day = startOfDay(day)
+		day = timeutil.StartOfDay(day)
 		key := day.Format("2006-01-02")
 		remoteByDay[key] = append(remoteByDay[key], item)
 		days[key] = day
@@ -99,14 +102,16 @@ func BuildDailyView(local []worklog.Entry, remote []onepoint.DayWorklog) []DayRo
 			localPayload = append(localPayload, payload)
 
 			rows = append(rows, EntryRow{
-				Source:      classifyLocalEntry(payload, remotePayload),
-				Start:       entry.StartDateTime.Format("15:04"),
-				End:         entry.EndDateTime.Format("15:04"),
-				Project:     entry.Project,
-				Activity:    entry.Activity,
-				Skill:       entry.Skill,
-				Billable:    entry.Billable,
-				Description: entry.Description,
+				ID:           entry.ID,
+				Source:       classifyLocalEntry(payload, remotePayload),
+				Start:        entry.StartDateTime.Format("15:04"),
+				End:          entry.EndDateTime.Format("15:04"),
+				DurationMins: max(0, timeutil.MinutesFromMidnight(entry.EndDateTime)-timeutil.MinutesFromMidnight(entry.StartDateTime)),
+				Project:      entry.Project,
+				Activity:     entry.Activity,
+				Skill:        entry.Skill,
+				BillableMins: entry.Billable,
+				Description:  entry.Description,
 			})
 			localHours += hoursFromMinutes(entry.Billable)
 		}
@@ -122,14 +127,15 @@ func BuildDailyView(local []worklog.Entry, remote []onepoint.DayWorklog) []DayRo
 				continue
 			}
 			rows = append(rows, EntryRow{
-				Source:      "remote",
-				Start:       minutesToClock(item.StartTime),
-				End:         minutesToClock(item.FinishTime),
-				Project:     fmt.Sprintf("%d", item.ProjectID),
-				Activity:    fmt.Sprintf("%d", item.ActivityID),
-				Skill:       fmt.Sprintf("%d", item.SkillID),
-				Billable:    item.Billable,
-				Description: item.Comment,
+				Source:       "remote",
+				Start:        minutesToClock(item.StartTime),
+				End:          minutesToClock(item.FinishTime),
+				DurationMins: max(0, item.FinishTime-item.StartTime),
+				Project:      fmt.Sprintf("%d", item.ProjectID),
+				Activity:     fmt.Sprintf("%d", item.ActivityID),
+				Skill:        fmt.Sprintf("%d", item.SkillID),
+				BillableMins: item.Billable,
+				Description:  item.Comment,
 			})
 		}
 
@@ -163,7 +169,7 @@ func BuildMonthlyView(days []DayRow) MonthSummary {
 	for _, day := range sorted {
 		delta := day.LocalHours - day.RemoteHours
 		summary.Days = append(summary.Days, MonthDayRow{
-			Date:        startOfDay(day.Date),
+			Date:        timeutil.StartOfDay(day.Date),
 			LocalHours:  day.LocalHours,
 			RemoteHours: day.RemoteHours,
 			DeltaHours:  delta,
@@ -206,8 +212,8 @@ func hasSameTimeRange(a, b onepoint.PersistWorklog) bool {
 }
 
 func localEntryToPersistWorklog(entry worklog.Entry) onepoint.PersistWorklog {
-	start := minutesFromMidnight(entry.StartDateTime)
-	finish := minutesFromMidnight(entry.EndDateTime)
+	start := timeutil.MinutesFromMidnight(entry.StartDateTime)
+	finish := timeutil.MinutesFromMidnight(entry.EndDateTime)
 	duration := int(entry.EndDateTime.Sub(entry.StartDateTime).Minutes())
 	if duration < 0 {
 		duration = 0
@@ -216,7 +222,7 @@ func localEntryToPersistWorklog(entry worklog.Entry) onepoint.PersistWorklog {
 		TimeRecordID: -1,
 		WorkSlipID:   -1,
 		WorkRecordID: -1,
-		WorklogDate:  onepoint.FormatDay(startOfDay(entry.StartDateTime)),
+		WorklogDate:  onepoint.FormatDay(timeutil.StartOfDay(entry.StartDateTime)),
 		StartTime:    &start,
 		FinishTime:   &finish,
 		Duration:     duration,
@@ -235,14 +241,6 @@ func remotePayloadFor(values []onepoint.DayWorklog) []onepoint.PersistWorklog {
 		out = append(out, item.ToPersistWorklog())
 	}
 	return out
-}
-
-func startOfDay(value time.Time) time.Time {
-	return time.Date(value.Year(), value.Month(), value.Day(), 0, 0, 0, 0, value.Location())
-}
-
-func minutesFromMidnight(value time.Time) int {
-	return value.Hour()*60 + value.Minute()
 }
 
 func hoursFromMinutes(minutes int) float64 {

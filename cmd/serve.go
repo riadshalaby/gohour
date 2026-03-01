@@ -13,6 +13,7 @@ import (
 	"syscall"
 	"time"
 
+	"gohour/config"
 	"gohour/onepoint"
 	"gohour/storage"
 	"gohour/web"
@@ -44,6 +45,11 @@ The UI is read-only and compares local SQLite entries against current OnePoint e
   gohour serve --port 9090 --db ./gohour.db --url https://onepoint.virtual7.io/onepoint/faces/home --state-file ~/.gohour/onepoint-auth-state.json
 `,
 	RunE: func(cmd *cobra.Command, args []string) error {
+		cfg, err := config.LoadAndValidate()
+		if err != nil {
+			return err
+		}
+
 		bounds, err := parseServeMonthBounds(serveFromMonth, serveToMonth)
 		if err != nil {
 			return err
@@ -82,7 +88,7 @@ The UI is read-only and compares local SQLite entries against current OnePoint e
 		addr := fmt.Sprintf(":%d", servePort)
 		server := &http.Server{
 			Addr:    addr,
-			Handler: withServeMonthRedirect(web.NewServer(store, client), bounds),
+			Handler: withServeMonthRedirect(web.NewServer(store, client, *cfg), bounds),
 		}
 
 		errCh := make(chan error, 1)

@@ -41,6 +41,11 @@ This command validates the configuration before printing values.`,
 				fmt.Printf("rules[%d].activity: %s\n", i, rule.Activity)
 				fmt.Printf("rules[%d].skill_id: %d\n", i, rule.SkillID)
 				fmt.Printf("rules[%d].skill: %s\n", i, rule.Skill)
+				billableStr := "true (default)"
+				if rule.Billable != nil {
+					billableStr = fmt.Sprintf("%t", *rule.Billable)
+				}
+				fmt.Printf("rules[%d].billable: %s\n", i, billableStr)
 			}
 		}
 

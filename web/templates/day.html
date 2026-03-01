@@ -1,39 +1,72 @@
 {{ define "page" }}
-<h1>Day detail: {{ .Day }}</h1>
+<h1>Day detail: <span class="js-fmt-date" data-iso="{{ .Day }}">{{ .Day }}</span></h1>
 <div class="nav" style="margin-bottom:0.8rem;">
   <a href="/month/{{ .CurrentMonth }}">Back to month</a>
   <a href="/api/day/{{ .Day }}">JSON</a>
+  <button type="button" class="btn-primary" onclick="submitDay('{{ .Day }}')">Submit day</button>
+  <button type="button" onclick="toggleImportForm('day-import-form')">Import file</button>
 </div>
+<form id="day-import-form" class="inline-form" hidden onsubmit="handleImportSubmit(event, { day: '{{ .Day }}' })">
+  <input type="file" name="file" required>
+  <select name="mapper">
+    <option value="epm">epm</option>
+    <option value="generic">generic</option>
+    <option value="atwork">atwork</option>
+  </select>
+  <input type="text" name="project" placeholder="project (optional)">
+  <input type="text" name="activity" placeholder="activity (optional)">
+  <input type="text" name="skill" placeholder="skill (optional)">
+  <button type="submit">Upload</button>
+</form>
+<div id="day-submit-result"></div>
 <p class="muted" style="margin-top:0;">
-  Local hours: {{ fmtHours .DayRow.LocalHours }} | Remote hours: {{ fmtHours .DayRow.RemoteHours }}
+  Local hours: <span id="day-local-hours" class="js-fmt-hours" data-mins="{{ toMins .DayRow.LocalHours }}">{{ toMins .DayRow.LocalHours }}</span>
+  |
+  Remote hours: <span id="day-remote-hours" class="js-fmt-hours" data-mins="{{ toMins .DayRow.RemoteHours }}">{{ toMins .DayRow.RemoteHours }}</span>
 </p>
 <table>
   <thead>
     <tr>
       <th>Source</th>
+      <th>Date</th>
       <th>Start</th>
       <th>End</th>
+      <th>Duration</th>
       <th>Project</th>
       <th>Activity</th>
       <th>Skill</th>
       <th>Billable</th>
       <th>Description</th>
+      <th>Actions</th>
     </tr>
   </thead>
-  <tbody>
+  <tbody id="day-entries">
     {{ range .DayRow.Entries }}
-    <tr>
-      <td><span class="badge badge-{{ .Source }}">{{ .Source }}</span></td>
-      <td>{{ .Start }}</td>
-      <td>{{ .End }}</td>
-      <td>{{ .Project }}</td>
-      <td>{{ .Activity }}</td>
-      <td>{{ .Skill }}</td>
-      <td>{{ .Billable }}</td>
-      <td>{{ .Description }}</td>
+    <tr data-id="{{ .ID }}" data-date="{{ $.Day }}" data-source="{{ .Source }}" data-start="{{ .Start }}" data-end="{{ .End }}" data-duration-mins="{{ .DurationMins }}" data-project="{{ .Project }}" data-activity="{{ .Activity }}" data-skill="{{ .Skill }}" data-billable-mins="{{ .BillableMins }}" data-description="{{ .Description }}">
+      <td data-col="source"><span class="badge badge-{{ .Source }}">{{ .Source }}</span></td>
+      <td data-col="date"><span class="js-fmt-date" data-iso="{{ $.Day }}">{{ $.Day }}</span></td>
+      <td data-col="start"><span class="js-fmt-time" data-hhmm="{{ .Start }}">{{ .Start }}</span></td>
+      <td data-col="end"><span class="js-fmt-time" data-hhmm="{{ .End }}">{{ .End }}</span></td>
+      <td data-col="duration"><span class="js-fmt-hours" data-mins="{{ .DurationMins }}">{{ .DurationMins }}</span></td>
+      <td data-col="project">{{ .Project }}</td>
+      <td data-col="activity">{{ .Activity }}</td>
+      <td data-col="skill">{{ .Skill }}</td>
+      <td data-col="billable"><span class="js-fmt-hours" data-mins="{{ .BillableMins }}">{{ .BillableMins }}</span></td>
+      <td data-col="description">{{ .Description }}</td>
+      <td data-col="actions" class="actions">
+        {{ if ne .Source "remote" }}
+        <button type="button" onclick="editRow(this)">Edit</button>
+        <button type="button" class="btn-danger" onclick="deleteRow(this)">Delete</button>
+        {{ else }}
+        <span class="muted">-</span>
+        {{ end }}
+      </td>
     </tr>
     {{ end }}
   </tbody>
 </table>
-<div class="footer">Read-only view. No mutations are available.</div>
+<div class="nav" style="margin-top:0.8rem;">
+  <button type="button" onclick="addEntryRow('{{ .Day }}')">Add entry</button>
+</div>
+<div class="footer">Duration is read-only; Billable auto-fills from Start/End and can be overridden.</div>
 {{ end }}
