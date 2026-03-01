@@ -2,6 +2,7 @@ package storage
 
 import (
 	"database/sql"
+	"errors"
 	"fmt"
 	"gohour/worklog"
 	"strings"
@@ -13,6 +14,8 @@ import (
 type SQLiteStore struct {
 	db *sql.DB
 }
+
+var ErrWorklogNotFound = errors.New("worklog not found")
 
 func OpenSQLite(path string) (*SQLiteStore, error) {
 	db, err := sql.Open("sqlite", path)
@@ -39,12 +42,15 @@ func (s *SQLiteStore) Close() error {
 }
 
 func (s *SQLiteStore) ensureSchema() error {
+	// NOTE: billable changed from CHECK(billable > 0) to CHECK(billable >= 0).
+	// Existing databases are not auto-migrated; delete gohour.db and re-import
+	// source files to apply the new constraint and preserve correct dedup behavior.
 	const schema = `
 CREATE TABLE IF NOT EXISTS worklogs (
 	id INTEGER PRIMARY KEY AUTOINCREMENT,
 	start_datetime TEXT NOT NULL,
 	end_datetime TEXT NOT NULL,
-	billable INTEGER NOT NULL CHECK(billable > 0),
+	billable INTEGER NOT NULL CHECK(billable >= 0),
 	description TEXT NOT NULL,
 	project TEXT NOT NULL,
 	activity TEXT NOT NULL,
@@ -169,6 +175,58 @@ INSERT OR IGNORE INTO worklogs (
 	return inserted, nil
 }
 
+// InsertWorklog inserts one worklog entry and returns the new row ID when inserted.
+// The second return value is false when the row is ignored by the UNIQUE constraint.
+func (s *SQLiteStore) InsertWorklog(entry worklog.Entry) (int64, bool, error) {
+	const insertStmt = `
+INSERT OR IGNORE INTO worklogs (
+	start_datetime,
+	end_datetime,
+	billable,
+	description,
+	project,
+	activity,
+	skill,
+	source_format,
+	source_mapper,
+	source_file
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?);`
+
+	res, err := s.db.Exec(
+		insertStmt,
+		entry.StartDateTime.Format(time.RFC3339),
+		entry.EndDateTime.Format(time.RFC3339),
+		entry.Billable,
+		entry.Description,
+		entry.Project,
+		entry.Activity,
+		entry.Skill,
+		entry.SourceFormat,
+		entry.SourceMapper,
+		entry.SourceFile,
+	)
+	if err != nil {
+		return 0, false, fmt.Errorf("insert worklog: %w", err)
+	}
+
+	rows, err := res.RowsAffected()
+	if err != nil {
+		return 0, false, fmt.Errorf("read inserted row count: %w", err)
+	}
+	if rows == 0 {
+		return 0, false, nil
+	}
+
+	id, err := res.LastInsertId()
+	if err != nil {
+		return 0, false, fmt.Errorf("read inserted row id: %w", err)
+	}
+	if id <= 0 {
+		return 0, false, fmt.Errorf("invalid inserted row id %d", id)
+	}
+	return id, true, nil
+}
+
 func (s *SQLiteStore) ListWorklogs() ([]worklog.Entry, error) {
 	const query = `
 SELECT
@@ -236,6 +294,128 @@ ORDER BY start_datetime, id;
 	}
 
 	return entries, nil
+}
+
+// GetWorklogByID returns one worklog by ID.
+func (s *SQLiteStore) GetWorklogByID(id int64) (worklog.Entry, bool, error) {
+	if id <= 0 {
+		return worklog.Entry{}, false, fmt.Errorf("worklog id must be > 0")
+	}
+
+	const query = `
+SELECT
+	id,
+	start_datetime,
+	end_datetime,
+	billable,
+	description,
+	project,
+	activity,
+	skill,
+	source_format,
+	source_mapper,
+	source_file
+FROM worklogs
+WHERE id = ?;
+`
+
+	var (
+		entry    worklog.Entry
+		startRaw string
+		endRaw   string
+	)
+
+	err := s.db.QueryRow(query, id).Scan(
+		&entry.ID,
+		&startRaw,
+		&endRaw,
+		&entry.Billable,
+		&entry.Description,
+		&entry.Project,
+		&entry.Activity,
+		&entry.Skill,
+		&entry.SourceFormat,
+		&entry.SourceMapper,
+		&entry.SourceFile,
+	)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return worklog.Entry{}, false, nil
+		}
+		return worklog.Entry{}, false, fmt.Errorf("query worklog %d: %w", id, err)
+	}
+
+	entry.StartDateTime, err = time.Parse(time.RFC3339, startRaw)
+	if err != nil {
+		return worklog.Entry{}, false, fmt.Errorf("parse start datetime %q: %w", startRaw, err)
+	}
+	entry.EndDateTime, err = time.Parse(time.RFC3339, endRaw)
+	if err != nil {
+		return worklog.Entry{}, false, fmt.Errorf("parse end datetime %q: %w", endRaw, err)
+	}
+
+	return entry, true, nil
+}
+
+// UpdateWorklog replaces all user-editable fields for the row with the given ID.
+func (s *SQLiteStore) UpdateWorklog(entry worklog.Entry) error {
+	if entry.ID <= 0 {
+		return fmt.Errorf("worklog id must be > 0")
+	}
+
+	const updateStmt = `
+UPDATE worklogs
+SET start_datetime = ?,
+	end_datetime = ?,
+	billable = ?,
+	description = ?,
+	project = ?,
+	activity = ?,
+	skill = ?
+WHERE id = ?;`
+
+	res, err := s.db.Exec(
+		updateStmt,
+		entry.StartDateTime.Format(time.RFC3339),
+		entry.EndDateTime.Format(time.RFC3339),
+		entry.Billable,
+		entry.Description,
+		entry.Project,
+		entry.Activity,
+		entry.Skill,
+		entry.ID,
+	)
+	if err != nil {
+		return fmt.Errorf("update worklog %d: %w", entry.ID, err)
+	}
+
+	rowsAffected, err := res.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("read updated row count: %w", err)
+	}
+	if rowsAffected == 0 {
+		return ErrWorklogNotFound
+	}
+
+	return nil
+}
+
+// DeleteWorklog removes the row with the given ID.
+func (s *SQLiteStore) DeleteWorklog(id int64) (bool, error) {
+	if id <= 0 {
+		return false, fmt.Errorf("worklog id must be > 0")
+	}
+
+	res, err := s.db.Exec(`DELETE FROM worklogs WHERE id = ?;`, id)
+	if err != nil {
+		return false, fmt.Errorf("delete worklog %d: %w", id, err)
+	}
+
+	rowsAffected, err := res.RowsAffected()
+	if err != nil {
+		return false, fmt.Errorf("read deleted row count: %w", err)
+	}
+	return rowsAffected > 0, nil
 }
 
 func (s *SQLiteStore) UpdateWorklogTimes(entries []worklog.Entry) (int, error) {

@@ -167,3 +167,54 @@ func TestBuildMonthlyView(t *testing.T) {
 		t.Fatalf("unexpected total delta: %.2f", summary.TotalDeltaHours)
 	}
 }
+
+func TestBuildDailyView_DurationMins(t *testing.T) {
+	t.Parallel()
+
+	day := time.Date(2026, 3, 1, 9, 0, 0, 0, time.Local)
+	local := []worklog.Entry{
+		{
+			StartDateTime: day,
+			EndDateTime:   day.Add(90 * time.Minute),
+			Billable:      90,
+			Project:       "P",
+			Activity:      "A",
+			Skill:         "S",
+		},
+	}
+
+	rows := BuildDailyView(local, nil)
+	if len(rows) != 1 || len(rows[0].Entries) != 1 {
+		t.Fatalf("unexpected rows: %+v", rows)
+	}
+	if got := rows[0].Entries[0].DurationMins; got != 90 {
+		t.Fatalf("expected duration mins = 90, got %d", got)
+	}
+}
+
+func TestBuildDailyView_DurationIndependentOfBillable(t *testing.T) {
+	t.Parallel()
+
+	day := time.Date(2026, 3, 1, 9, 0, 0, 0, time.Local)
+	local := []worklog.Entry{
+		{
+			StartDateTime: day,
+			EndDateTime:   day.Add(90 * time.Minute),
+			Billable:      0,
+			Project:       "P",
+			Activity:      "A",
+			Skill:         "S",
+		},
+	}
+
+	rows := BuildDailyView(local, nil)
+	if len(rows) != 1 || len(rows[0].Entries) != 1 {
+		t.Fatalf("unexpected rows: %+v", rows)
+	}
+	if got := rows[0].Entries[0].DurationMins; got != 90 {
+		t.Fatalf("expected duration mins = 90, got %d", got)
+	}
+	if got := rows[0].Entries[0].BillableMins; got != 0 {
+		t.Fatalf("expected billable mins = 0, got %d", got)
+	}
+}

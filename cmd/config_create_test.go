@@ -1,10 +1,14 @@
 package cmd
 
 import (
+	"bytes"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"gohour/config"
 
 	"github.com/spf13/viper"
 )
@@ -69,4 +73,86 @@ func TestSaveDefaultConfigDoesNotOverwriteExistingFile(t *testing.T) {
 	if string(content) != original {
 		t.Fatalf("expected existing config to remain unchanged")
 	}
+}
+
+func TestConfigShow_PrintsRuleBillable(t *testing.T) {
+	t.Cleanup(func() {
+		cfgFile = ""
+		viper.Reset()
+	})
+
+	tmpConfig := filepath.Join(t.TempDir(), "config-show.yaml")
+	content := `onepoint:
+  url: "https://onepoint.virtual7.io/onepoint/faces/home"
+import:
+  auto_reconcile_after_import: true
+rules:
+  - name: "rule-false"
+    mapper: "generic"
+    file_template: "a.csv"
+    billable: false
+    project_id: 1
+    project: "P1"
+    activity_id: 2
+    activity: "A1"
+    skill_id: 3
+    skill: "S1"
+  - name: "rule-default"
+    mapper: "generic"
+    file_template: "b.csv"
+    project_id: 4
+    project: "P2"
+    activity_id: 5
+    activity: "A2"
+    skill_id: 6
+    skill: "S2"
+`
+	if err := os.WriteFile(tmpConfig, []byte(content), 0o644); err != nil {
+		t.Fatalf("write config file: %v", err)
+	}
+
+	viper.Reset()
+	config.SetDefaults()
+	viper.SetConfigFile(tmpConfig)
+	if err := viper.ReadInConfig(); err != nil {
+		t.Fatalf("read config: %v", err)
+	}
+
+	out := captureStdout(t, func() {
+		configShowCmd.Run(configShowCmd, nil)
+	})
+
+	if !strings.Contains(out, "rules[0].billable: false") {
+		t.Fatalf("expected explicit false billable in output, got:\n%s", out)
+	}
+	if !strings.Contains(out, "rules[1].billable: true (default)") {
+		t.Fatalf("expected default billable in output, got:\n%s", out)
+	}
+}
+
+func captureStdout(t *testing.T, fn func()) string {
+	t.Helper()
+
+	old := os.Stdout
+	r, w, err := os.Pipe()
+	if err != nil {
+		t.Fatalf("create stdout pipe: %v", err)
+	}
+	os.Stdout = w
+
+	runDone := make(chan struct{})
+	var buf bytes.Buffer
+	go func() {
+		_, _ = io.Copy(&buf, r)
+		close(runDone)
+	}()
+
+	fn()
+
+	_ = w.Close()
+	os.Stdout = old
+	<-runDone
+	_ = r.Close()
+
+	return buf.String()
 }
