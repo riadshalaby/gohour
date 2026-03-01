@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"os"
 	"strings"
 	"testing"
 	"time"
@@ -429,6 +430,117 @@ func TestHandleOverlaps_GlobalSkipAll(t *testing.T) {
 	}
 	if len(out) != 0 {
 		t.Fatalf("expected overlaps to be skipped, got %d", len(out))
+	}
+}
+
+func TestHandleOverlaps_InteractiveInvalidThenWrite(t *testing.T) {
+	overlaps := []onepoint.OverlapInfo{
+		{
+			Local: onepoint.PersistWorklog{
+				WorklogDate: "05-03-2026",
+				StartTime:   submitIntPtr(540),
+				FinishTime:  submitIntPtr(600),
+				Comment:     "local",
+			},
+			Existing: onepoint.PersistWorklog{
+				StartTime:  submitIntPtr(570),
+				FinishTime: submitIntPtr(630),
+				Comment:    "existing",
+			},
+		},
+	}
+
+	restore := withTemporaryStdin(t, "x\nw\n")
+	defer restore()
+
+	out, err := handleOverlaps(overlaps, false, new(bool), new(bool))
+	if err != nil {
+		t.Fatalf("handle overlaps: %v", err)
+	}
+	if len(out) != 1 {
+		t.Fatalf("expected one overlap to be approved, got %d", len(out))
+	}
+}
+
+func TestHandleOverlaps_InteractiveAbort(t *testing.T) {
+	overlaps := []onepoint.OverlapInfo{
+		{
+			Local: onepoint.PersistWorklog{
+				WorklogDate: "05-03-2026",
+				StartTime:   submitIntPtr(540),
+				FinishTime:  submitIntPtr(600),
+			},
+			Existing: onepoint.PersistWorklog{
+				StartTime:  submitIntPtr(570),
+				FinishTime: submitIntPtr(630),
+			},
+		},
+	}
+
+	restore := withTemporaryStdin(t, "a\n")
+	defer restore()
+
+	_, err := handleOverlaps(overlaps, false, new(bool), new(bool))
+	if err == nil {
+		t.Fatalf("expected abort error")
+	}
+	if !strings.Contains(err.Error(), "aborted by user") {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+func TestDayWorklogsToPersistPayload_SkipsLocked(t *testing.T) {
+	t.Parallel()
+
+	existing := []onepoint.DayWorklog{
+		{
+			TimeRecordID: 1,
+			Locked:       1,
+			StartTime:    540,
+			FinishTime:   600,
+			ProjectID:    10,
+			ActivityID:   20,
+			SkillID:      30,
+		},
+		{
+			TimeRecordID: 2,
+			Locked:       0,
+			StartTime:    600,
+			FinishTime:   660,
+			ProjectID:    10,
+			ActivityID:   20,
+			SkillID:      30,
+		},
+	}
+
+	payload := dayWorklogsToPersistPayload(existing)
+	if len(payload) != 1 {
+		t.Fatalf("expected one unlocked payload entry, got %d", len(payload))
+	}
+	if payload[0].TimeRecordID != 2 {
+		t.Fatalf("expected unlocked entry, got timerecordId=%d", payload[0].TimeRecordID)
+	}
+}
+
+func withTemporaryStdin(t *testing.T, input string) func() {
+	t.Helper()
+
+	old := os.Stdin
+	r, w, err := os.Pipe()
+	if err != nil {
+		t.Fatalf("create stdin pipe: %v", err)
+	}
+	if _, err := io.WriteString(w, input); err != nil {
+		t.Fatalf("write stdin pipe: %v", err)
+	}
+	if err := w.Close(); err != nil {
+		t.Fatalf("close stdin writer: %v", err)
+	}
+
+	os.Stdin = r
+	return func() {
+		os.Stdin = old
+		_ = r.Close()
 	}
 }
 

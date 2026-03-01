@@ -406,6 +406,52 @@ func TestWorklogTimeOverlaps_FalseForDuplicates(t *testing.T) {
 	}
 }
 
+func TestWorklogTimeOverlaps_FalseWhenTouchingBoundary(t *testing.T) {
+	t.Parallel()
+
+	left := PersistWorklog{
+		StartTime:  intPtr(540),
+		FinishTime: intPtr(600),
+		ProjectID:  ID(10),
+		ActivityID: ID(20),
+		SkillID:    ID(30),
+	}
+	right := PersistWorklog{
+		StartTime:  intPtr(600),
+		FinishTime: intPtr(660),
+		ProjectID:  ID(10),
+		ActivityID: ID(20),
+		SkillID:    ID(31),
+	}
+
+	if WorklogTimeOverlaps(left, right) {
+		t.Fatalf("expected boundary-touching ranges to not overlap")
+	}
+}
+
+func TestWorklogTimeOverlaps_FalseWithMissingTimes(t *testing.T) {
+	t.Parallel()
+
+	left := PersistWorklog{
+		StartTime:  nil,
+		FinishTime: intPtr(600),
+		ProjectID:  ID(10),
+		ActivityID: ID(20),
+		SkillID:    ID(30),
+	}
+	right := PersistWorklog{
+		StartTime:  intPtr(570),
+		FinishTime: intPtr(630),
+		ProjectID:  ID(10),
+		ActivityID: ID(20),
+		SkillID:    ID(31),
+	}
+
+	if WorklogTimeOverlaps(left, right) {
+		t.Fatalf("expected missing times to prevent overlap detection")
+	}
+}
+
 func intPtr(value int) *int {
 	out := value
 	return &out
