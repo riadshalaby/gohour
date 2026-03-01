@@ -16,6 +16,11 @@ Guidance for coding agents working in this repository.
   - `atwork`
 - SQLite persistence with duplicate protection.
 - Reconciliation command to resolve overlaps by moving only EPM entries.
+- Submit command with day-level remote validation:
+  - skip full day when remote day contains locked entries
+  - duplicate detection by time + project/activity/skill
+  - overlap detection with interactive handling (`w/s/W/S/a`)
+  - dry-run performs remote read checks and emits warnings/summary without writes
 - Export:
   - Raw mode (`csv`, `excel`)
   - Daily summary mode
@@ -62,6 +67,10 @@ Client capabilities:
 - `PersistWorklogs`
 - `FetchLookupSnapshot`
 - `ResolveIDs`
+- submit helper utilities:
+  - `PersistWorklogsEquivalent`
+  - `WorklogTimeOverlaps`
+  - `OverlapInfo`
 
 Discovered endpoints:
 - `POST /OPServices/resources/OpProjects/getAllUserProjects?mode=all`

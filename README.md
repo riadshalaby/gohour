@@ -11,6 +11,7 @@
 - SQLite persistence with duplicate protection
 - Export normalized worklogs to CSV or Excel
 - Submit local SQLite worklogs to OnePoint REST
+- Submit safety checks: duplicate detection, overlap warnings/prompts, locked-day skip
 
 ## Requirements
 
@@ -218,7 +219,7 @@ Optional filters:
 ./gohour submit --from 2026-03-01 --to 2026-03-31
 ```
 
-Dry-run (build/validate payloads without sending):
+Dry-run (validate against existing OnePoint entries without writing):
 
 ```bash
 ./gohour submit --dry-run
@@ -237,9 +238,17 @@ What submit does:
   - fallback via OnePoint lookup APIs.
 - Groups local rows by day.
 - For each day:
-  - loads existing remote day worklogs,
-  - appends non-duplicate local entries,
-  - persists merged day payload via `persistWorklogs`.
+  - loads existing remote day worklogs (`getFilteredWorklogs` day range),
+  - skips the full day when any existing entry is locked (`Locked != 0`),
+  - skips local duplicates (same `StartTime`, `FinishTime`, `ProjectID`, `ActivityID`, `SkillID`),
+  - detects local-vs-existing overlaps and handles them:
+    - `--dry-run`: warning only, no prompt,
+    - normal mode: interactive choice per day (`w/s/W/S/a`),
+  - persists the merged payload via `persistWorklogs` (only when entries remain to add).
+
+Dry-run output includes:
+- per-day stats (`local`, `duplicates`, `overlaps`, `ready`)
+- summary with skipped locked days and overlap warnings
 
 Main flags:
 
