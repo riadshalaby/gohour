@@ -19,16 +19,6 @@ const (
 	dayLayout = "02-01-2006"
 )
 
-// ErrDayLocked is returned when a day has locked entries and must not be modified.
-type ErrDayLocked struct {
-	Day         time.Time
-	LockedCount int
-}
-
-func (e *ErrDayLocked) Error() string {
-	return fmt.Sprintf("day %s has %d locked entry/entries - skipping", FormatDay(e.Day), e.LockedCount)
-}
-
 // Client defines the OnePoint API operations known from discovery.
 type Client interface {
 	ListProjects(ctx context.Context) ([]Project, error)
@@ -37,7 +27,6 @@ type Client interface {
 	GetFilteredWorklogs(ctx context.Context, from, to time.Time) ([]DayWorklog, error)
 	GetDayWorklogs(ctx context.Context, day time.Time) ([]DayWorklog, error)
 	PersistWorklogs(ctx context.Context, day time.Time, worklogs []PersistWorklog) ([]PersistResult, error)
-	MergeAndPersistWorklogs(ctx context.Context, day time.Time, newWorklogs []PersistWorklog) ([]PersistResult, error)
 	FetchLookupSnapshot(ctx context.Context) (LookupSnapshot, error)
 	ResolveIDs(ctx context.Context, projectName, activityName, skillName string, options ResolveOptions) (ResolvedIDs, error)
 }
@@ -235,6 +224,11 @@ type PersistResult struct {
 	WorklogDate     string `json:"worklogDate"`
 }
 
+type OverlapInfo struct {
+	Local    PersistWorklog
+	Existing PersistWorklog
+}
+
 type LookupSnapshot struct {
 	Projects   []Project
 	Activities []Activity
@@ -307,42 +301,6 @@ func (c *HTTPClient) PersistWorklogs(ctx context.Context, day time.Time, worklog
 		return nil, err
 	}
 	return out, nil
-}
-
-func (c *HTTPClient) MergeAndPersistWorklogs(ctx context.Context, day time.Time, newWorklogs []PersistWorklog) ([]PersistResult, error) {
-	if len(newWorklogs) == 0 {
-		return nil, errors.New("new worklogs payload must not be empty")
-	}
-
-	existing, err := c.GetDayWorklogs(ctx, day)
-	if err != nil {
-		return nil, fmt.Errorf("load existing day worklogs: %w", err)
-	}
-	lockedCount := 0
-	for _, item := range existing {
-		if item.Locked != 0 {
-			lockedCount++
-		}
-	}
-	if lockedCount > 0 {
-		return nil, &ErrDayLocked{
-			Day:         day,
-			LockedCount: lockedCount,
-		}
-	}
-
-	payload := make([]PersistWorklog, 0, len(existing)+len(newWorklogs))
-	for _, item := range existing {
-		payload = append(payload, item.ToPersistWorklog())
-	}
-	for _, candidate := range newWorklogs {
-		if containsEquivalentPersistWorklog(payload, candidate) {
-			continue
-		}
-		payload = append(payload, candidate)
-	}
-
-	return c.PersistWorklogs(ctx, day, payload)
 }
 
 func (c *HTTPClient) FetchLookupSnapshot(ctx context.Context) (LookupSnapshot, error) {
@@ -579,6 +537,22 @@ func persistWorklogsEquivalent(a, b PersistWorklog) bool {
 		a.ActivityID.Value == b.ActivityID.Value &&
 		a.SkillID.Valid == b.SkillID.Valid &&
 		a.SkillID.Value == b.SkillID.Value
+}
+
+func PersistWorklogsEquivalent(a, b PersistWorklog) bool {
+	return persistWorklogsEquivalent(a, b)
+}
+
+// WorklogTimeOverlaps reports whether a and b have overlapping time ranges
+// but are not duplicates (per persistWorklogsEquivalent).
+func WorklogTimeOverlaps(a, b PersistWorklog) bool {
+	if persistWorklogsEquivalent(a, b) {
+		return false
+	}
+	if a.StartTime == nil || a.FinishTime == nil || b.StartTime == nil || b.FinishTime == nil {
+		return false
+	}
+	return *a.StartTime < *b.FinishTime && *b.StartTime < *a.FinishTime
 }
 
 func equalIntPointer(a, b *int) bool {

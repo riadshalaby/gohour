@@ -1,13 +1,14 @@
 package cmd
 
 import (
+	"bufio"
 	"context"
-	"errors"
 	"fmt"
 	"gohour/config"
 	"gohour/onepoint"
 	"gohour/storage"
 	"gohour/worklog"
+	"os"
 	"sort"
 	"strings"
 	"time"
@@ -123,44 +124,103 @@ Authentication uses session cookies from auth state JSON (created by "gohour aut
 			totalLocal += len(batch.Worklogs)
 		}
 
+		totalResponses := 0
+		totalDuplicates := 0
+		totalOverlaps := 0
+		lockedDays := make([]string, 0)
+		globalSkipAllOverlaps := false
+		globalWriteAllOverlaps := false
+
 		if submitDryRun {
-			fmt.Printf("Submit dry-run completed. Days: %d, Local entries prepared: %d\n", len(dayBatches), totalLocal)
-			for _, batch := range dayBatches {
-				fmt.Printf("  %s -> %d local entries\n", onepoint.FormatDay(batch.Day), len(batch.Worklogs))
-				for i, worklog := range batch.Worklogs {
-					fmt.Printf("    [%02d] %s\n", i+1, formatDryRunWorklog(worklog))
-				}
-			}
-			return nil
+			fmt.Println("Submit dry-run mode: validating against existing OnePoint entries without persisting changes.")
 		}
 
-		totalResponses := 0
 		for _, batch := range dayBatches {
+			dayLabel := onepoint.FormatDay(batch.Day)
+
 			dayCtx, cancelDay := context.WithTimeout(context.Background(), submitTimeout)
-			results, submitErr := client.MergeAndPersistWorklogs(dayCtx, batch.Day, batch.Worklogs)
+			existing, submitErr := client.GetDayWorklogs(dayCtx, batch.Day)
 			cancelDay()
-			var lockedErr *onepoint.ErrDayLocked
-			if errors.As(submitErr, &lockedErr) {
-				fmt.Printf("Skipping day %s: %s\n", onepoint.FormatDay(batch.Day), lockedErr.Error())
+			if submitErr != nil {
+				return fmt.Errorf("load existing day %s failed: %w", dayLabel, submitErr)
+			}
+
+			lockedCount := countLockedDayWorklogs(existing)
+			if lockedCount > 0 {
+				lockedDays = append(lockedDays, dayLabel)
+				fmt.Printf("Warning: skipping day %s: %d locked entry/entries found - no changes made\n", dayLabel, lockedCount)
 				continue
 			}
-			if submitErr != nil {
-				return fmt.Errorf("submit day %s failed: %w", onepoint.FormatDay(batch.Day), submitErr)
+
+			existingPayload := dayWorklogsToPersistPayload(existing)
+			toAdd, overlaps, duplicates := classifySubmitWorklogs(batch.Worklogs, existingPayload)
+			totalDuplicates += duplicates
+			totalOverlaps += len(overlaps)
+
+			approvedOverlaps, err := handleOverlaps(overlaps, submitDryRun, &globalSkipAllOverlaps, &globalWriteAllOverlaps)
+			if err != nil {
+				return err
+			}
+			toAdd = append(toAdd, approvedOverlaps...)
+
+			if submitDryRun {
+				fmt.Printf(
+					"Dry-run day %s: local=%d duplicates=%d overlaps=%d ready=%d\n",
+					dayLabel,
+					len(batch.Worklogs),
+					duplicates,
+					len(overlaps),
+					len(toAdd),
+				)
+				continue
+			}
+
+			if len(toAdd) == 0 {
+				fmt.Printf("No new entries for day %s. Skipping persist.\n", dayLabel)
+				continue
+			}
+
+			payload := make([]onepoint.PersistWorklog, 0, len(existingPayload)+len(toAdd))
+			payload = append(payload, existingPayload...)
+			payload = append(payload, toAdd...)
+
+			dayCtx, cancelDay = context.WithTimeout(context.Background(), submitTimeout)
+			results, err := client.PersistWorklogs(dayCtx, batch.Day, payload)
+			cancelDay()
+			if err != nil {
+				return fmt.Errorf("submit day %s failed: %w", dayLabel, err)
 			}
 
 			totalResponses += len(results)
 			fmt.Printf(
-				"Submitted day %s. Local entries: %d, Persist responses: %d\n",
-				onepoint.FormatDay(batch.Day),
+				"Submitted day %s. Local entries: %d, Added entries: %d, Persist responses: %d\n",
+				dayLabel,
 				len(batch.Worklogs),
+				len(toAdd),
 				len(results),
 			)
 		}
 
+		if submitDryRun {
+			fmt.Println("Dry-run summary:")
+			fmt.Printf("  Days to submit:               %d\n", len(dayBatches))
+			if len(lockedDays) > 0 {
+				fmt.Printf("  Days skipped (locked):        %d  [%s]\n", len(lockedDays), strings.Join(lockedDays, ", "))
+			} else {
+				fmt.Printf("  Days skipped (locked):        %d\n", 0)
+			}
+			fmt.Printf("  Local entries prepared:       %d\n", totalLocal)
+			fmt.Printf("  Duplicates (skipped):         %d\n", totalDuplicates)
+			fmt.Printf("  Overlapping entries (warned): %d\n", totalOverlaps)
+			return nil
+		}
+
 		fmt.Printf(
-			"Submit completed. Days: %d, Local entries submitted: %d, Persist responses: %d\n",
+			"Submit completed. Days: %d, Local entries submitted: %d, Duplicates skipped: %d, Overlaps seen: %d, Persist responses: %d\n",
 			len(dayBatches),
 			totalLocal,
+			totalDuplicates,
+			totalOverlaps,
 			totalResponses,
 		)
 		return nil
@@ -467,6 +527,158 @@ func buildSubmitDayBatches(entries []worklog.Entry, idsByTuple map[submitNameTup
 	return out, nil
 }
 
+func countLockedDayWorklogs(existing []onepoint.DayWorklog) int {
+	count := 0
+	for _, item := range existing {
+		if item.Locked != 0 {
+			count++
+		}
+	}
+	return count
+}
+
+func dayWorklogsToPersistPayload(existing []onepoint.DayWorklog) []onepoint.PersistWorklog {
+	payload := make([]onepoint.PersistWorklog, 0, len(existing))
+	for _, item := range existing {
+		if item.Locked != 0 {
+			continue
+		}
+		payload = append(payload, item.ToPersistWorklog())
+	}
+	return payload
+}
+
+func classifySubmitWorklogs(local, existing []onepoint.PersistWorklog) ([]onepoint.PersistWorklog, []onepoint.OverlapInfo, int) {
+	toAdd := make([]onepoint.PersistWorklog, 0, len(local))
+	overlaps := make([]onepoint.OverlapInfo, 0)
+	duplicates := 0
+
+	for _, candidate := range local {
+		isDuplicate := false
+		for _, existingEntry := range existing {
+			if onepoint.PersistWorklogsEquivalent(existingEntry, candidate) {
+				isDuplicate = true
+				break
+			}
+		}
+		if isDuplicate {
+			duplicates++
+			continue
+		}
+
+		hasOverlap := false
+		for _, existingEntry := range existing {
+			if onepoint.WorklogTimeOverlaps(candidate, existingEntry) {
+				overlaps = append(overlaps, onepoint.OverlapInfo{
+					Local:    candidate,
+					Existing: existingEntry,
+				})
+				hasOverlap = true
+				break
+			}
+		}
+		if hasOverlap {
+			continue
+		}
+
+		toAdd = append(toAdd, candidate)
+	}
+
+	return toAdd, overlaps, duplicates
+}
+
+func handleOverlaps(
+	overlaps []onepoint.OverlapInfo,
+	dryRun bool,
+	globalSkipAll *bool,
+	globalWriteAll *bool,
+) ([]onepoint.PersistWorklog, error) {
+	if len(overlaps) == 0 {
+		return nil, nil
+	}
+
+	if dryRun {
+		for _, overlap := range overlaps {
+			fmt.Printf(
+				"Warning: local entry %s (ProjectID=%s) overlaps with existing %s\n",
+				formatPersistWorklogRange(overlap.Local),
+				formatFlexibleIDForDryRun(overlap.Local.ProjectID),
+				formatPersistWorklogRange(overlap.Existing),
+			)
+		}
+		return nil, nil
+	}
+
+	if globalSkipAll != nil && *globalSkipAll {
+		return nil, nil
+	}
+	if globalWriteAll != nil && *globalWriteAll {
+		return collectOverlapLocals(overlaps), nil
+	}
+
+	dayLabel := strings.TrimSpace(overlaps[0].Local.WorklogDate)
+	if dayLabel == "" {
+		dayLabel = "unknown day"
+	}
+
+	fmt.Printf("Warning: %d local entries overlap with existing OnePoint entries for %s:\n", len(overlaps), dayLabel)
+	for i, overlap := range overlaps {
+		fmt.Printf(
+			"  [%d] %s %q overlaps with existing %s %q\n",
+			i+1,
+			formatPersistWorklogRange(overlap.Local),
+			strings.TrimSpace(overlap.Local.Comment),
+			formatPersistWorklogRange(overlap.Existing),
+			strings.TrimSpace(overlap.Existing.Comment),
+		)
+	}
+
+	reader := bufio.NewReader(os.Stdin)
+	for {
+		fmt.Println("How to handle overlapping entries?")
+		fmt.Println("  (w) Write overlapping entries anyway")
+		fmt.Println("  (s) Skip overlapping entries")
+		fmt.Println("  (W) Write ALL overlapping entries for all remaining days")
+		fmt.Println("  (S) Skip ALL overlapping entries for all remaining days")
+		fmt.Println("  (a) Abort submit")
+		fmt.Print("Enter choice: ")
+
+		input, err := reader.ReadString('\n')
+		if err != nil && strings.TrimSpace(input) == "" {
+			return nil, fmt.Errorf("read overlap choice: %w", err)
+		}
+
+		switch strings.TrimSpace(input) {
+		case "w":
+			return collectOverlapLocals(overlaps), nil
+		case "s":
+			return nil, nil
+		case "W":
+			if globalWriteAll != nil {
+				*globalWriteAll = true
+			}
+			return collectOverlapLocals(overlaps), nil
+		case "S":
+			if globalSkipAll != nil {
+				*globalSkipAll = true
+			}
+			return nil, nil
+		case "a":
+			return nil, fmt.Errorf("submit aborted by user")
+		default:
+			fmt.Println("Invalid choice. Please enter one of: w, s, W, S, a")
+		}
+	}
+}
+
+func collectOverlapLocals(overlaps []onepoint.OverlapInfo) []onepoint.PersistWorklog {
+	locals := make([]onepoint.PersistWorklog, 0, len(overlaps))
+	for _, overlap := range overlaps {
+		locals = append(locals, overlap.Local)
+	}
+	return locals
+}
+
 func normalizeSubmitName(value string) string {
 	return strings.ToLower(strings.Join(strings.Fields(strings.TrimSpace(value)), " "))
 }
@@ -499,6 +711,10 @@ func formatDryRunWorklog(value onepoint.PersistWorklog) string {
 		formatFlexibleIDForDryRun(value.SkillID),
 		strings.TrimSpace(value.Comment),
 	)
+}
+
+func formatPersistWorklogRange(value onepoint.PersistWorklog) string {
+	return fmt.Sprintf("%s-%s", formatMinutesForDryRun(value.StartTime), formatMinutesForDryRun(value.FinishTime))
 }
 
 func formatMinutesForDryRun(value *int) string {

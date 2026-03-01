@@ -3,7 +3,6 @@ package onepoint
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -307,320 +306,107 @@ func TestFlexibleInt64_MarshalAndUnmarshal(t *testing.T) {
 	}
 }
 
-func TestHTTPClient_MergeAndPersistWorklogs_AppendsMissingLocalEntries(t *testing.T) {
+func TestPersistWorklogsEquivalent_IgnoresCommentAndBillable(t *testing.T) {
 	t.Parallel()
 
-	var persistPayload []PersistWorklog
-	doer := fakeDoer{fn: func(r *http.Request) (*http.Response, error) {
-		switch fmt.Sprintf("%s %s", r.Method, r.URL.Path) {
-		case "GET /OPServices/resources/OpWorklogs/03-03-2026:03-03-2026/getFilteredWorklogs":
-			return jsonResponse(getFilteredWorklogsResponse{
-				Worklogs: []DayWorklog{
-					{
-						TimeRecordID: 1,
-						WorkSlipID:   10,
-						WorkRecordID: 100,
-						WorklogDate:  "03-03-2026",
-						StartTime:    540,
-						FinishTime:   600,
-						Duration:     60,
-						Billable:     60,
-						ProjectID:    432904811,
-						ActivityID:   436142369,
-						SkillID:      44498948,
-						Comment:      "existing",
-					},
-				},
-			}), nil
-		case "POST /OPServices/resources/OpWorklogs/03-03-2026/persistWorklogs":
-			if err := json.NewDecoder(r.Body).Decode(&persistPayload); err != nil {
-				t.Fatalf("decode payload: %v", err)
-			}
-			return jsonResponse([]PersistResult{{Message: "ok"}}), nil
-		default:
-			return nil, fmt.Errorf("unexpected request %s %s", r.Method, r.URL.String())
-		}
-	}}
-
-	client, err := NewClient(ClientConfig{
-		BaseURL:        "https://onepoint.virtual7.io",
-		RefererURL:     "https://onepoint.virtual7.io/onepoint/faces/home",
-		SessionCookies: "JSESSIONID=test",
-		HTTPClient:     doer,
-	})
-	if err != nil {
-		t.Fatalf("new client: %v", err)
+	left := PersistWorklog{
+		StartTime:  intPtr(540),
+		FinishTime: intPtr(600),
+		Duration:   60,
+		Billable:   0,
+		ProjectID:  ID(10),
+		ActivityID: ID(20),
+		SkillID:    ID(30),
+		Comment:    "existing comment",
+	}
+	right := PersistWorklog{
+		StartTime:  intPtr(540),
+		FinishTime: intPtr(600),
+		Duration:   999,
+		Billable:   60,
+		ProjectID:  ID(10),
+		ActivityID: ID(20),
+		SkillID:    ID(30),
+		Comment:    "local comment differs",
 	}
 
-	day := time.Date(2026, 3, 3, 10, 0, 0, 0, time.Local)
-	start := 600
-	finish := 660
+	if !PersistWorklogsEquivalent(left, right) {
+		t.Fatalf("expected worklogs to be equivalent")
+	}
+}
+
+func TestPersistWorklogsEquivalent_DifferentSkillIsNotEquivalent(t *testing.T) {
+	t.Parallel()
+
+	left := PersistWorklog{
+		StartTime:  intPtr(540),
+		FinishTime: intPtr(600),
+		ProjectID:  ID(10),
+		ActivityID: ID(20),
+		SkillID:    ID(30),
+	}
+	right := PersistWorklog{
+		StartTime:  intPtr(540),
+		FinishTime: intPtr(600),
+		ProjectID:  ID(10),
+		ActivityID: ID(20),
+		SkillID:    ID(31),
+	}
+
+	if PersistWorklogsEquivalent(left, right) {
+		t.Fatalf("expected worklogs to be different")
+	}
+}
+
+func TestWorklogTimeOverlaps_TrueForNonDuplicateOverlap(t *testing.T) {
+	t.Parallel()
+
 	local := PersistWorklog{
-		TimeRecordID: -1,
-		WorkSlipID:   -1,
-		WorkRecordID: -1,
-		WorklogDate:  "03-03-2026",
-		StartTime:    &start,
-		FinishTime:   &finish,
-		Duration:     60,
-		Billable:     60,
-		ProjectID:    ID(432904811),
-		ActivityID:   ID(436142369),
-		SkillID:      ID(44498948),
-		Comment:      "new local entry",
+		StartTime:  intPtr(540),
+		FinishTime: intPtr(600),
+		ProjectID:  ID(10),
+		ActivityID: ID(20),
+		SkillID:    ID(30),
+	}
+	existing := PersistWorklog{
+		StartTime:  intPtr(570),
+		FinishTime: intPtr(630),
+		ProjectID:  ID(10),
+		ActivityID: ID(20),
+		SkillID:    ID(30),
 	}
 
-	if _, err := client.MergeAndPersistWorklogs(context.Background(), day, []PersistWorklog{local}); err != nil {
-		t.Fatalf("merge and persist: %v", err)
-	}
-
-	if len(persistPayload) != 2 {
-		t.Fatalf("expected merged payload length 2, got %d", len(persistPayload))
-	}
-	if persistPayload[0].TimeRecordID != 1 || persistPayload[1].TimeRecordID != -1 {
-		t.Fatalf("unexpected payload order/content: %+v", persistPayload)
+	if !WorklogTimeOverlaps(local, existing) {
+		t.Fatalf("expected overlap to be detected")
 	}
 }
 
-func TestHTTPClient_MergeAndPersistWorklogs_DeduplicatesEquivalentLocalEntries(t *testing.T) {
+func TestWorklogTimeOverlaps_FalseForDuplicates(t *testing.T) {
 	t.Parallel()
 
-	var persistPayload []PersistWorklog
-	doer := fakeDoer{fn: func(r *http.Request) (*http.Response, error) {
-		switch fmt.Sprintf("%s %s", r.Method, r.URL.Path) {
-		case "GET /OPServices/resources/OpWorklogs/04-03-2026:04-03-2026/getFilteredWorklogs":
-			return jsonResponse(getFilteredWorklogsResponse{
-				Worklogs: []DayWorklog{
-					{
-						TimeRecordID: 1,
-						WorkSlipID:   10,
-						WorkRecordID: 100,
-						WorklogDate:  "04-03-2026",
-						StartTime:    540,
-						FinishTime:   600,
-						Duration:     60,
-						Billable:     60,
-						ProjectID:    432904811,
-						ActivityID:   436142369,
-						SkillID:      44498948,
-						Comment:      "existing comment",
-					},
-				},
-			}), nil
-		case "POST /OPServices/resources/OpWorklogs/04-03-2026/persistWorklogs":
-			if err := json.NewDecoder(r.Body).Decode(&persistPayload); err != nil {
-				t.Fatalf("decode payload: %v", err)
-			}
-			return jsonResponse([]PersistResult{{Message: "ok"}}), nil
-		default:
-			return nil, fmt.Errorf("unexpected request %s %s", r.Method, r.URL.String())
-		}
-	}}
-
-	client, err := NewClient(ClientConfig{
-		BaseURL:        "https://onepoint.virtual7.io",
-		RefererURL:     "https://onepoint.virtual7.io/onepoint/faces/home",
-		SessionCookies: "JSESSIONID=test",
-		HTTPClient:     doer,
-	})
-	if err != nil {
-		t.Fatalf("new client: %v", err)
+	left := PersistWorklog{
+		StartTime:  intPtr(540),
+		FinishTime: intPtr(600),
+		Billable:   0,
+		ProjectID:  ID(10),
+		ActivityID: ID(20),
+		SkillID:    ID(30),
+	}
+	right := PersistWorklog{
+		StartTime:  intPtr(540),
+		FinishTime: intPtr(600),
+		Billable:   60,
+		ProjectID:  ID(10),
+		ActivityID: ID(20),
+		SkillID:    ID(30),
 	}
 
-	day := time.Date(2026, 3, 4, 10, 0, 0, 0, time.Local)
-	start := 540
-	finish := 600
-	duplicateLocal := PersistWorklog{
-		TimeRecordID: -1,
-		WorkSlipID:   -1,
-		WorkRecordID: -1,
-		WorklogDate:  "04-03-2026",
-		StartTime:    &start,
-		FinishTime:   &finish,
-		Duration:     60,
-		Billable:     60,
-		ProjectID:    ID(432904811),
-		ActivityID:   ID(436142369),
-		SkillID:      ID(44498948),
-		Comment:      "local comment differs",
-	}
-
-	if _, err := client.MergeAndPersistWorklogs(context.Background(), day, []PersistWorklog{duplicateLocal}); err != nil {
-		t.Fatalf("merge and persist: %v", err)
-	}
-
-	if len(persistPayload) != 1 {
-		t.Fatalf("expected deduplicated payload length 1, got %d", len(persistPayload))
-	}
-	if persistPayload[0].TimeRecordID != 1 {
-		t.Fatalf("expected existing item to be kept, got %+v", persistPayload[0])
+	if WorklogTimeOverlaps(left, right) {
+		t.Fatalf("expected duplicates to not count as overlaps")
 	}
 }
 
-func TestHTTPClient_MergeAndPersistWorklogs_DeduplicatesWhenBillableDiffers(t *testing.T) {
-	t.Parallel()
-
-	var persistPayload []PersistWorklog
-	doer := fakeDoer{fn: func(r *http.Request) (*http.Response, error) {
-		switch fmt.Sprintf("%s %s", r.Method, r.URL.Path) {
-		case "GET /OPServices/resources/OpWorklogs/04-03-2026:04-03-2026/getFilteredWorklogs":
-			return jsonResponse(getFilteredWorklogsResponse{
-				Worklogs: []DayWorklog{
-					{
-						TimeRecordID: 1,
-						WorkSlipID:   10,
-						WorkRecordID: 100,
-						WorklogDate:  "04-03-2026",
-						StartTime:    540,
-						FinishTime:   600,
-						Duration:     60,
-						Billable:     0,
-						ProjectID:    432904811,
-						ActivityID:   436142369,
-						SkillID:      44498948,
-						Comment:      "existing comment",
-					},
-				},
-			}), nil
-		case "POST /OPServices/resources/OpWorklogs/04-03-2026/persistWorklogs":
-			if err := json.NewDecoder(r.Body).Decode(&persistPayload); err != nil {
-				t.Fatalf("decode payload: %v", err)
-			}
-			return jsonResponse([]PersistResult{{Message: "ok"}}), nil
-		default:
-			return nil, fmt.Errorf("unexpected request %s %s", r.Method, r.URL.String())
-		}
-	}}
-
-	client, err := NewClient(ClientConfig{
-		BaseURL:        "https://onepoint.virtual7.io",
-		RefererURL:     "https://onepoint.virtual7.io/onepoint/faces/home",
-		SessionCookies: "JSESSIONID=test",
-		HTTPClient:     doer,
-	})
-	if err != nil {
-		t.Fatalf("new client: %v", err)
-	}
-
-	day := time.Date(2026, 3, 4, 10, 0, 0, 0, time.Local)
-	start := 540
-	finish := 600
-	duplicateLocal := PersistWorklog{
-		TimeRecordID: -1,
-		WorkSlipID:   -1,
-		WorkRecordID: -1,
-		WorklogDate:  "04-03-2026",
-		StartTime:    &start,
-		FinishTime:   &finish,
-		Duration:     60,
-		Billable:     60,
-		ProjectID:    ID(432904811),
-		ActivityID:   ID(436142369),
-		SkillID:      ID(44498948),
-		Comment:      "local comment differs",
-	}
-
-	if _, err := client.MergeAndPersistWorklogs(context.Background(), day, []PersistWorklog{duplicateLocal}); err != nil {
-		t.Fatalf("merge and persist: %v", err)
-	}
-
-	if len(persistPayload) != 1 {
-		t.Fatalf("expected deduplicated payload length 1, got %d", len(persistPayload))
-	}
-	if persistPayload[0].TimeRecordID != 1 {
-		t.Fatalf("expected existing item to be kept, got %+v", persistPayload[0])
-	}
-}
-
-func TestHTTPClient_MergeAndPersistWorklogs_ReturnsErrDayLockedWhenAnyEntryIsLocked(t *testing.T) {
-	t.Parallel()
-
-	persistCalled := false
-	doer := fakeDoer{fn: func(r *http.Request) (*http.Response, error) {
-		switch fmt.Sprintf("%s %s", r.Method, r.URL.Path) {
-		case "GET /OPServices/resources/OpWorklogs/05-03-2026:05-03-2026/getFilteredWorklogs":
-			return jsonResponse(getFilteredWorklogsResponse{
-				Worklogs: []DayWorklog{
-					{
-						TimeRecordID: 1,
-						WorkSlipID:   10,
-						WorkRecordID: 100,
-						WorklogDate:  "05-03-2026",
-						StartTime:    540,
-						FinishTime:   600,
-						Duration:     60,
-						Billable:     60,
-						ProjectID:    432904811,
-						ActivityID:   436142369,
-						SkillID:      44498948,
-						Comment:      "locked existing",
-						Locked:       1,
-					},
-					{
-						TimeRecordID: 2,
-						WorkSlipID:   20,
-						WorkRecordID: 200,
-						WorklogDate:  "05-03-2026",
-						StartTime:    600,
-						FinishTime:   660,
-						Duration:     60,
-						Billable:     60,
-						ProjectID:    432904811,
-						ActivityID:   436142369,
-						SkillID:      44498948,
-						Comment:      "unlocked existing",
-						Locked:       0,
-					},
-				},
-			}), nil
-		case "POST /OPServices/resources/OpWorklogs/05-03-2026/persistWorklogs":
-			persistCalled = true
-			return jsonResponse([]PersistResult{{Message: "ok"}}), nil
-		default:
-			return nil, fmt.Errorf("unexpected request %s %s", r.Method, r.URL.String())
-		}
-	}}
-
-	client, err := NewClient(ClientConfig{
-		BaseURL:        "https://onepoint.virtual7.io",
-		RefererURL:     "https://onepoint.virtual7.io/onepoint/faces/home",
-		SessionCookies: "JSESSIONID=test",
-		HTTPClient:     doer,
-	})
-	if err != nil {
-		t.Fatalf("new client: %v", err)
-	}
-
-	day := time.Date(2026, 3, 5, 10, 0, 0, 0, time.Local)
-	start := 660
-	finish := 720
-	local := PersistWorklog{
-		TimeRecordID: -1,
-		WorkSlipID:   -1,
-		WorkRecordID: -1,
-		WorklogDate:  "05-03-2026",
-		StartTime:    &start,
-		FinishTime:   &finish,
-		Duration:     60,
-		Billable:     60,
-		ProjectID:    ID(432904811),
-		ActivityID:   ID(436142369),
-		SkillID:      ID(44498948),
-		Comment:      "new local entry",
-	}
-
-	_, err = client.MergeAndPersistWorklogs(context.Background(), day, []PersistWorklog{local})
-	if err == nil {
-		t.Fatalf("expected ErrDayLocked, got nil")
-	}
-	var lockedErr *ErrDayLocked
-	if !errors.As(err, &lockedErr) {
-		t.Fatalf("expected ErrDayLocked, got %v", err)
-	}
-	if lockedErr.LockedCount != 1 {
-		t.Fatalf("expected locked count 1, got %d", lockedErr.LockedCount)
-	}
-	if persistCalled {
-		t.Fatalf("expected no persist call when day is locked")
-	}
+func intPtr(value int) *int {
+	out := value
+	return &out
 }
