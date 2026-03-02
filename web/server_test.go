@@ -176,6 +176,49 @@ func TestServer_DayPageShowsClassificationBadges(t *testing.T) {
 	}
 }
 
+func TestServer_DayPageIncludesResponsiveTableAndEditDialog(t *testing.T) {
+	t.Parallel()
+
+	store := openTestStore(t)
+	insertWorklogs(t, store, []worklog.Entry{newLocalEntry(time.Date(2026, 3, 1, 9, 0, 0, 0, time.Local))})
+
+	ts := httptest.NewServer(NewServer(store, &fakeClient{}, testConfig(nil)))
+	defer ts.Close()
+
+	resp, err := http.Get(ts.URL + "/day/2026-03-01")
+	if err != nil {
+		t.Fatalf("request day page: %v", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("expected 200, got %d", resp.StatusCode)
+	}
+
+	body, _ := io.ReadAll(resp.Body)
+	text := string(body)
+	for _, needle := range []string{
+		`<div style="overflow-x: auto;">`,
+		`<dialog id="edit-dialog">`,
+		`class="dialog-row"`,
+		`<textarea id="edit-description" name="description" rows="3"></textarea>`,
+		`class="dialog-readonly"`,
+		`function formatCreateConflictMessage(err)`,
+		`onclick="saveEditDialog()"`,
+		`onclick="document.getElementById('edit-dialog').close()"`,
+	} {
+		if !strings.Contains(text, needle) {
+			t.Fatalf("day page missing %q", needle)
+		}
+	}
+	if strings.Contains(text, `id="edit-date"`) {
+		t.Fatalf("day page still contains separate dialog date field")
+	}
+	if strings.Contains(text, `onclick="saveRow(this)"`) {
+		t.Fatalf("day page still contains inline save action")
+	}
+}
+
 func TestPatchWorklog_ValidBody(t *testing.T) {
 	t.Parallel()
 
@@ -314,6 +357,129 @@ func TestCreateWorklog_ReturnsID(t *testing.T) {
 	}
 	if entry.Description != "created" || entry.Project != "P" || entry.Activity != "A" || entry.Skill != "S" {
 		t.Fatalf("unexpected entry: %+v", entry)
+	}
+}
+
+func TestCreateWorklog_EmptyProjectRejected(t *testing.T) {
+	t.Parallel()
+
+	store := openTestStore(t)
+	ts := httptest.NewServer(NewServer(store, &fakeClient{}, testConfig(nil)))
+	defer ts.Close()
+
+	body := strings.NewReader(`{"date":"2026-03-01","start":"09:00","end":"10:00","project":"   ","activity":"A","skill":"S","billable":60,"description":"created"}`)
+	resp, err := http.Post(ts.URL+"/api/worklog", "application/json", body)
+	if err != nil {
+		t.Fatalf("create request: %v", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusBadRequest {
+		payload, _ := io.ReadAll(resp.Body)
+		t.Fatalf("expected 400, got %d body=%s", resp.StatusCode, string(payload))
+	}
+}
+
+func TestCreateWorklog_DuplicateConflict(t *testing.T) {
+	t.Parallel()
+
+	day := time.Date(2026, 3, 1, 9, 0, 0, 0, time.Local)
+	store := openTestStore(t)
+	insertWorklogs(t, store, []worklog.Entry{newLocalEntry(day)})
+
+	ts := httptest.NewServer(NewServer(store, &fakeClient{}, testConfig(nil)))
+	defer ts.Close()
+
+	body := strings.NewReader(`{"date":"2026-03-01","start":"09:00","end":"10:00","project":"P","activity":"A","skill":"S","billable":60,"description":"duplicate"}`)
+	resp, err := http.Post(ts.URL+"/api/worklog", "application/json", body)
+	if err != nil {
+		t.Fatalf("create request: %v", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusConflict {
+		payload, _ := io.ReadAll(resp.Body)
+		t.Fatalf("expected 409, got %d body=%s", resp.StatusCode, string(payload))
+	}
+
+	var payload worklogConflictResponse
+	if err := json.NewDecoder(resp.Body).Decode(&payload); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if payload.Type != "duplicate" {
+		t.Fatalf("expected duplicate conflict, got %+v", payload)
+	}
+	if payload.ExistingID <= 0 {
+		t.Fatalf("expected positive existing id, got %+v", payload)
+	}
+}
+
+func TestCreateWorklog_DuplicateConflict_NormalizedWhitespace(t *testing.T) {
+	t.Parallel()
+
+	day := time.Date(2026, 3, 1, 9, 0, 0, 0, time.Local)
+	store := openTestStore(t)
+	entry := newLocalEntry(day)
+	entry.Project = "Project A"
+	entry.Activity = "Activity Alpha"
+	entry.Skill = "Skill One"
+	insertWorklogs(t, store, []worklog.Entry{entry})
+
+	ts := httptest.NewServer(NewServer(store, &fakeClient{}, testConfig(nil)))
+	defer ts.Close()
+
+	body := strings.NewReader(`{"date":"2026-03-01","start":"09:00","end":"10:00","project":"  project   a ","activity":" activity    alpha ","skill":" skill   one ","billable":60,"description":"duplicate"}`)
+	resp, err := http.Post(ts.URL+"/api/worklog", "application/json", body)
+	if err != nil {
+		t.Fatalf("create request: %v", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusConflict {
+		payload, _ := io.ReadAll(resp.Body)
+		t.Fatalf("expected 409, got %d body=%s", resp.StatusCode, string(payload))
+	}
+
+	var payload worklogConflictResponse
+	if err := json.NewDecoder(resp.Body).Decode(&payload); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if payload.Type != "duplicate" {
+		t.Fatalf("expected duplicate conflict, got %+v", payload)
+	}
+}
+
+func TestCreateWorklog_OverlapConflict(t *testing.T) {
+	t.Parallel()
+
+	day := time.Date(2026, 3, 1, 9, 0, 0, 0, time.Local)
+	store := openTestStore(t)
+	insertWorklogs(t, store, []worklog.Entry{newLocalEntry(day)})
+
+	ts := httptest.NewServer(NewServer(store, &fakeClient{}, testConfig(nil)))
+	defer ts.Close()
+
+	body := strings.NewReader(`{"date":"2026-03-01","start":"09:30","end":"10:30","project":"Other","activity":"Other","skill":"Other","billable":60,"description":"overlap"}`)
+	resp, err := http.Post(ts.URL+"/api/worklog", "application/json", body)
+	if err != nil {
+		t.Fatalf("create request: %v", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusConflict {
+		payload, _ := io.ReadAll(resp.Body)
+		t.Fatalf("expected 409, got %d body=%s", resp.StatusCode, string(payload))
+	}
+
+	var payload worklogConflictResponse
+	if err := json.NewDecoder(resp.Body).Decode(&payload); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if payload.Type != "overlap" {
+		t.Fatalf("expected overlap conflict, got %+v", payload)
+	}
+	if payload.ExistingID <= 0 {
+		t.Fatalf("expected positive existing id, got %+v", payload)
 	}
 }
 
@@ -573,6 +739,55 @@ func TestGetLookup_CachedOnSecondCall(t *testing.T) {
 	}
 }
 
+func TestLoadRemoteRange_SortsOnceAndUsesCache(t *testing.T) {
+	t.Parallel()
+
+	store := openTestStore(t)
+	client := &fakeClient{
+		worklogs: []onepoint.DayWorklog{
+			{WorklogDate: onepoint.FormatDay(time.Date(2026, 3, 2, 0, 0, 0, 0, time.Local)), StartTime: 11 * 60, FinishTime: 12 * 60},
+			{WorklogDate: onepoint.FormatDay(time.Date(2026, 3, 1, 0, 0, 0, 0, time.Local)), StartTime: 14 * 60, FinishTime: 15 * 60},
+			{WorklogDate: onepoint.FormatDay(time.Date(2026, 3, 1, 0, 0, 0, 0, time.Local)), StartTime: 9 * 60, FinishTime: 10 * 60},
+			{WorklogDate: onepoint.FormatDay(time.Date(2026, 3, 2, 0, 0, 0, 0, time.Local)), StartTime: 8 * 60, FinishTime: 9 * 60},
+		},
+	}
+	server, ok := NewServer(store, client, testConfig(nil)).(*Server)
+	if !ok {
+		t.Fatalf("expected *Server handler")
+	}
+
+	from := time.Date(2026, 3, 1, 0, 0, 0, 0, time.Local)
+	to := time.Date(2026, 3, 2, 0, 0, 0, 0, time.Local)
+
+	first, err := server.loadRemoteRange(context.Background(), from, to)
+	if err != nil {
+		t.Fatalf("first loadRemoteRange: %v", err)
+	}
+	second, err := server.loadRemoteRange(context.Background(), from, to)
+	if err != nil {
+		t.Fatalf("second loadRemoteRange: %v", err)
+	}
+
+	if client.filteredCalls != 1 {
+		t.Fatalf("expected one filtered fetch call, got %d", client.filteredCalls)
+	}
+	for i, values := range [][]onepoint.DayWorklog{first, second} {
+		got := make([]string, 0, len(values))
+		for _, item := range values {
+			got = append(got, item.WorklogDate+"|"+strconv.Itoa(item.StartTime))
+		}
+		want := []string{
+			onepoint.FormatDay(time.Date(2026, 3, 1, 0, 0, 0, 0, time.Local)) + "|540",
+			onepoint.FormatDay(time.Date(2026, 3, 1, 0, 0, 0, 0, time.Local)) + "|840",
+			onepoint.FormatDay(time.Date(2026, 3, 2, 0, 0, 0, 0, time.Local)) + "|480",
+			onepoint.FormatDay(time.Date(2026, 3, 2, 0, 0, 0, 0, time.Local)) + "|660",
+		}
+		if strings.Join(got, ",") != strings.Join(want, ",") {
+			t.Fatalf("unexpected order on run %d: got=%v want=%v", i+1, got, want)
+		}
+	}
+}
+
 func newLocalEntry(start time.Time) worklog.Entry {
 	return worklog.Entry{
 		StartDateTime: start,
@@ -637,6 +852,7 @@ type fakeClient struct {
 	dayWorklogs   map[string][]onepoint.DayWorklog
 	snapshot      onepoint.LookupSnapshot
 	snapshotCalls int
+	filteredCalls int
 	persistCalls  int
 	persistByDate map[string][]onepoint.PersistWorklog
 	getDayErr     error
@@ -657,6 +873,7 @@ func (f *fakeClient) ListSkills(ctx context.Context) ([]onepoint.Skill, error) {
 }
 
 func (f *fakeClient) GetFilteredWorklogs(ctx context.Context, from, to time.Time) ([]onepoint.DayWorklog, error) {
+	f.filteredCalls++
 	out := make([]onepoint.DayWorklog, 0, len(f.worklogs))
 	for _, item := range f.worklogs {
 		day, err := onepoint.ParseDay(item.WorklogDate)

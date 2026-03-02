@@ -49,6 +49,7 @@ type Server struct {
 
 	remoteFetchMu sync.Mutex
 	localLoadMu   sync.Mutex
+	createMu      sync.Mutex
 
 	lookupMu      sync.Mutex
 	lookupSnap    *onepoint.LookupSnapshot
@@ -115,6 +116,12 @@ type submitResponse struct {
 	Overlaps   int               `json:"overlaps"`
 	LockedDays []string          `json:"lockedDays"`
 	Days       []submitDayResult `json:"days"`
+}
+
+type worklogConflictResponse struct {
+	Error      string `json:"error"`
+	Type       string `json:"type"`
+	ExistingID int64  `json:"existingId"`
 }
 
 type lookupProject struct {
@@ -360,6 +367,25 @@ func (s *Server) handleAPIWorklogCreate(w http.ResponseWriter, r *http.Request) 
 	entry.SourceFormat = "manual"
 	entry.SourceMapper = "manual"
 	entry.SourceFile = "web-ui"
+
+	s.createMu.Lock()
+	defer s.createMu.Unlock()
+
+	day := timeutil.StartOfDay(entry.StartDateTime)
+	existingEntries, err := s.loadLocalRange(day, day)
+	if err != nil {
+		http.Error(w, fmt.Sprintf("load local worklogs: %v", err), http.StatusInternalServerError)
+		return
+	}
+	conflictType, conflictID, hasConflict := detectLocalConflict(entry, existingEntries)
+	if hasConflict {
+		writeJSON(w, http.StatusConflict, worklogConflictResponse{
+			Error:      fmt.Sprintf("worklog %s with existing local entry", conflictType),
+			Type:       conflictType,
+			ExistingID: conflictID,
+		})
+		return
+	}
 
 	id, inserted, err := s.store.InsertWorklog(entry)
 	if err != nil {
@@ -664,6 +690,9 @@ func (s *Server) loadRemoteRange(ctx context.Context, from, to time.Time) ([]one
 				}
 				byKey[key] = append(byKey[key], item)
 			}
+			for key := range byKey {
+				sortDayWorklogs(byKey[key])
+			}
 
 			s.mu.Lock()
 			for _, day := range days {
@@ -683,18 +712,6 @@ func (s *Server) loadRemoteRange(ctx context.Context, from, to time.Time) ([]one
 		out = append(out, s.dayCache[key]...)
 	}
 	s.mu.RUnlock()
-
-	sort.Slice(out, func(i, j int) bool {
-		left, leftErr := onepoint.ParseDay(out[i].WorklogDate)
-		right, rightErr := onepoint.ParseDay(out[j].WorklogDate)
-		if leftErr == nil && rightErr == nil && !left.Equal(right) {
-			return left.Before(right)
-		}
-		if out[i].StartTime == out[j].StartTime {
-			return out[i].FinishTime < out[j].FinishTime
-		}
-		return out[i].StartTime < out[j].StartTime
-	})
 	return out, nil
 }
 
@@ -859,6 +876,18 @@ func buildEntryFromMutation(body worklogMutationRequest) (worklog.Entry, error) 
 	if body.Billable < 0 {
 		return worklog.Entry{}, fmt.Errorf("billable must be >= 0")
 	}
+	project := strings.TrimSpace(body.Project)
+	activity := strings.TrimSpace(body.Activity)
+	skill := strings.TrimSpace(body.Skill)
+	if project == "" {
+		return worklog.Entry{}, fmt.Errorf("project must not be empty")
+	}
+	if activity == "" {
+		return worklog.Entry{}, fmt.Errorf("activity must not be empty")
+	}
+	if skill == "" {
+		return worklog.Entry{}, fmt.Errorf("skill must not be empty")
+	}
 
 	start := day.Add(time.Duration(startMinutes) * time.Minute)
 	end := day.Add(time.Duration(endMinutes) * time.Minute)
@@ -868,10 +897,49 @@ func buildEntryFromMutation(body worklogMutationRequest) (worklog.Entry, error) 
 		EndDateTime:   end,
 		Billable:      body.Billable,
 		Description:   strings.TrimSpace(body.Description),
-		Project:       strings.TrimSpace(body.Project),
-		Activity:      strings.TrimSpace(body.Activity),
-		Skill:         strings.TrimSpace(body.Skill),
+		Project:       project,
+		Activity:      activity,
+		Skill:         skill,
 	}, nil
+}
+
+func detectLocalConflict(candidate worklog.Entry, existing []worklog.Entry) (conflictType string, existingID int64, ok bool) {
+	for _, entry := range existing {
+		if sameLocalWorklogKey(candidate, entry) {
+			return "duplicate", entry.ID, true
+		}
+	}
+	for _, entry := range existing {
+		if timesOverlap(candidate.StartDateTime, candidate.EndDateTime, entry.StartDateTime, entry.EndDateTime) {
+			return "overlap", entry.ID, true
+		}
+	}
+	return "", 0, false
+}
+
+func sameLocalWorklogKey(left, right worklog.Entry) bool {
+	return left.StartDateTime.Equal(right.StartDateTime) &&
+		left.EndDateTime.Equal(right.EndDateTime) &&
+		normalizeConflictName(left.Project) == normalizeConflictName(right.Project) &&
+		normalizeConflictName(left.Activity) == normalizeConflictName(right.Activity) &&
+		normalizeConflictName(left.Skill) == normalizeConflictName(right.Skill)
+}
+
+func timesOverlap(leftStart, leftEnd, rightStart, rightEnd time.Time) bool {
+	return leftStart.Before(rightEnd) && leftEnd.After(rightStart)
+}
+
+func sortDayWorklogs(values []onepoint.DayWorklog) {
+	sort.Slice(values, func(i, j int) bool {
+		if values[i].StartTime == values[j].StartTime {
+			return values[i].FinishTime < values[j].FinishTime
+		}
+		return values[i].StartTime < values[j].StartTime
+	})
+}
+
+func normalizeConflictName(value string) string {
+	return strings.ToLower(strings.Join(strings.Fields(strings.TrimSpace(value)), " "))
 }
 
 func parseClockMinutes(value string) (int, error) {
