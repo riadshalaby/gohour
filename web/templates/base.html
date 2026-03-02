@@ -137,6 +137,54 @@
       background: #fbfdff;
     }
     .nowrap { white-space: nowrap; }
+    dialog {
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      padding: 1.5rem;
+      width: min(540px, 95vw);
+      box-shadow: 0 12px 40px rgba(0, 0, 0, 0.15);
+    }
+    dialog::backdrop { background: rgba(0, 0, 0, 0.35); }
+    dialog h2 {
+      margin: 0 0 1rem;
+      font-size: 1.05rem;
+    }
+    .dialog-actions {
+      display: flex;
+      gap: 0.5rem;
+      justify-content: flex-end;
+      margin-top: 1rem;
+    }
+    .dialog-field {
+      display: flex;
+      flex-direction: column;
+      gap: 0.25rem;
+      margin-bottom: 0.75rem;
+    }
+    .dialog-field label {
+      font-size: 0.82rem;
+      color: var(--muted);
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+    }
+    .dialog-field input,
+    .dialog-field select,
+    .dialog-field textarea { width: 100%; }
+    .dialog-field textarea {
+      resize: vertical;
+      font: inherit;
+    }
+    .dialog-row {
+      display: flex;
+      gap: 1rem;
+    }
+    .dialog-row .dialog-field { flex: 1; }
+    .dialog-readonly {
+      display: inline-block;
+      padding: 0.35rem 0;
+      color: var(--text);
+    }
   </style>
 </head>
 <body>
@@ -156,6 +204,7 @@
   </div>
   <script>
     let _lookup = null;
+    let _editState = { mode: '', row: null, date: '' };
 
     async function apiFetch(method, url, body, options) {
       const fetchOptions = { method: method, headers: {}, body: undefined };
@@ -169,8 +218,13 @@
       const contentType = response.headers.get('content-type') || '';
       const payload = contentType.includes('application/json') ? await response.json() : await response.text();
       if (!response.ok) {
-        const message = typeof payload === 'string' ? payload : JSON.stringify(payload);
-        throw new Error(message || ('HTTP ' + response.status));
+        const message = typeof payload === 'string'
+          ? payload
+          : (payload && payload.error ? String(payload.error) : JSON.stringify(payload));
+        const error = new Error(message || ('HTTP ' + response.status));
+        error.status = response.status;
+        error.payload = payload;
+        throw error;
       }
       return payload;
     }
@@ -191,6 +245,36 @@
           current.remove();
         }
       }, 2600);
+    }
+
+    function formatCreateConflictMessage(err) {
+      let payload = null;
+      if (err && typeof err === 'object' && err.payload && typeof err.payload === 'object') {
+        payload = err.payload;
+      } else if (err && err.message) {
+        try {
+          payload = JSON.parse(String(err.message));
+        } catch {
+          payload = null;
+        }
+      }
+
+      if (!payload || typeof payload !== 'object') {
+        return String((err && err.message) || err);
+      }
+      if (payload.type === 'duplicate') {
+        if (payload.existingId) {
+          return 'A local entry already exists for this time slot (entry #' + payload.existingId + ').';
+        }
+        return 'A local entry already exists for this time slot.';
+      }
+      if (payload.type === 'overlap') {
+        if (payload.existingId) {
+          return 'This time slot overlaps with entry #' + payload.existingId + '.';
+        }
+        return 'This time slot overlaps with an existing local entry.';
+      }
+      return String(payload.error || ((err && err.message) || err));
     }
 
     function fmtHours(mins) {
@@ -397,20 +481,6 @@
       };
     }
 
-    function recalcDuration(row) {
-      const startInput = row.querySelector('[name=start]');
-      const endInput = row.querySelector('[name=end]');
-      const durationCell = row.querySelector('[data-col="duration"]');
-      if (!startInput || !endInput || !durationCell) return;
-      const diff = toMins(endInput.value) - toMins(startInput.value);
-      if (!Number.isFinite(diff) || diff < 0) {
-        return;
-      }
-      row.dataset.durationMins = String(diff);
-      durationCell.innerHTML = '<span class="js-fmt-hours" data-mins="' + diff + '">' + diff + '</span>';
-      applyLocaleFormatting(row);
-    }
-
     function renderDayRowCells(row, values) {
       row.dataset.id = String(values.id || 0);
       row.dataset.date = values.date || row.dataset.date || '';
@@ -441,58 +511,18 @@
       } else {
         actions.innerHTML = '<span class="muted">-</span>';
       }
-      row.dataset.editing = '0';
       applyLocaleFormatting(row);
     }
 
     async function editRow(button) {
       const row = button.closest('tr');
-      if (!row || row.dataset.source === 'remote' || row.dataset.editing === '1') return;
-      row.dataset.editing = '1';
-
+      if (!row || row.dataset.source === 'remote') return;
       const values = parseDayRow(row);
-      let selects;
-      try {
-        selects = await buildLookupSelects(values.project, values.activity, values.skill);
-      } catch (err) {
-        row.dataset.editing = '0';
-        showToast(String(err.message || err), true);
-        return;
-      }
-
-      row.querySelector('[data-col="date"]').innerHTML = '<span class="js-fmt-date" data-iso="' + escapeHtml(values.date) + '">' + escapeHtml(values.date) + '</span>';
-      row.querySelector('[data-col="start"]').innerHTML = '<input type="time" name="start" value="' + escapeHtml(values.start) + '">';
-      row.querySelector('[data-col="end"]').innerHTML = '<input type="time" name="end" value="' + escapeHtml(values.end) + '">';
-      row.querySelector('[data-col="duration"]').innerHTML = '<span class="js-fmt-hours" data-mins="' + escapeHtml(String(values.durationMins)) + '">' + escapeHtml(String(values.durationMins)) + '</span>';
-
-      const projectCell = row.querySelector('[data-col="project"]');
-      projectCell.innerHTML = '';
-      projectCell.appendChild(selects.projectSelect);
-
-      const activityCell = row.querySelector('[data-col="activity"]');
-      activityCell.innerHTML = '';
-      activityCell.appendChild(selects.activitySelect);
-
-      const skillCell = row.querySelector('[data-col="skill"]');
-      skillCell.innerHTML = '';
-      skillCell.appendChild(selects.skillSelect);
-
-      row.querySelector('[data-col="billable"]').innerHTML = '<input type="number" name="billableHours" min="0" step="0.25" value="' + (values.billableMins / 60).toFixed(2) + '" style="width:7rem;"> <span class="muted">hours</span>';
-      row.querySelector('[data-col="description"]').innerHTML = '<input type="text" name="description" value="' + escapeHtml(values.description) + '">';
-      row.querySelector('[data-col="actions"]').innerHTML = '<button type="button" onclick="saveRow(this)">Save</button> <button type="button" onclick="cancelEditRow(this)">Cancel</button>';
-
-      const startInput = row.querySelector('[name=start]');
-      const endInput = row.querySelector('[name=end]');
-      startInput.addEventListener('change', () => { recalcDuration(row); recalcBillable(row); });
-      endInput.addEventListener('change', () => { recalcDuration(row); recalcBillable(row); });
-
-      applyLocaleFormatting(row);
-    }
-
-    function cancelEditRow(button) {
-      const row = button.closest('tr');
-      if (!row) return;
-      renderDayRowCells(row, parseDayRow(row));
+      await openEditDialog({
+        mode: 'edit',
+        row: row,
+        values: values
+      });
     }
 
     function selectedName(select, fallback) {
@@ -501,17 +531,16 @@
       return selected.dataset.name || selected.textContent || fallback || '';
     }
 
-    function collectEditablePayload(row) {
-      const source = parseDayRow(row);
-      const startInput = row.querySelector('[name=start]');
-      const endInput = row.querySelector('[name=end]');
-      const descInput = row.querySelector('[name=description]');
-      const billableHoursInput = row.querySelector('[name=billableHours]');
-      const projectSelect = row.querySelector('[name=project]');
-      const activitySelect = row.querySelector('[name=activity]');
-      const skillSelect = row.querySelector('[name=skill]');
+    function collectEditablePayload(form, source) {
+      const startInput = form.querySelector('[name=start]');
+      const endInput = form.querySelector('[name=end]');
+      const descInput = form.querySelector('[name=description]');
+      const billableHoursInput = form.querySelector('[name=billableHours]');
+      const projectSelect = form.querySelector('[name=project]');
+      const activitySelect = form.querySelector('[name=activity]');
+      const skillSelect = form.querySelector('[name=skill]');
 
-      let billableMins = source.billableMins;
+      let billableMins = source && Number.isFinite(source.billableMins) ? source.billableMins : 0;
       if (billableHoursInput) {
         const hours = Number.parseFloat(billableHoursInput.value);
         if (Number.isFinite(hours) && hours >= 0) {
@@ -531,28 +560,146 @@
       };
     }
 
-    async function saveRow(button) {
-      const row = button.closest('tr');
-      if (!row) return;
-      const id = row.dataset.id;
-      const payload = collectEditablePayload(row);
+    function closeEditDialog() {
+      const dialog = document.getElementById('edit-dialog');
+      if (dialog && dialog.open) {
+        dialog.close();
+      }
+      _editState = { mode: '', row: null, date: '' };
+    }
+
+    function replaceDialogSelect(existingID, select) {
+      const existing = document.getElementById(existingID);
+      if (!existing || !existing.parentNode) return;
+      select.id = existingID;
+      select.required = true;
+      existing.parentNode.replaceChild(select, existing);
+    }
+
+    function updateDialogDuration(form) {
+      const startInput = form.querySelector('[name=start]');
+      const endInput = form.querySelector('[name=end]');
+      const durationNode = document.getElementById('edit-duration');
+      if (!startInput || !endInput || !durationNode) return;
+
+      const startMins = toMins(startInput.value);
+      const endMins = toMins(endInput.value);
+      const diff = endMins - startMins;
+      if (!Number.isFinite(diff) || diff < 0) {
+        durationNode.textContent = fmtHours(0) + ' h';
+        durationNode.dataset.mins = '0';
+        return;
+      }
+      durationNode.textContent = fmtHours(diff) + ' h';
+      durationNode.dataset.mins = String(diff);
+    }
+
+    async function openEditDialog(options) {
+      const dialog = document.getElementById('edit-dialog');
+      const form = document.getElementById('edit-form');
+      if (!dialog || !form) return;
+
+      const values = options.values || {};
+      _editState = {
+        mode: options.mode || 'edit',
+        row: options.row || null,
+        date: values.date || ''
+      };
+
+      const modePrefix = _editState.mode === 'create' ? 'Add entry' : 'Edit entry';
+      document.getElementById('edit-dialog-title').textContent = modePrefix + ' \u2014 ' + fmtDate(_editState.date);
+
+      form.querySelector('[name=start]').value = values.start || '';
+      form.querySelector('[name=end]').value = values.end || '';
+      if (values.billableMins === undefined || values.billableMins === null) {
+        form.querySelector('[name=billableHours]').value = '';
+      } else {
+        form.querySelector('[name=billableHours]').value = (Number(values.billableMins) / 60).toFixed(2);
+      }
+      form.querySelector('[name=description]').value = values.description || '';
+
+      let selects;
       try {
-        await apiFetch('PATCH', '/api/worklog/' + id, payload);
-        renderDayRowCells(row, {
-          id: Number(id),
-          source: row.dataset.source,
-          date: payload.date,
-          start: payload.start,
-          end: payload.end,
-          durationMins: Math.max(0, toMins(payload.end) - toMins(payload.start)),
-          project: payload.project,
-          activity: payload.activity,
-          skill: payload.skill,
-          billableMins: payload.billable,
-          description: payload.description
-        });
-        showToast('Entry updated.', false);
+        selects = await buildLookupSelects(values.project || '', values.activity || '', values.skill || '');
       } catch (err) {
+        showToast(String(err.message || err), true);
+        closeEditDialog();
+        return;
+      }
+      replaceDialogSelect('edit-project', selects.projectSelect);
+      replaceDialogSelect('edit-activity', selects.activitySelect);
+      replaceDialogSelect('edit-skill', selects.skillSelect);
+
+      const startInput = form.querySelector('[name=start]');
+      const endInput = form.querySelector('[name=end]');
+      startInput.onchange = () => { recalcBillable(form); updateDialogDuration(form); };
+      endInput.onchange = () => { recalcBillable(form); updateDialogDuration(form); };
+      startInput.oninput = startInput.onchange;
+      endInput.oninput = endInput.onchange;
+
+      updateDialogDuration(form);
+      dialog.showModal();
+    }
+
+    async function saveEditDialog() {
+      const form = document.getElementById('edit-form');
+      if (!form || !_editState.mode) return;
+      const sourceValues = _editState.row ? parseDayRow(_editState.row) : {
+        date: _editState.date,
+        start: '',
+        end: '',
+        project: '',
+        activity: '',
+        skill: '',
+        billableMins: 0,
+        description: ''
+      };
+      const payload = collectEditablePayload(form, sourceValues);
+      const durationMins = toMins(payload.end) - toMins(payload.start);
+      if (!Number.isFinite(durationMins) || durationMins < 0) {
+        showToast('Invalid time range.', true);
+        return;
+      }
+
+      try {
+        if (_editState.mode === 'edit' && _editState.row) {
+          await apiFetch('PATCH', '/api/worklog/' + _editState.row.dataset.id, payload);
+          renderDayRowCells(_editState.row, {
+            id: Number(_editState.row.dataset.id),
+            source: _editState.row.dataset.source,
+            date: payload.date,
+            start: payload.start,
+            end: payload.end,
+            durationMins: durationMins,
+            project: payload.project,
+            activity: payload.activity,
+            skill: payload.skill,
+            billableMins: payload.billable,
+            description: payload.description
+          });
+          showToast('Entry updated.', false);
+        } else {
+          const result = await apiFetch('POST', '/api/worklog', payload);
+          appendDayEntryRow({
+            id: Number(result.id),
+            source: 'new',
+            start: payload.start,
+            end: payload.end,
+            durationMins: durationMins,
+            project: payload.project,
+            activity: payload.activity,
+            skill: payload.skill,
+            billableMins: payload.billable,
+            description: payload.description
+          }, payload.date);
+          showToast('Entry created.', false);
+        }
+        closeEditDialog();
+      } catch (err) {
+        if (_editState.mode !== 'edit' && err && err.status === 409) {
+          showToast(formatCreateConflictMessage(err), true);
+          return;
+        }
         showToast(String(err.message || err), true);
       }
     }
@@ -571,74 +718,19 @@
     }
 
     async function addEntryRow(day) {
-      const tbody = document.getElementById('day-entries');
-      if (!tbody) return;
-
-      let selects;
-      try {
-        selects = await buildLookupSelects('', '', '');
-      } catch (err) {
-        showToast(String(err.message || err), true);
-        return;
-      }
-
-      const row = document.createElement('tr');
-      row.dataset.source = 'new';
-      row.dataset.date = day;
-      row.dataset.start = '09:00';
-      row.dataset.end = '17:00';
-      row.dataset.durationMins = '480';
-      row.dataset.billableMins = '480';
-      row.dataset.description = '';
-      row.innerHTML = '' +
-        '<td data-col="source"><span class="badge badge-new">new</span></td>' +
-        '<td data-col="date"><span class="js-fmt-date" data-iso="' + escapeHtml(day) + '">' + escapeHtml(day) + '</span></td>' +
-        '<td data-col="start"><input type="time" name="start" value="09:00"></td>' +
-        '<td data-col="end"><input type="time" name="end" value="17:00"></td>' +
-        '<td data-col="duration"><span class="js-fmt-hours" data-mins="480">480</span></td>' +
-        '<td data-col="project"></td>' +
-        '<td data-col="activity"></td>' +
-        '<td data-col="skill"></td>' +
-        '<td data-col="billable"><input type="number" name="billableHours" min="0" step="0.25" value="8.00" style="width:7rem;"> <span class="muted">hours</span></td>' +
-        '<td data-col="description"><input type="text" name="description" placeholder="Description"></td>' +
-        '<td data-col="actions" class="actions"><button type="button" onclick="saveNewRow(this)">Save</button> <button type="button" onclick="this.closest(\'tr\').remove()">Cancel</button></td>';
-
-      row.querySelector('[data-col="project"]').appendChild(selects.projectSelect);
-      row.querySelector('[data-col="activity"]').appendChild(selects.activitySelect);
-      row.querySelector('[data-col="skill"]').appendChild(selects.skillSelect);
-
-      const startInput = row.querySelector('[name=start]');
-      const endInput = row.querySelector('[name=end]');
-      startInput.addEventListener('change', () => { recalcDuration(row); recalcBillable(row); });
-      endInput.addEventListener('change', () => { recalcDuration(row); recalcBillable(row); });
-
-      tbody.appendChild(row);
-      applyLocaleFormatting(row);
-    }
-
-    async function saveNewRow(button) {
-      const row = button.closest('tr');
-      if (!row) return;
-      const payload = collectEditablePayload(row);
-      try {
-        const result = await apiFetch('POST', '/api/worklog', payload);
-        renderDayRowCells(row, {
-          id: Number(result.id),
-          source: 'new',
-          date: payload.date,
-          start: payload.start,
-          end: payload.end,
-          durationMins: Math.max(0, toMins(payload.end) - toMins(payload.start)),
-          project: payload.project,
-          activity: payload.activity,
-          skill: payload.skill,
-          billableMins: payload.billable,
-          description: payload.description
-        });
-        showToast('Entry created.', false);
-      } catch (err) {
-        showToast(String(err.message || err), true);
-      }
+      await openEditDialog({
+        mode: 'create',
+        values: {
+          date: day,
+          start: '',
+          end: '',
+          project: '',
+          activity: '',
+          skill: '',
+          billableMins: null,
+          description: ''
+        }
+      });
     }
 
     async function reloadDayTable(day) {
@@ -747,6 +839,12 @@
 
     document.addEventListener('DOMContentLoaded', () => {
       applyLocaleFormatting(document);
+      const dialog = document.getElementById('edit-dialog');
+      if (dialog) {
+        dialog.addEventListener('close', () => {
+          _editState = { mode: '', row: null, date: '' };
+        });
+      }
     });
   </script>
 </body>

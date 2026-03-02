@@ -182,6 +182,8 @@ func BuildMonthlyView(days []DayRow) MonthSummary {
 }
 
 func classifyLocalEntry(candidate onepoint.PersistWorklog, remote []onepoint.PersistWorklog) string {
+	// Day-page badges are a display heuristic based on time ranges only.
+	// Canonical duplicate detection for submit uses submitter.ClassifyWorklogs.
 	for _, item := range remote {
 		if hasSameTimeRange(candidate, item) {
 			return "duplicate"
