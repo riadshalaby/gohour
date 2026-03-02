@@ -14,6 +14,11 @@ const (
 	SessionCookieWLAuthSession = "_WL_AUTHCOOKIE_JSESSIONID"
 )
 
+var (
+	ErrAuthStateNotFound     = errors.New("auth state file not found")
+	ErrMissingSessionCookies = errors.New("missing required session cookies")
+)
+
 type storageState struct {
 	Cookies []stateCookie `json:"cookies"`
 }
@@ -36,6 +41,9 @@ func DefaultAuthStatePath() (string, error) {
 func SessionCookieHeaderFromStateFile(path, targetHost string) (string, error) {
 	content, err := os.ReadFile(strings.TrimSpace(path))
 	if err != nil {
+		if os.IsNotExist(err) {
+			return "", fmt.Errorf("%w: %w", ErrAuthStateNotFound, err)
+		}
 		return "", fmt.Errorf("read auth state file: %w", err)
 	}
 
@@ -74,7 +82,7 @@ func sessionCookieHeaderFromState(state storageState, targetHost string) (string
 		missing = append(missing, SessionCookieJSESSIONID)
 	}
 	if len(missing) > 0 {
-		return "", fmt.Errorf("missing required session cookies for host %q: %s", host, strings.Join(missing, ", "))
+		return "", fmt.Errorf("%w for host %q: %s", ErrMissingSessionCookies, host, strings.Join(missing, ", "))
 	}
 
 	header := fmt.Sprintf(

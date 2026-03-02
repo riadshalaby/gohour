@@ -55,18 +55,36 @@ The UI is read-only and compares local SQLite entries against current OnePoint e
 			return err
 		}
 
-		baseURL, homeURL, host, err := resolveOnePointURLs(serveURL)
+		cookieHeader, baseURL, homeURL, host, stateFile, err := ensureAuthenticatedWithStateFile(serveURL, serveStateFile)
 		if err != nil {
 			return err
 		}
 
-		stateFile, err := resolveDefaultAuthStatePath(serveStateFile)
+		_, err = retryWithRelogin(
+			baseURL,
+			homeURL,
+			host,
+			stateFile,
+			"gohour-serve/1.0",
+			&cookieHeader,
+			func(client onepoint.Client) (struct{}, error) {
+				ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+				defer cancel()
+				projects, err := client.ListProjects(ctx)
+				if err != nil {
+					return struct{}{}, err
+				}
+				if len(projects) == 0 {
+					return struct{}{}, fmt.Errorf(
+						"%w: ListProjects returned empty result (session may have expired)",
+						onepoint.ErrAuthUnauthorized,
+					)
+				}
+				return struct{}{}, nil
+			},
+		)
 		if err != nil {
-			return err
-		}
-		cookieHeader, err := onepoint.SessionCookieHeaderFromStateFile(stateFile, host)
-		if err != nil {
-			return fmt.Errorf("extract session cookies: %w", err)
+			return fmt.Errorf("validate OnePoint session: %w", err)
 		}
 
 		store, err := storage.OpenSQLite(serveDBPath)

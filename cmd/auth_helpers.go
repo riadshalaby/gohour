@@ -7,8 +7,10 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"gohour/config"
+	"gohour/onepoint"
 
 	"github.com/spf13/viper"
 )
@@ -79,4 +81,84 @@ func resolveOnePointURLs(urlOverride string) (string, string, string, error) {
 	apiBaseURL := parsed.Scheme + "://" + parsed.Host
 	homeURL := apiBaseURL + path
 	return apiBaseURL, homeURL, parsed.Hostname(), nil
+}
+
+func ensureAuthenticatedWithStateFile(urlOverride, stateFilePath string) (cookieHeader, baseURL, homeURL, host, stateFile string, err error) {
+	baseURL, homeURL, host, err = resolveOnePointURLs(urlOverride)
+	if err != nil {
+		return
+	}
+
+	stateFile, err = resolveDefaultAuthStatePath(stateFilePath)
+	if err != nil {
+		return
+	}
+
+	cookieHeader, err = onepoint.SessionCookieHeaderFromStateFile(stateFile, host)
+	if err == nil {
+		return
+	}
+
+	if !errors.Is(err, onepoint.ErrAuthStateNotFound) && !errors.Is(err, onepoint.ErrMissingSessionCookies) {
+		err = fmt.Errorf("read auth state: %w", err)
+		return
+	}
+
+	fmt.Println("Not logged in to OnePoint. Opening browser for login...")
+	cookieHeader, err = runBrowserLogin(baseURL, homeURL, host, stateFile, 10*time.Minute, false)
+	return
+}
+
+// ensureAuthenticated returns a valid session cookie header, triggering an
+// interactive browser login automatically if the auth state is missing or
+// incomplete.
+func ensureAuthenticated(urlOverride, stateFilePath string) (cookieHeader, baseURL, homeURL, host string, err error) {
+	cookieHeader, baseURL, homeURL, host, _, err = ensureAuthenticatedWithStateFile(urlOverride, stateFilePath)
+	return
+}
+
+func retryWithRelogin[T any](
+	baseURL, homeURL, host, stateFile, userAgent string,
+	cookieHeader *string,
+	operation func(client onepoint.Client) (T, error),
+) (T, error) {
+	var zero T
+	if cookieHeader == nil {
+		return zero, errors.New("cookie header pointer is required")
+	}
+
+	newClient := func(header string) (onepoint.Client, error) {
+		return onepoint.NewClient(onepoint.ClientConfig{
+			BaseURL:        baseURL,
+			RefererURL:     homeURL,
+			SessionCookies: header,
+			UserAgent:      userAgent,
+		})
+	}
+
+	client, err := newClient(*cookieHeader)
+	if err != nil {
+		return zero, err
+	}
+
+	result, err := operation(client)
+	if err == nil {
+		return result, nil
+	}
+	if !errors.Is(err, onepoint.ErrAuthUnauthorized) {
+		return zero, err
+	}
+
+	fmt.Println("OnePoint session expired. Opening browser for login...")
+	refreshedHeader, loginErr := runBrowserLogin(baseURL, homeURL, host, stateFile, 10*time.Minute, false)
+	if loginErr != nil {
+		return zero, loginErr
+	}
+	*cookieHeader = refreshedHeader
+
+	client, err = newClient(*cookieHeader)
+	if err != nil {
+		return zero, err
+	}
+	return operation(client)
 }

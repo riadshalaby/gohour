@@ -46,94 +46,25 @@ the session with a test API call (list projects).`,
 		if err != nil {
 			return err
 		}
-		profileDir, isTempProfile, err := resolveProfileDir(authLoginProfileDir)
-		if err != nil {
-			return err
-		}
-		if isTempProfile {
-			defer os.RemoveAll(profileDir)
-		}
 
 		baseURL, homeURL, host, err := resolveOnePointURLs(authLoginURL)
 		if err != nil {
 			return err
 		}
-
-		if err := ensureParentDir(stateFile, 0o700); err != nil {
-			return err
-		}
-		if err := os.MkdirAll(profileDir, 0o700); err != nil {
-			return fmt.Errorf("create profile directory %q: %w", profileDir, err)
-		}
-
-		allocOptions := []chromedp.ExecAllocatorOption{
-			chromedp.Flag("headless", false),
-			chromedp.UserDataDir(profileDir),
-			chromedp.Flag("disable-infobars", true),
-			chromedp.Flag("new-window", true),
-			chromedp.Flag("restore-last-session", false),
-			chromedp.NoDefaultBrowserCheck,
-			chromedp.NoFirstRun,
-		}
-		if strings.TrimSpace(authLoginBrowserBin) != "" {
-			allocOptions = append(allocOptions, chromedp.ExecPath(strings.TrimSpace(authLoginBrowserBin)))
-		}
-
-		allocCtx, allocCancel := chromedp.NewExecAllocator(context.Background(), allocOptions...)
-		defer allocCancel()
-
-		ctx, cancel := chromedp.NewContext(allocCtx)
-		defer cancel()
-
-		if err := chromedp.Run(ctx,
-			network.Enable(),
-			chromedp.Navigate(homeURL),
-		); err != nil {
-			return fmt.Errorf("open browser and navigate failed: %w", err)
-		}
-
-		fmt.Println("Complete Microsoft login in the opened browser.")
-		fmt.Printf("Waiting for OnePoint session cookies (timeout: %s)...\n", authLoginTimeout)
-		waitCtx, waitCancel := context.WithTimeout(ctx, authLoginTimeout)
-		defer waitCancel()
-		waitResult, err := waitForSessionCookies(waitCtx, homeURL, baseURL, host, authLoginDebugCookies)
+		cookieHeader, err := runBrowserLoginWithOptions(
+			baseURL,
+			homeURL,
+			host,
+			stateFile,
+			authLoginTimeout,
+			authLoginDebugCookies,
+			authLoginProfileDir,
+			authLoginBrowserBin,
+		)
 		if err != nil {
 			return err
 		}
-		host = waitResult.Host
-		if waitResult.BaseURL != "" {
-			baseURL = waitResult.BaseURL
-		}
-		if waitResult.HomeURL != "" {
-			homeURL = waitResult.HomeURL
-		}
-
-		allCookies, err := getBrowserCookies(ctx)
-		if err != nil {
-			return fmt.Errorf("read browser cookies failed: %w", err)
-		}
-
-		state := authStateFile{
-			Cookies: filterCookiesForHost(allCookies, host),
-			Origins: []any{},
-		}
-
-		content, err := json.MarshalIndent(state, "", "  ")
-		if err != nil {
-			return fmt.Errorf("encode auth state: %w", err)
-		}
-		if err := os.WriteFile(stateFile, content, 0o600); err != nil {
-			return fmt.Errorf("write auth state file: %w", err)
-		}
-
-		cookieHeader, err := onepoint.SessionCookieHeaderFromStateFile(stateFile, host)
-		if err != nil {
-			return fmt.Errorf("extract session cookies from %q: %w", stateFile, err)
-		}
-
 		if authLoginSkipVerify {
-			fmt.Printf("Auth state saved: %s\n", stateFile)
-			fmt.Println("Session cookies are present and ready for REST calls.")
 			return nil
 		}
 
@@ -175,6 +106,102 @@ type authStateCookie struct {
 	HTTPOnly bool    `json:"httpOnly"`
 	Secure   bool    `json:"secure"`
 	SameSite string  `json:"sameSite"`
+}
+
+var runBrowserLogin = runBrowserLoginImpl
+
+func runBrowserLoginImpl(
+	baseURL, homeURL, host, stateFile string,
+	timeout time.Duration,
+	debugCookies bool,
+) (cookieHeader string, err error) {
+	return runBrowserLoginWithOptions(baseURL, homeURL, host, stateFile, timeout, debugCookies, "", "")
+}
+
+func runBrowserLoginWithOptions(
+	baseURL, homeURL, host, stateFile string,
+	timeout time.Duration,
+	debugCookies bool,
+	profileDirOverride string,
+	browserBin string,
+) (cookieHeader string, err error) {
+	profileDir, isTempProfile, err := resolveProfileDir(profileDirOverride)
+	if err != nil {
+		return "", err
+	}
+	if isTempProfile {
+		defer os.RemoveAll(profileDir)
+	}
+
+	if err := ensureParentDir(stateFile, 0o700); err != nil {
+		return "", err
+	}
+	if err := os.MkdirAll(profileDir, 0o700); err != nil {
+		return "", fmt.Errorf("create profile directory %q: %w", profileDir, err)
+	}
+
+	allocOptions := []chromedp.ExecAllocatorOption{
+		chromedp.Flag("headless", false),
+		chromedp.UserDataDir(profileDir),
+		chromedp.Flag("disable-infobars", true),
+		chromedp.Flag("new-window", true),
+		chromedp.Flag("restore-last-session", false),
+		chromedp.NoDefaultBrowserCheck,
+		chromedp.NoFirstRun,
+	}
+	if strings.TrimSpace(browserBin) != "" {
+		allocOptions = append(allocOptions, chromedp.ExecPath(strings.TrimSpace(browserBin)))
+	}
+
+	allocCtx, allocCancel := chromedp.NewExecAllocator(context.Background(), allocOptions...)
+	defer allocCancel()
+
+	ctx, cancel := chromedp.NewContext(allocCtx)
+	defer cancel()
+
+	if err := chromedp.Run(ctx,
+		network.Enable(),
+		chromedp.Navigate(homeURL),
+	); err != nil {
+		return "", fmt.Errorf("open browser and navigate failed: %w", err)
+	}
+
+	fmt.Println("Complete Microsoft login in the opened browser.")
+	fmt.Printf("Waiting for OnePoint session cookies (timeout: %s)...\n", timeout)
+	waitCtx, waitCancel := context.WithTimeout(ctx, timeout)
+	defer waitCancel()
+	waitResult, err := waitForSessionCookies(waitCtx, homeURL, baseURL, host, debugCookies)
+	if err != nil {
+		return "", err
+	}
+	host = waitResult.Host
+
+	allCookies, err := getBrowserCookies(ctx)
+	if err != nil {
+		return "", fmt.Errorf("read browser cookies failed: %w", err)
+	}
+
+	state := authStateFile{
+		Cookies: filterCookiesForHost(allCookies, host),
+		Origins: []any{},
+	}
+
+	content, err := json.MarshalIndent(state, "", "  ")
+	if err != nil {
+		return "", fmt.Errorf("encode auth state: %w", err)
+	}
+	if err := os.WriteFile(stateFile, content, 0o600); err != nil {
+		return "", fmt.Errorf("write auth state file: %w", err)
+	}
+
+	cookieHeader, err = onepoint.SessionCookieHeaderFromStateFile(stateFile, host)
+	if err != nil {
+		return "", fmt.Errorf("extract session cookies from %q: %w", stateFile, err)
+	}
+
+	fmt.Printf("Auth state saved: %s\n", stateFile)
+	fmt.Println("Session cookies are present and ready for REST calls.")
+	return cookieHeader, nil
 }
 
 type sessionWaitResult struct {

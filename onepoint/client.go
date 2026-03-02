@@ -19,6 +19,8 @@ const (
 	dayLayout = "02-01-2006"
 )
 
+var ErrAuthUnauthorized = errors.New("onepoint request unauthorized (session may have expired)")
+
 // Client defines the OnePoint API operations known from discovery.
 type Client interface {
 	ListProjects(ctx context.Context) ([]Project, error)
@@ -308,6 +310,12 @@ func (c *HTTPClient) FetchLookupSnapshot(ctx context.Context) (LookupSnapshot, e
 	if err != nil {
 		return LookupSnapshot{}, err
 	}
+	if len(projects) == 0 {
+		return LookupSnapshot{}, fmt.Errorf(
+			"%w: ListProjects returned empty result (session may have expired)",
+			ErrAuthUnauthorized,
+		)
+	}
 	activities, err := c.ListActivities(ctx)
 	if err != nil {
 		return LookupSnapshot{}, err
@@ -490,6 +498,16 @@ func (c *HTTPClient) doJSON(ctx context.Context, method, endpointPath string, bo
 
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		responseBody, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
+		if resp.StatusCode == http.StatusUnauthorized || resp.StatusCode == http.StatusForbidden {
+			return fmt.Errorf(
+				"%w: request %s %s failed with status %d: %s",
+				ErrAuthUnauthorized,
+				method,
+				endpointPath,
+				resp.StatusCode,
+				strings.TrimSpace(string(responseBody)),
+			)
+		}
 		return fmt.Errorf(
 			"request %s %s failed with status %d: %s",
 			method,
@@ -501,6 +519,17 @@ func (c *HTTPClient) doJSON(ctx context.Context, method, endpointPath string, bo
 
 	if out == nil {
 		return nil
+	}
+	contentType := strings.ToLower(strings.TrimSpace(resp.Header.Get("Content-Type")))
+	if strings.Contains(contentType, "text/html") {
+		responseBody, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
+		return fmt.Errorf(
+			"%w: request %s %s returned HTML response (possible SSO redirect): %s",
+			ErrAuthUnauthorized,
+			method,
+			endpointPath,
+			strings.TrimSpace(string(responseBody)),
+		)
 	}
 	if err := json.NewDecoder(resp.Body).Decode(out); err != nil {
 		if errors.Is(err, io.EOF) {

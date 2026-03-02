@@ -1,6 +1,7 @@
 package onepoint
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -32,7 +33,7 @@ func TestSessionCookieHeaderFromStateFile(t *testing.T) {
 	}
 }
 
-func TestSessionCookieHeaderFromStateFile_MissingCookie(t *testing.T) {
+func TestSessionCookieHeaderFromStateFile_MissingOptionalCookie(t *testing.T) {
 	t.Parallel()
 
 	stateJSON := `{
@@ -52,6 +53,41 @@ func TestSessionCookieHeaderFromStateFile_MissingCookie(t *testing.T) {
 	}
 	if !strings.Contains(header, "JSESSIONID=abc") {
 		t.Fatalf("unexpected header: %q", header)
+	}
+}
+
+func TestSessionCookieHeaderFromStateFile_MissingFile(t *testing.T) {
+	t.Parallel()
+
+	_, err := SessionCookieHeaderFromStateFile(filepath.Join(t.TempDir(), "missing.json"), "onepoint.virtual7.io")
+	if err == nil {
+		t.Fatalf("expected error")
+	}
+	if !errors.Is(err, ErrAuthStateNotFound) {
+		t.Fatalf("expected ErrAuthStateNotFound, got %v", err)
+	}
+}
+
+func TestSessionCookieHeaderFromStateFile_MissingCookies(t *testing.T) {
+	t.Parallel()
+
+	stateJSON := `{
+  "cookies": [
+    {"name":"_WL_AUTHCOOKIE_JSESSIONID","value":"def","domain":"onepoint.virtual7.io","path":"/"}
+  ]
+}`
+
+	file := filepath.Join(t.TempDir(), "state.json")
+	if err := os.WriteFile(file, []byte(stateJSON), 0o600); err != nil {
+		t.Fatalf("write state file: %v", err)
+	}
+
+	_, err := SessionCookieHeaderFromStateFile(file, "onepoint.virtual7.io")
+	if err == nil {
+		t.Fatalf("expected error")
+	}
+	if !errors.Is(err, ErrMissingSessionCookies) {
+		t.Fatalf("expected ErrMissingSessionCookies, got %v", err)
 	}
 }
 
