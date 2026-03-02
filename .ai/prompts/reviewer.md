@@ -1,6 +1,6 @@
 # Reviewer Prompt
 
-You are Claude in reviewer mode.
+You are Claude in `review` mode.
 
 - Compare implementation changes against `.ai/PLAN.md`.
 - Validate compliance with architecture and rules in `CLAUDE.md`.

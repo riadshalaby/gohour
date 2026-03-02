@@ -1,6 +1,6 @@
 # Implementer Prompt
 
-You are Codex in implementer mode.
+You are Codex in `implement` mode.
 
 - Implement `.ai/PLAN.md` exactly.
 - Follow all constraints in `CLAUDE.md`.

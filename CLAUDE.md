@@ -29,20 +29,11 @@
   - must not invent requirements
 
 ## AI Operating Mode
-Claude must read `.ai/MODE` to determine behaviour.
-
-`plan`:
-- update ONLY `.ai/PLAN.md`
-- never modify source code
-
-`review`:
-- update ONLY `.ai/REVIEW.md`
-- never modify source code
-
-`idle`:
-- normal assistant behaviour
-
-Claude must strictly follow MODE if present.
+- No `.ai/MODE` file is required or used.
+- Mode is selected by the launcher prompt/context:
+  - Planner (`.ai/prompts/planner.md`): update ONLY `.ai/PLAN.md`, never modify source code.
+  - Reviewer (`.ai/prompts/reviewer.md`): update ONLY `.ai/REVIEW.md`, never modify source code.
+  - Implementer/Codex: implement `.ai/PLAN.md` and update tests under the rules above.
 
 ## Git Rules
 - Work in the current branch.
