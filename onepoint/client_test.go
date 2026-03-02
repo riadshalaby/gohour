@@ -3,6 +3,7 @@ package onepoint
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -177,6 +178,100 @@ func jsonResponse(payload any) *http.Response {
 		StatusCode: http.StatusOK,
 		Body:       io.NopCloser(strings.NewReader(string(body))),
 		Header:     make(http.Header),
+	}
+}
+
+func TestHTTPClient_UnauthorizedStatusWrapsSentinel(t *testing.T) {
+	t.Parallel()
+
+	doer := fakeDoer{fn: func(r *http.Request) (*http.Response, error) {
+		return &http.Response{
+			StatusCode: http.StatusUnauthorized,
+			Body:       io.NopCloser(strings.NewReader("unauthorized")),
+			Header:     make(http.Header),
+		}, nil
+	}}
+
+	client, err := NewClient(ClientConfig{
+		BaseURL:        "https://onepoint.virtual7.io",
+		RefererURL:     "https://onepoint.virtual7.io/onepoint/faces/home",
+		SessionCookies: "JSESSIONID=test",
+		HTTPClient:     doer,
+	})
+	if err != nil {
+		t.Fatalf("new client: %v", err)
+	}
+
+	_, err = client.ListProjects(context.Background())
+	if err == nil {
+		t.Fatalf("expected unauthorized error")
+	}
+	if !errors.Is(err, ErrAuthUnauthorized) {
+		t.Fatalf("expected ErrAuthUnauthorized, got %v", err)
+	}
+}
+
+func TestHTTPClient_HTMLResponseWrapsSentinel(t *testing.T) {
+	t.Parallel()
+
+	doer := fakeDoer{fn: func(r *http.Request) (*http.Response, error) {
+		header := make(http.Header)
+		header.Set("Content-Type", "text/html; charset=utf-8")
+		return &http.Response{
+			StatusCode: http.StatusOK,
+			Body:       io.NopCloser(strings.NewReader("<html><body>login</body></html>")),
+			Header:     header,
+		}, nil
+	}}
+
+	client, err := NewClient(ClientConfig{
+		BaseURL:        "https://onepoint.virtual7.io",
+		RefererURL:     "https://onepoint.virtual7.io/onepoint/faces/home",
+		SessionCookies: "JSESSIONID=test",
+		HTTPClient:     doer,
+	})
+	if err != nil {
+		t.Fatalf("new client: %v", err)
+	}
+
+	_, err = client.ListProjects(context.Background())
+	if err == nil {
+		t.Fatalf("expected unauthorized error")
+	}
+	if !errors.Is(err, ErrAuthUnauthorized) {
+		t.Fatalf("expected ErrAuthUnauthorized, got %v", err)
+	}
+}
+
+func TestFetchLookupSnapshot_EmptyProjectsWrapsSentinel(t *testing.T) {
+	t.Parallel()
+
+	doer := fakeDoer{fn: func(r *http.Request) (*http.Response, error) {
+		key := fmt.Sprintf("%s %s", r.Method, r.URL.Path)
+		switch key {
+		case "POST /OPServices/resources/OpProjects/getAllUserProjects":
+			return jsonResponse([]Project{}), nil
+		default:
+			return nil, fmt.Errorf("unexpected request: %s %s", r.Method, r.URL.String())
+		}
+	}}
+
+	client, err := NewClient(ClientConfig{
+		BaseURL:        "https://onepoint.virtual7.io",
+		RefererURL:     "https://onepoint.virtual7.io/onepoint/faces/home",
+		SessionCookies: "JSESSIONID=test",
+		HTTPClient:     doer,
+	})
+	if err != nil {
+		t.Fatalf("new client: %v", err)
+	}
+
+	_, err = client.FetchLookupSnapshot(context.Background())
+	if err == nil {
+		t.Fatalf("expected unauthorized error")
+	}
+	if !errors.Is(err, ErrAuthUnauthorized) {
+		t.Fatalf("expected ErrAuthUnauthorized, got %v", err)
 	}
 }
 

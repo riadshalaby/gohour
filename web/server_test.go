@@ -76,6 +76,48 @@ func TestServer_MonthPageRendersMonthDays(t *testing.T) {
 	if !strings.Contains(text, "2026-03-31") {
 		t.Fatalf("month page missing last day: %s", text)
 	}
+	if strings.Contains(text, `id="month-submit-result"`) {
+		t.Fatalf("month page still contains inline month submit result placeholder")
+	}
+	if !strings.Contains(text, `<dialog id="submit-dialog">`) {
+		t.Fatalf("month page missing shared submit dialog: %s", text)
+	}
+}
+
+func TestServer_MonthPageRemoteErrorRendersAuthBanner(t *testing.T) {
+	t.Parallel()
+
+	store := openTestStore(t)
+	insertWorklogs(t, store, []worklog.Entry{
+		newLocalEntry(time.Date(2026, 3, 1, 9, 0, 0, 0, time.Local)),
+	})
+
+	client := &fakeClient{filteredErr: errors.New("session expired")}
+	ts := httptest.NewServer(NewServer(store, client, testConfig(nil)))
+	defer ts.Close()
+
+	resp, err := http.Get(ts.URL + "/month/2026-03")
+	if err != nil {
+		t.Fatalf("request month page: %v", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		t.Fatalf("expected 200, got %d body=%s", resp.StatusCode, string(body))
+	}
+
+	body, _ := io.ReadAll(resp.Body)
+	text := string(body)
+	if !strings.Contains(text, "OnePoint session may have expired") {
+		t.Fatalf("expected auth error banner, got: %s", text)
+	}
+	if !strings.Contains(text, "gohour auth login") {
+		t.Fatalf("expected auth login hint, got: %s", text)
+	}
+	if !strings.Contains(text, "2026-03-01") {
+		t.Fatalf("expected local month data to render, got: %s", text)
+	}
 }
 
 func TestServer_DayPageShowsClassificationBadges(t *testing.T) {
@@ -176,6 +218,42 @@ func TestServer_DayPageShowsClassificationBadges(t *testing.T) {
 	}
 }
 
+func TestServer_DayPageRemoteErrorRendersAuthBanner(t *testing.T) {
+	t.Parallel()
+
+	store := openTestStore(t)
+	insertWorklogs(t, store, []worklog.Entry{
+		newLocalEntry(time.Date(2026, 3, 1, 9, 0, 0, 0, time.Local)),
+	})
+
+	client := &fakeClient{filteredErr: errors.New("session expired")}
+	ts := httptest.NewServer(NewServer(store, client, testConfig(nil)))
+	defer ts.Close()
+
+	resp, err := http.Get(ts.URL + "/day/2026-03-01")
+	if err != nil {
+		t.Fatalf("request day page: %v", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		t.Fatalf("expected 200, got %d body=%s", resp.StatusCode, string(body))
+	}
+
+	body, _ := io.ReadAll(resp.Body)
+	text := string(body)
+	if !strings.Contains(text, "OnePoint session may have expired") {
+		t.Fatalf("expected auth error banner, got: %s", text)
+	}
+	if !strings.Contains(text, "gohour auth login") {
+		t.Fatalf("expected auth login hint, got: %s", text)
+	}
+	if !strings.Contains(text, "badge-new") {
+		t.Fatalf("expected local data to render, got: %s", text)
+	}
+}
+
 func TestServer_DayPageIncludesResponsiveTableAndEditDialog(t *testing.T) {
 	t.Parallel()
 
@@ -198,12 +276,24 @@ func TestServer_DayPageIncludesResponsiveTableAndEditDialog(t *testing.T) {
 	body, _ := io.ReadAll(resp.Body)
 	text := string(body)
 	for _, needle := range []string{
-		`<div style="overflow-x: auto;">`,
+		`<div class="table-wrap">`,
 		`<dialog id="edit-dialog">`,
+		`<dialog id="day-import-dialog">`,
+		`<dialog id="confirm-dialog">`,
+		`<dialog id="submit-dialog">`,
 		`class="dialog-row"`,
 		`<textarea id="edit-description" name="description" rows="3"></textarea>`,
 		`class="dialog-readonly"`,
 		`function formatCreateConflictMessage(err)`,
+		`function openImportDialog(dialogID, formID)`,
+		`function openConfirmDialog(title, body, onConfirm, confirmLabel, alternative)`,
+		`function openSubmitDialog(title, htmlContent)`,
+		`[hidden] { display: none !important; }`,
+		`Delete this local entry?`,
+		`option.value = String(getName(item));`,
+		`option.dataset.id = String(getID(item));`,
+		`delete form.dataset.lookupLoaded;`,
+		`class="dialog-footer"`,
 		`onclick="saveEditDialog()"`,
 		`onclick="document.getElementById('edit-dialog').close()"`,
 	} {
@@ -216,6 +306,12 @@ func TestServer_DayPageIncludesResponsiveTableAndEditDialog(t *testing.T) {
 	}
 	if strings.Contains(text, `onclick="saveRow(this)"`) {
 		t.Fatalf("day page still contains inline save action")
+	}
+	if strings.Contains(text, `>JSON<`) {
+		t.Fatalf("day page still contains JSON nav link")
+	}
+	if strings.Contains(text, `id="day-submit-result"`) {
+		t.Fatalf("day page still contains inline day submit result placeholder")
 	}
 }
 
@@ -657,6 +753,138 @@ func TestImport_ValidFile(t *testing.T) {
 	}
 }
 
+func TestImport_OverlapConflictReturns409(t *testing.T) {
+	t.Parallel()
+
+	store := openTestStore(t)
+	insertWorklogs(t, store, []worklog.Entry{
+		newLocalEntry(time.Date(2026, 3, 1, 9, 0, 0, 0, time.Local)),
+	})
+	ts := httptest.NewServer(NewServer(store, &fakeClient{}, testConfig(nil)))
+	defer ts.Close()
+
+	var body bytes.Buffer
+	writer := multipart.NewWriter(&body)
+	part, err := writer.CreateFormFile("file", "import.csv")
+	if err != nil {
+		t.Fatalf("create form file: %v", err)
+	}
+	_, _ = part.Write([]byte("description,startdatetime,enddatetime,project,activity,skill\nTask,2026-03-01 09:30,2026-03-01 10:30,P2,A2,S2\n"))
+	_ = writer.WriteField("mapper", "generic")
+	if err := writer.Close(); err != nil {
+		t.Fatalf("close multipart writer: %v", err)
+	}
+
+	resp, err := http.Post(ts.URL+"/api/import", writer.FormDataContentType(), &body)
+	if err != nil {
+		t.Fatalf("import request: %v", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusConflict {
+		payload, _ := io.ReadAll(resp.Body)
+		t.Fatalf("expected 409, got %d body=%s", resp.StatusCode, string(payload))
+	}
+
+	var payload importConflictResponse
+	if err := json.NewDecoder(resp.Body).Decode(&payload); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if len(payload.Overlaps) != 1 {
+		t.Fatalf("expected one overlap, got %+v", payload)
+	}
+	if payload.Overlaps[0].ExistingID <= 0 {
+		t.Fatalf("expected overlap existing id, got %+v", payload.Overlaps[0])
+	}
+}
+
+func TestImport_OverlapSkipPersistsOnlyCleanRows(t *testing.T) {
+	t.Parallel()
+
+	store := openTestStore(t)
+	insertWorklogs(t, store, []worklog.Entry{
+		newLocalEntry(time.Date(2026, 3, 1, 9, 0, 0, 0, time.Local)),
+	})
+	ts := httptest.NewServer(NewServer(store, &fakeClient{}, testConfig(nil)))
+	defer ts.Close()
+
+	var body bytes.Buffer
+	writer := multipart.NewWriter(&body)
+	part, err := writer.CreateFormFile("file", "import.csv")
+	if err != nil {
+		t.Fatalf("create form file: %v", err)
+	}
+	_, _ = part.Write([]byte(
+		"description,startdatetime,enddatetime,project,activity,skill\n" +
+			"Overlap,2026-03-01 09:30,2026-03-01 10:30,P2,A2,S2\n" +
+			"Clean,2026-03-01 11:00,2026-03-01 12:00,P3,A3,S3\n",
+	))
+	_ = writer.WriteField("mapper", "generic")
+	_ = writer.WriteField("skipOverlapping", "true")
+	if err := writer.Close(); err != nil {
+		t.Fatalf("close multipart writer: %v", err)
+	}
+
+	resp, err := http.Post(ts.URL+"/api/import", writer.FormDataContentType(), &body)
+	if err != nil {
+		t.Fatalf("import request: %v", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		payload, _ := io.ReadAll(resp.Body)
+		t.Fatalf("expected 200, got %d body=%s", resp.StatusCode, string(payload))
+	}
+
+	var payload importResponse
+	if err := json.NewDecoder(resp.Body).Decode(&payload); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if payload.RowsPersisted != 1 || payload.OverlapsSkipped != 1 {
+		t.Fatalf("unexpected payload: %+v", payload)
+	}
+}
+
+func TestImport_OverlapForcePersistsOverlappingRows(t *testing.T) {
+	t.Parallel()
+
+	store := openTestStore(t)
+	insertWorklogs(t, store, []worklog.Entry{
+		newLocalEntry(time.Date(2026, 3, 1, 9, 0, 0, 0, time.Local)),
+	})
+	ts := httptest.NewServer(NewServer(store, &fakeClient{}, testConfig(nil)))
+	defer ts.Close()
+
+	var body bytes.Buffer
+	writer := multipart.NewWriter(&body)
+	part, err := writer.CreateFormFile("file", "import.csv")
+	if err != nil {
+		t.Fatalf("create form file: %v", err)
+	}
+	_, _ = part.Write([]byte("description,startdatetime,enddatetime,project,activity,skill\nOverlap,2026-03-01 09:30,2026-03-01 10:30,P2,A2,S2\n"))
+	_ = writer.WriteField("mapper", "generic")
+	_ = writer.WriteField("forceOverlapping", "true")
+	if err := writer.Close(); err != nil {
+		t.Fatalf("close multipart writer: %v", err)
+	}
+
+	resp, err := http.Post(ts.URL+"/api/import", writer.FormDataContentType(), &body)
+	if err != nil {
+		t.Fatalf("import request: %v", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		payload, _ := io.ReadAll(resp.Body)
+		t.Fatalf("expected 200, got %d body=%s", resp.StatusCode, string(payload))
+	}
+
+	var payload importResponse
+	if err := json.NewDecoder(resp.Body).Decode(&payload); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if payload.RowsPersisted != 1 || payload.OverlapsSkipped != 0 {
+		t.Fatalf("unexpected payload: %+v", payload)
+	}
+}
+
 func TestGetLookup_ReturnsJSON(t *testing.T) {
 	t.Parallel()
 
@@ -855,6 +1083,7 @@ type fakeClient struct {
 	filteredCalls int
 	persistCalls  int
 	persistByDate map[string][]onepoint.PersistWorklog
+	filteredErr   error
 	getDayErr     error
 	persistErr    error
 	snapshotErr   error
@@ -874,6 +1103,9 @@ func (f *fakeClient) ListSkills(ctx context.Context) ([]onepoint.Skill, error) {
 
 func (f *fakeClient) GetFilteredWorklogs(ctx context.Context, from, to time.Time) ([]onepoint.DayWorklog, error) {
 	f.filteredCalls++
+	if f.filteredErr != nil {
+		return nil, f.filteredErr
+	}
 	out := make([]onepoint.DayWorklog, 0, len(f.worklogs))
 	for _, item := range f.worklogs {
 		day, err := onepoint.ParseDay(item.WorklogDate)

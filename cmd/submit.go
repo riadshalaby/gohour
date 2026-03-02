@@ -54,18 +54,9 @@ Authentication uses session cookies from auth state JSON (created by "gohour aut
 			return err
 		}
 
-		baseURL, homeURL, host, err := resolveOnePointURLs(submitURL)
+		cookieHeader, baseURL, homeURL, host, stateFile, err := ensureAuthenticatedWithStateFile(submitURL, submitStateFile)
 		if err != nil {
 			return err
-		}
-
-		stateFile, err := resolveDefaultAuthStatePath(submitStateFile)
-		if err != nil {
-			return err
-		}
-		cookieHeader, err := onepoint.SessionCookieHeaderFromStateFile(stateFile, host)
-		if err != nil {
-			return fmt.Errorf("extract session cookies: %w", err)
 		}
 
 		store, err := storage.OpenSQLite(submitDBPath)
@@ -91,22 +82,22 @@ Authentication uses session cookies from auth state JSON (created by "gohour aut
 			return fmt.Errorf("no worklogs matched the selected date range")
 		}
 
-		client, err := onepoint.NewClient(onepoint.ClientConfig{
-			BaseURL:        baseURL,
-			RefererURL:     homeURL,
-			SessionCookies: cookieHeader,
-			UserAgent:      "gohour-submit/1.0",
-		})
-		if err != nil {
-			return err
-		}
-
-		resolveCtx, cancelResolve := context.WithTimeout(context.Background(), submitTimeout)
-		defer cancelResolve()
-		idMap, err := resolveIDsForEntries(resolveCtx, client, cfg.Rules, entries, onepoint.ResolveOptions{
-			IncludeArchivedProjects: submitIncludeArchived,
-			IncludeLockedActivities: submitIncludeLockedActivities,
-		})
+		idMap, err := retryWithRelogin(
+			baseURL,
+			homeURL,
+			host,
+			stateFile,
+			"gohour-submit/1.0",
+			&cookieHeader,
+			func(client onepoint.Client) (map[submitNameTuple]submitResolvedIDs, error) {
+				resolveCtx, cancelResolve := context.WithTimeout(context.Background(), submitTimeout)
+				defer cancelResolve()
+				return resolveIDsForEntries(resolveCtx, client, cfg.Rules, entries, onepoint.ResolveOptions{
+					IncludeArchivedProjects: submitIncludeArchived,
+					IncludeLockedActivities: submitIncludeLockedActivities,
+				})
+			},
+		)
 		if err != nil {
 			return err
 		}
@@ -138,9 +129,19 @@ Authentication uses session cookies from auth state JSON (created by "gohour aut
 		for _, batch := range dayBatches {
 			dayLabel := onepoint.FormatDay(batch.Day)
 
-			dayCtx, cancelDay := context.WithTimeout(context.Background(), submitTimeout)
-			existing, submitErr := client.GetDayWorklogs(dayCtx, batch.Day)
-			cancelDay()
+			existing, submitErr := retryWithRelogin(
+				baseURL,
+				homeURL,
+				host,
+				stateFile,
+				"gohour-submit/1.0",
+				&cookieHeader,
+				func(client onepoint.Client) ([]onepoint.DayWorklog, error) {
+					dayCtx, cancelDay := context.WithTimeout(context.Background(), submitTimeout)
+					defer cancelDay()
+					return client.GetDayWorklogs(dayCtx, batch.Day)
+				},
+			)
 			if submitErr != nil {
 				return fmt.Errorf("load existing day %s failed: %w", dayLabel, submitErr)
 			}
@@ -184,9 +185,19 @@ Authentication uses session cookies from auth state JSON (created by "gohour aut
 			payload = append(payload, existingPayload...)
 			payload = append(payload, toAdd...)
 
-			dayCtx, cancelDay = context.WithTimeout(context.Background(), submitTimeout)
-			results, err := client.PersistWorklogs(dayCtx, batch.Day, payload)
-			cancelDay()
+			results, err := retryWithRelogin(
+				baseURL,
+				homeURL,
+				host,
+				stateFile,
+				"gohour-submit/1.0",
+				&cookieHeader,
+				func(client onepoint.Client) ([]onepoint.PersistResult, error) {
+					dayCtx, cancelDay := context.WithTimeout(context.Background(), submitTimeout)
+					defer cancelDay()
+					return client.PersistWorklogs(dayCtx, batch.Day, payload)
+				},
+			)
 			if err != nil {
 				return fmt.Errorf("submit day %s failed: %w", dayLabel, err)
 			}

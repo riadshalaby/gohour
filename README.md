@@ -13,6 +13,8 @@
 - Submit local SQLite worklogs to OnePoint REST
 - Submit safety checks: duplicate detection, overlap warnings/prompts, locked-day skip
 
+> **Recommended workflow:** `gohour import` loads files locally, then `gohour serve` opens a browser UI to review local vs. remote hours and submit. Login happens automatically when needed - a browser window will open.
+
 ## Requirements
 
 - Go 1.24+
@@ -23,35 +25,30 @@
 go build -o gohour .
 ```
 
-## Quick Start (4 Steps)
+## Quick Start (3 Steps)
 
 If you just want to get started, do this:
 
-1. Add one import rule:
+1. Create config and add one import rule:
 
 ```bash
+./gohour config create
 ./gohour config rule add
 ```
 
-2. Log in to OnePoint / Microsoft SSO:
-
-```bash
-./gohour auth login
-```
-
-3. Import your local worklog file(s) into SQLite:
+2. Import your local worklog file(s) into SQLite:
 
 ```bash
 ./gohour import -i <your-file.xlsx>
 ```
 
-4. Submit to OnePoint:
+3. Review and submit from the local browser UI:
 
 ```bash
-./gohour submit
+./gohour serve
 ```
 
-If you want a preview before writing, use the optional `--dry-run` flag.
+`auth login` is not a required manual step; login is triggered automatically when needed.
 
 ## Configuration
 
@@ -192,6 +189,25 @@ Flags:
 - `--mode` (optional): `raw` (default) or `daily`
 - `--db` (optional): SQLite file path (default `./gohour.db`)
 
+## Serve (Recommended Review + Submit Workflow)
+
+Run the local web UI for month/day review, edits, import, and submit actions:
+
+```bash
+./gohour serve
+```
+
+If no valid OnePoint session is available, `serve` opens a browser login flow automatically before starting.
+
+Main flags:
+
+- `--port` (optional): HTTP port (default `8080`)
+- `--db` (optional): SQLite path (default `./gohour.db`)
+- `--from` / `--to` (optional): month range for initial view, format `YYYY-MM`
+- `--state-file` (optional): auth state JSON path
+- `--url` (optional): override OnePoint home URL for this run
+- `--no-open` (optional): do not auto-open browser tab
+
 ## Submit To OnePoint
 
 Submit normalized worklogs from SQLite to OnePoint:
@@ -204,7 +220,7 @@ Use optional flags like `--dry-run`, `--from`, `--to`, `--timeout`, `--url`, and
 
 Required prerequisites:
 
-- Valid auth state from `gohour auth login`
+- Session cookies are managed automatically; a browser window opens if login is needed
 - Reachable OnePoint endpoint (`onepoint.url` in config or `--url`)
 
 What submit does:
@@ -268,24 +284,29 @@ Notes:
 
 ## OnePoint Authentication (Microsoft SSO)
 
-For direct OnePoint REST calls, `gohour` provides an embedded interactive browser login flow.
-The URL is taken from `onepoint.url` in your config (`~/.gohour.yaml`) and defaults to:
-`https://onepoint.virtual7.io/onepoint/faces/home`.
-You can override it via `--url`.
+`gohour` can trigger browser login automatically when needed.
+Automatic login is used by:
 
-1) Start login and save auth state:
+- `gohour submit`
+- `gohour serve`
+- `gohour config rule add`
+
+If no valid session cookie exists, a headed browser opens, you complete Microsoft login, and auth state is saved automatically.
+The URL comes from `onepoint.url` in config (`~/.gohour.yaml`) and defaults to:
+`https://onepoint.virtual7.io/onepoint/faces/home`.
+You can override it with `--url` on the corresponding command.
+
+Manual override login command:
 
 ```bash
 gohour auth login
 ```
 
-This opens a headed browser. Complete Microsoft login manually; the command auto-detects
-successful login by waiting for OnePoint session cookies.
-The auth state is saved by default to:
+This command explicitly opens login and saves auth state to:
 
-- `$HOME/.gohour/onepoint-auth-state.json`
+- `$HOME/.gohour/onepoint-auth-state.json` (default)
 
-2) Print Cookie header for direct API usage:
+Show cookie header for direct API/debug usage:
 
 ```bash
 gohour auth show-cookies
@@ -304,7 +325,7 @@ Notes:
 - Use `--browser-bin` if your browser executable is not auto-detected.
 - Use `--timeout` to increase waiting time for MFA/conditional-access flows.
 - Use `--debug-cookies` to print detected cookie names/domains while waiting.
-- Session cookies can rotate; run `auth login` again when REST calls fail with auth/session errors.
+- Session cookies expire periodically; the next `submit`, `serve`, or `config rule add` run re-triggers login automatically.
 
 ## Normalized SQLite Schema
 

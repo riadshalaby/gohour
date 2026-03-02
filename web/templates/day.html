@@ -1,30 +1,58 @@
 {{ define "page" }}
 <h1>Day detail: <span class="js-fmt-date" data-iso="{{ .Day }}">{{ .Day }}</span></h1>
-<div class="nav" style="margin-bottom:0.8rem;">
+<div class="page-nav">
   <a href="/month/{{ .CurrentMonth }}">Back to month</a>
-  <a href="/api/day/{{ .Day }}">JSON</a>
-  <button type="button" class="btn-primary" onclick="submitDay('{{ .Day }}')">Submit day</button>
-  <button type="button" onclick="toggleImportForm('day-import-form')">Import file</button>
+  <button type="button" class="btn-primary"
+    onclick="openConfirmDialog(
+      'Submit {{ .Day }}',
+      'Push all local entries for this day to OnePoint. This cannot be undone.',
+      function() { submitDay('{{ .Day }}'); }
+    )">Submit day</button>
+  <button type="button" onclick="openImportDialog('day-import-dialog', 'day-import-form')">Import file</button>
 </div>
-<form id="day-import-form" class="inline-form" hidden onsubmit="handleImportSubmit(event, { day: '{{ .Day }}' })">
-  <input type="file" name="file" required>
-  <select name="mapper">
-    <option value="epm">epm</option>
-    <option value="generic">generic</option>
-    <option value="atwork">atwork</option>
-  </select>
-  <input type="text" name="project" placeholder="project (optional)">
-  <input type="text" name="activity" placeholder="activity (optional)">
-  <input type="text" name="skill" placeholder="skill (optional)">
-  <button type="submit">Upload</button>
-</form>
-<div id="day-submit-result"></div>
+<dialog id="day-import-dialog">
+  <form id="day-import-form" onsubmit="handleImportSubmit(event, { day: '{{ .Day }}', dialogID: 'day-import-dialog' })">
+    <div class="dialog-header">
+      <h2>Import file</h2>
+    </div>
+    <div class="dialog-body import-fields">
+      <div class="dialog-field">
+        <label for="day-import-file">File</label>
+        <input id="day-import-file" type="file" name="file" required>
+      </div>
+      <div class="dialog-field">
+        <label for="day-import-mapper">Mapper</label>
+        <select id="day-import-mapper" name="mapper">
+          <option value="epm">epm</option>
+          <option value="generic">generic</option>
+          <option value="atwork">atwork</option>
+        </select>
+      </div>
+      <div class="dialog-field">
+        <label for="day-import-project">Project</label>
+        <select id="day-import-project" name="project" required></select>
+      </div>
+      <div class="dialog-field">
+        <label for="day-import-activity">Activity</label>
+        <select id="day-import-activity" name="activity" required></select>
+      </div>
+      <div class="dialog-field">
+        <label for="day-import-skill">Skill</label>
+        <select id="day-import-skill" name="skill" required></select>
+      </div>
+    </div>
+    <div class="dialog-footer">
+      <button type="button" onclick="closeImportDialog('day-import-dialog')">Cancel</button>
+      <button type="submit" class="btn-primary">Upload</button>
+    </div>
+  </form>
+</dialog>
 <p class="muted" style="margin-top:0;">
   Local hours: <span id="day-local-hours" class="js-fmt-hours" data-mins="{{ toMins .DayRow.LocalHours }}">{{ toMins .DayRow.LocalHours }}</span>
   |
   Remote hours: <span id="day-remote-hours" class="js-fmt-hours" data-mins="{{ toMins .DayRow.RemoteHours }}">{{ toMins .DayRow.RemoteHours }}</span>
 </p>
-<div style="overflow-x: auto;">
+<div class="table-wrap">
   <table>
     <thead>
       <tr>
@@ -46,13 +74,13 @@
       <tr data-id="{{ .ID }}" data-date="{{ $.Day }}" data-source="{{ .Source }}" data-start="{{ .Start }}" data-end="{{ .End }}" data-duration-mins="{{ .DurationMins }}" data-project="{{ .Project }}" data-activity="{{ .Activity }}" data-skill="{{ .Skill }}" data-billable-mins="{{ .BillableMins }}" data-description="{{ .Description }}">
         <td data-col="source"><span class="badge badge-{{ .Source }}">{{ .Source }}</span></td>
         <td data-col="date"><span class="js-fmt-date" data-iso="{{ $.Day }}">{{ $.Day }}</span></td>
-        <td data-col="start"><span class="js-fmt-time" data-hhmm="{{ .Start }}">{{ .Start }}</span></td>
-        <td data-col="end"><span class="js-fmt-time" data-hhmm="{{ .End }}">{{ .End }}</span></td>
-        <td data-col="duration"><span class="js-fmt-hours" data-mins="{{ .DurationMins }}">{{ .DurationMins }}</span></td>
+        <td data-col="start" class="time"><span class="js-fmt-time" data-hhmm="{{ .Start }}">{{ .Start }}</span></td>
+        <td data-col="end" class="time"><span class="js-fmt-time" data-hhmm="{{ .End }}">{{ .End }}</span></td>
+        <td data-col="duration" class="num"><span class="js-fmt-hours" data-mins="{{ .DurationMins }}">{{ .DurationMins }}</span></td>
         <td data-col="project">{{ .Project }}</td>
         <td data-col="activity">{{ .Activity }}</td>
         <td data-col="skill">{{ .Skill }}</td>
-        <td data-col="billable"><span class="js-fmt-hours" data-mins="{{ .BillableMins }}">{{ .BillableMins }}</span></td>
+        <td data-col="billable" class="num"><span class="js-fmt-hours" data-mins="{{ .BillableMins }}">{{ .BillableMins }}</span></td>
         <td data-col="description">{{ .Description }}</td>
         <td data-col="actions" class="actions">
           {{ if ne .Source "remote" }}
@@ -67,53 +95,54 @@
     </tbody>
   </table>
 </div>
-<div class="nav" style="margin-top:0.8rem;">
+<div class="page-nav" style="margin-top:0.8rem;">
   <button type="button" onclick="addEntryRow('{{ .Day }}')">Add entry</button>
 </div>
 <div class="footer">Duration is read-only; Billable auto-fills from Start/End and can be overridden.</div>
 <dialog id="edit-dialog">
   <form id="edit-form" onsubmit="event.preventDefault(); saveEditDialog()">
-    <h2 id="edit-dialog-title">Edit entry</h2>
-    <div class="dialog-row">
-      <div class="dialog-field">
-        <label for="edit-start">Start</label>
-        <input id="edit-start" type="time" name="start" required>
-      </div>
-      <div class="dialog-field">
-        <label for="edit-end">End</label>
-        <input id="edit-end" type="time" name="end" required>
-      </div>
+    <div class="dialog-header">
+      <h2 id="edit-dialog-title">Edit entry</h2>
     </div>
-    <div class="dialog-field">
-      <label for="edit-project">Project</label>
-      <select id="edit-project" name="project"></select>
-    </div>
-    <div class="dialog-field">
-      <label for="edit-activity">Activity</label>
-      <select id="edit-activity" name="activity"></select>
-    </div>
-    <div class="dialog-field">
-      <label for="edit-skill">Skill</label>
-      <select id="edit-skill" name="skill"></select>
-    </div>
-    <div class="dialog-row">
-      <div class="dialog-field">
-        <label>Duration</label>
-        <span id="edit-duration" class="dialog-readonly">0.00 h</span>
-      </div>
-      <div class="dialog-field">
-        <label for="edit-billable-hours">Billable</label>
-        <div style="display:flex;align-items:center;gap:0.4rem;">
-          <input id="edit-billable-hours" type="number" name="billableHours" min="0" step="0.25" required>
-          <span class="muted">hours</span>
+    <div class="dialog-body">
+      <div class="dialog-row">
+        <div class="dialog-field">
+          <label for="edit-start">Start</label>
+          <input id="edit-start" type="time" name="start" required>
+        </div>
+        <div class="dialog-field">
+          <label for="edit-end">End</label>
+          <input id="edit-end" type="time" name="end" required>
         </div>
       </div>
+      <div class="dialog-field">
+        <label for="edit-project">Project</label>
+        <select id="edit-project" name="project" required></select>
+      </div>
+      <div class="dialog-field">
+        <label for="edit-activity">Activity</label>
+        <select id="edit-activity" name="activity" required></select>
+      </div>
+      <div class="dialog-field">
+        <label for="edit-skill">Skill</label>
+        <select id="edit-skill" name="skill" required></select>
+      </div>
+      <div class="dialog-row">
+        <div class="dialog-field">
+          <label>Duration</label>
+          <span id="edit-duration" class="dialog-readonly">0.00 h</span>
+        </div>
+        <div class="dialog-field">
+          <label for="edit-billable-hours">Billable (h)</label>
+          <input id="edit-billable-hours" type="number" name="billableHours" min="0" step="0.25" required>
+        </div>
+      </div>
+      <div class="dialog-field">
+        <label for="edit-description">Description</label>
+        <textarea id="edit-description" name="description" rows="3"></textarea>
+      </div>
     </div>
-    <div class="dialog-field">
-      <label for="edit-description">Description</label>
-      <textarea id="edit-description" name="description" rows="3"></textarea>
-    </div>
-    <div class="dialog-actions">
+    <div class="dialog-footer">
       <button type="button" onclick="document.getElementById('edit-dialog').close()">Cancel</button>
       <button type="button" class="btn-primary" onclick="saveEditDialog()">Save</button>
     </div>

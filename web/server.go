@@ -58,6 +58,8 @@ type Server struct {
 
 type monthRowView struct {
 	Date        string
+	IsWeekend   bool
+	IsToday     bool
 	LocalHours  float64
 	RemoteHours float64
 	DeltaHours  float64
@@ -65,21 +67,22 @@ type monthRowView struct {
 }
 
 type monthPageView struct {
-	Title          string
-	CurrentMonth   string
-	PreviousMonth  string
-	NextMonth      string
-	Rows           []monthRowView
-	TotalLocal     float64
-	TotalRemote    float64
-	TotalDelta     float64
-	HasActiveRange bool
+	Title         string
+	CurrentMonth  string
+	PreviousMonth string
+	NextMonth     string
+	AuthErrorMsg  string
+	Rows          []monthRowView
+	TotalLocal    float64
+	TotalRemote   float64
+	TotalDelta    float64
 }
 
 type dayPageView struct {
 	Title        string
 	CurrentMonth string
 	Day          string
+	AuthErrorMsg string
 	DayRow       DayRow
 }
 
@@ -95,11 +98,29 @@ type worklogMutationRequest struct {
 }
 
 type importResponse struct {
-	FilesProcessed int `json:"filesProcessed"`
-	RowsRead       int `json:"rowsRead"`
-	RowsMapped     int `json:"rowsMapped"`
-	RowsSkipped    int `json:"rowsSkipped"`
-	RowsPersisted  int `json:"rowsPersisted"`
+	FilesProcessed  int `json:"filesProcessed"`
+	RowsRead        int `json:"rowsRead"`
+	RowsMapped      int `json:"rowsMapped"`
+	RowsSkipped     int `json:"rowsSkipped"`
+	RowsPersisted   int `json:"rowsPersisted"`
+	OverlapsSkipped int `json:"overlapsSkipped,omitempty"`
+}
+
+type importOverlapItem struct {
+	Date       string `json:"date"`
+	Start      string `json:"start"`
+	End        string `json:"end"`
+	Project    string `json:"project"`
+	Activity   string `json:"activity"`
+	Skill      string `json:"skill"`
+	ExistingID int64  `json:"existingId"`
+}
+
+type importConflictResponse struct {
+	Error      string              `json:"error"`
+	Overlaps   []importOverlapItem `json:"overlaps"`
+	CleanCount int                 `json:"cleanCount"`
+	Duplicates int                 `json:"duplicates"`
 }
 
 type submitDayResult struct {
@@ -213,21 +234,30 @@ func (s *Server) handleMonth(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
+	authErrorMsg := ""
 	remoteEntries, err := s.loadRemoteRange(r.Context(), monthStart, monthEnd)
 	if err != nil {
-		http.Error(w, fmt.Sprintf("load remote worklogs: %v", err), http.StatusBadGateway)
-		return
+		authErrorMsg = fmt.Sprintf(
+			"OnePoint session may have expired (%v). In a new terminal run: gohour auth login",
+			err,
+		)
+		remoteEntries = nil
 	}
 
 	dayRows := BuildDailyView(localEntries, remoteEntries)
 	dayRows = fillMonthDays(monthStart, dayRows)
 	summary := BuildMonthlyView(dayRows)
 
+	now := timeutil.StartOfDay(time.Now())
 	rows := make([]monthRowView, 0, len(summary.Days))
 	for _, day := range summary.Days {
-		dayISO := day.Date.Format("2006-01-02")
+		dayDate := timeutil.StartOfDay(day.Date)
+		dayISO := dayDate.Format("2006-01-02")
+		wd := dayDate.Weekday()
 		rows = append(rows, monthRowView{
 			Date:        dayISO,
+			IsWeekend:   wd == time.Saturday || wd == time.Sunday,
+			IsToday:     dayDate.Equal(now),
 			LocalHours:  day.LocalHours,
 			RemoteHours: day.RemoteHours,
 			DeltaHours:  day.DeltaHours,
@@ -240,6 +270,7 @@ func (s *Server) handleMonth(w http.ResponseWriter, r *http.Request) {
 		CurrentMonth:  monthRaw,
 		PreviousMonth: monthStart.AddDate(0, -1, 0).Format("2006-01"),
 		NextMonth:     monthStart.AddDate(0, 1, 0).Format("2006-01"),
+		AuthErrorMsg:  authErrorMsg,
 		Rows:          rows,
 		TotalLocal:    summary.TotalLocalHours,
 		TotalRemote:   summary.TotalRemoteHours,
@@ -263,10 +294,14 @@ func (s *Server) handleDay(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
+	authErrorMsg := ""
 	remoteEntries, err := s.loadRemoteRange(r.Context(), day, day)
 	if err != nil {
-		http.Error(w, fmt.Sprintf("load remote worklogs: %v", err), http.StatusBadGateway)
-		return
+		authErrorMsg = fmt.Sprintf(
+			"OnePoint session may have expired (%v). In a new terminal run: gohour auth login",
+			err,
+		)
+		remoteEntries = nil
 	}
 	dayRows := BuildDailyView(localEntries, remoteEntries)
 	row := DayRow{Date: day}
@@ -278,6 +313,7 @@ func (s *Server) handleDay(w http.ResponseWriter, r *http.Request) {
 		Title:        "gohour - day " + dayRaw,
 		CurrentMonth: day.Format("2006-01"),
 		Day:          dayRaw,
+		AuthErrorMsg: authErrorMsg,
 		DayRow:       row,
 	}
 	if err := renderTemplate(w, "day.html", view); err != nil {
@@ -525,7 +561,91 @@ func (s *Server) handleAPIImport(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	inserted, err := s.store.InsertWorklogs(result.Entries)
+	skipOverlapping := parseBoolFormValue(r.FormValue("skipOverlapping"))
+	forceOverlapping := parseBoolFormValue(r.FormValue("forceOverlapping"))
+	if skipOverlapping && forceOverlapping {
+		http.Error(w, "skipOverlapping and forceOverlapping cannot both be true", http.StatusBadRequest)
+		return
+	}
+
+	s.createMu.Lock()
+	defer s.createMu.Unlock()
+
+	toInsert := result.Entries
+	overlapsSkipped := 0
+	duplicateCount := 0
+	if len(result.Entries) > 0 {
+		minDay := timeutil.StartOfDay(result.Entries[0].StartDateTime)
+		maxDay := minDay
+		for _, entry := range result.Entries[1:] {
+			day := timeutil.StartOfDay(entry.StartDateTime)
+			if day.Before(minDay) {
+				minDay = day
+			}
+			if day.After(maxDay) {
+				maxDay = day
+			}
+		}
+
+		existingEntries, err := s.loadLocalRange(minDay, maxDay)
+		if err != nil {
+			http.Error(w, fmt.Sprintf("load local worklogs: %v", err), http.StatusInternalServerError)
+			return
+		}
+		accepted := append([]worklog.Entry(nil), existingEntries...)
+		clean := make([]worklog.Entry, 0, len(result.Entries))
+		overlapEntries := make([]worklog.Entry, 0)
+		overlapItems := make([]importOverlapItem, 0)
+
+		for _, entry := range result.Entries {
+			conflictType, existingID, hasConflict := detectLocalConflict(entry, accepted)
+			if !hasConflict {
+				clean = append(clean, entry)
+				accepted = append(accepted, entry)
+				continue
+			}
+
+			if conflictType == "duplicate" {
+				duplicateCount++
+				continue
+			}
+			if conflictType == "overlap" {
+				overlapEntries = append(overlapEntries, entry)
+				overlapItems = append(overlapItems, importOverlapItem{
+					Date:       timeutil.StartOfDay(entry.StartDateTime).Format("2006-01-02"),
+					Start:      entry.StartDateTime.Format("15:04"),
+					End:        entry.EndDateTime.Format("15:04"),
+					Project:    entry.Project,
+					Activity:   entry.Activity,
+					Skill:      entry.Skill,
+					ExistingID: existingID,
+				})
+				if forceOverlapping {
+					accepted = append(accepted, entry)
+				}
+				continue
+			}
+		}
+
+		if len(overlapEntries) > 0 && !skipOverlapping && !forceOverlapping {
+			writeJSON(w, http.StatusConflict, importConflictResponse{
+				Error:      "overlapping entries detected",
+				Overlaps:   overlapItems,
+				CleanCount: len(clean),
+				Duplicates: duplicateCount,
+			})
+			return
+		}
+
+		toInsert = clean
+		if forceOverlapping {
+			toInsert = append(toInsert, overlapEntries...)
+		} else {
+			overlapsSkipped = len(overlapEntries)
+		}
+	}
+
+	inserted, err := s.store.InsertWorklogs(toInsert)
 	if err != nil {
 		http.Error(w, fmt.Sprintf("insert imported worklogs: %v", err), http.StatusInternalServerError)
 		return
@@ -540,11 +660,12 @@ func (s *Server) handleAPIImport(w http.ResponseWriter, r *http.Request) {
 
 	s.invalidateLocalCache()
 	writeJSON(w, http.StatusOK, importResponse{
-		FilesProcessed: result.FilesProcessed,
-		RowsRead:       result.RowsRead,
-		RowsMapped:     result.RowsMapped,
-		RowsSkipped:    result.RowsSkipped,
-		RowsPersisted:  inserted,
+		FilesProcessed:  result.FilesProcessed,
+		RowsRead:        result.RowsRead,
+		RowsMapped:      result.RowsMapped,
+		RowsSkipped:     result.RowsSkipped + duplicateCount + overlapsSkipped,
+		RowsPersisted:   inserted,
+		OverlapsSkipped: overlapsSkipped,
 	})
 }
 
@@ -948,6 +1069,16 @@ func parseClockMinutes(value string) (int, error) {
 		return 0, err
 	}
 	return parsed.Hour()*60 + parsed.Minute(), nil
+}
+
+func parseBoolFormValue(value string) bool {
+	normalized := strings.ToLower(strings.TrimSpace(value))
+	switch normalized {
+	case "1", "true", "yes", "on":
+		return true
+	default:
+		return false
+	}
 }
 
 func decodeJSON(r *http.Request, out any) error {

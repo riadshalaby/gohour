@@ -7,204 +7,439 @@
   <title>{{ .Title }}</title>
   <style>
     :root {
-      --bg: #f4f6f8;
-      --card: #ffffff;
-      --text: #1f2933;
+      --bg: #f5f4f1;
+      --surface: #ffffff;
+      --surface-2: #f0efeb;
+      --hdr-bg: #0f1117;
+      --hdr-text: #e8e8e5;
+      --hdr-muted: #5c6070;
+      --hdr-border: rgba(255, 255, 255, 0.07);
+      --text: #111318;
       --muted: #6b7280;
-      --border: #d5dde5;
-      --new: #166534;
-      --duplicate: #1d4ed8;
-      --overlap: #b45309;
-      --remote: #5b21b6;
+      --border: #e3e2de;
+      --border-strong: #c8c7c2;
+      --c-new: #16a34a;
+      --c-dup: #2563eb;
+      --c-overlap: #d97706;
+      --c-remote: #7c3aed;
+      --bg-new: #dcfce7;
+      --bg-dup: #dbeafe;
+      --bg-overlap: #fef3c7;
+      --bg-remote: #ede9fe;
+      --txt-new: #15803d;
+      --txt-dup: #1d4ed8;
+      --txt-overlap: #92400e;
+      --txt-remote: #5b21b6;
+      --weekend-bg: #fdf5ea;
+      --weekend-line: #f59e0b;
+      --today-bg: #eff6ff;
+      --today-line: #2563eb;
+      --row-hover: rgba(0, 0, 0, 0.025);
+      --pos: #15803d;
+      --neg: #dc2626;
+      --accent: #0f1117;
+      --accent-hover: #1f2937;
+      --danger: #dc2626;
+      --danger-lt: #fee2e2;
+      --danger-bdr: #fca5a5;
+      --auth-bg: #fffbeb;
+      --auth-bdr: #f59e0b;
+      --auth-txt: #78350f;
     }
+    [hidden] { display: none !important; }
     * { box-sizing: border-box; }
     body {
       margin: 0;
-      padding: 1.5rem;
-      background: linear-gradient(140deg, #eef2f7 0%, #f8fafc 100%);
+      padding: 1.25rem;
+      background: var(--bg);
       color: var(--text);
-      font: 15px/1.45 "Iowan Old Style", "Palatino Linotype", "Book Antiqua", serif;
+      font: 13.5px/1.5 system-ui, -apple-system, "Segoe UI", "Helvetica Neue", sans-serif;
     }
     .wrap {
-      max-width: 1080px;
+      max-width: 1120px;
       margin: 0 auto;
-      background: var(--card);
+      background: var(--surface);
       border: 1px solid var(--border);
-      border-radius: 14px;
+      border-radius: 10px;
       overflow: hidden;
-      box-shadow: 0 8px 30px rgba(32, 38, 46, 0.08);
+      box-shadow: 0 2px 12px rgba(0, 0, 0, 0.07), 0 1px 3px rgba(0, 0, 0, 0.05);
+    }
+    h1 {
+      margin: 0 0 0.7rem;
+      font-size: 0.95rem;
+      font-weight: 600;
+      letter-spacing: -0.01em;
+    }
+    .muted { color: var(--muted); }
+    .nowrap { white-space: nowrap; }
+    .content {
+      padding: 1rem 1rem 1.25rem;
+    }
+    .footer {
+      margin-top: 0.8rem;
+      color: var(--muted);
+      font-size: 0.75rem;
     }
     .top {
       display: flex;
       flex-wrap: wrap;
-      gap: 0.75rem;
+      gap: 0.5rem;
       justify-content: space-between;
       align-items: center;
-      padding: 1rem 1.25rem;
-      border-bottom: 1px solid var(--border);
-      background: #f8fafb;
+      padding: 0.65rem 1rem;
+      background: var(--hdr-bg);
+      border-bottom: 1px solid var(--hdr-border);
     }
-    .brand { font-weight: 700; letter-spacing: 0.02em; }
-    .nav { display: flex; align-items: center; gap: 0.6rem; flex-wrap: wrap; }
-    .nav a, button {
+    .brand-group {
+      display: flex;
+      align-items: center;
+      gap: 0.65rem;
+    }
+    .brand {
+      font-size: 0.78rem;
+      font-weight: 700;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      color: var(--hdr-text);
+      text-decoration: none;
+    }
+    .header-month {
+      font-family: ui-monospace, "SF Mono", "Cascadia Mono", monospace;
+      font-size: 0.72rem;
+      letter-spacing: 0.04em;
+      color: var(--hdr-muted);
+      background: rgba(255, 255, 255, 0.06);
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      border-radius: 4px;
+      padding: 0.1rem 0.45rem;
+    }
+    button, .nav a, .page-nav a {
+      display: inline-flex;
+      align-items: center;
       border: 1px solid var(--border);
-      border-radius: 8px;
-      background: white;
+      border-radius: 5px;
+      background: var(--surface);
       color: var(--text);
       text-decoration: none;
-      padding: 0.35rem 0.7rem;
+      padding: 0.28rem 0.6rem;
       cursor: pointer;
       font: inherit;
+      font-size: 0.8rem;
+      line-height: 1.4;
+      white-space: nowrap;
+      transition: background 0.1s, border-color 0.1s;
     }
-    button.btn-danger { border-color: #fca5a5; color: #991b1b; }
-    button.btn-primary { border-color: #1d4ed8; color: #1d4ed8; }
+    button:hover, .nav a:hover, .page-nav a:hover {
+      background: var(--surface-2);
+    }
+    button.btn-primary {
+      background: var(--accent);
+      color: #fff;
+      border-color: transparent;
+      font-weight: 600;
+    }
+    button.btn-primary:hover { background: var(--accent-hover); }
+    button.btn-danger {
+      border-color: var(--danger-bdr);
+      color: var(--danger);
+      background: transparent;
+    }
+    button.btn-danger:hover { background: var(--danger-lt); }
+    .top button, .top .nav a {
+      border-color: rgba(255, 255, 255, 0.13);
+      background: rgba(255, 255, 255, 0.06);
+      color: var(--hdr-text);
+    }
+    .top button:hover, .top .nav a:hover {
+      background: rgba(255, 255, 255, 0.12);
+      border-color: rgba(255, 255, 255, 0.22);
+    }
+    .top button.btn-primary {
+      background: #ffffff;
+      color: var(--hdr-bg);
+      border-color: transparent;
+      font-weight: 600;
+    }
+    .top button.btn-primary:hover { background: #e8e8e5; }
+    .top input[type="month"] {
+      background: rgba(255, 255, 255, 0.07);
+      border: 1px solid rgba(255, 255, 255, 0.13);
+      border-radius: 5px;
+      color: var(--hdr-text);
+      padding: 0.26rem 0.5rem;
+      font: inherit;
+      font-size: 0.8rem;
+    }
+    .top input[type="month"]:focus {
+      outline: 2px solid rgba(255, 255, 255, 0.35);
+      outline-offset: 1px;
+    }
     input, select {
       border: 1px solid var(--border);
-      border-radius: 8px;
-      padding: 0.35rem 0.5rem;
+      border-radius: 5px;
+      padding: 0.28rem 0.45rem;
+      background: var(--surface);
+      color: var(--text);
       font: inherit;
+      font-size: 0.8rem;
       min-width: 0;
     }
-    input[type="month"] { padding: 0.35rem 0.5rem; }
-    .content { padding: 1rem 1.25rem 1.25rem; }
-    h1 { margin: 0 0 0.8rem; font-size: 1.2rem; }
+    input:focus, select:focus {
+      outline: 2px solid var(--accent);
+      outline-offset: 1px;
+      border-color: transparent;
+    }
+    .nav {
+      display: flex;
+      align-items: center;
+      gap: 0.4rem;
+      flex-wrap: wrap;
+    }
+    .page-nav {
+      display: flex;
+      align-items: center;
+      gap: 0.4rem;
+      flex-wrap: wrap;
+      margin-bottom: 0.75rem;
+    }
+    .import-fields {
+      display: grid;
+      grid-template-columns: 1fr;
+      gap: 0.6rem;
+    }
     table {
       width: 100%;
       border-collapse: collapse;
-      font-size: 0.95rem;
+      font-size: 0.85rem;
     }
-    th, td {
-      border-bottom: 1px solid var(--border);
-      text-align: left;
-      padding: 0.45rem 0.5rem;
-      vertical-align: top;
+    .table-wrap {
+      overflow-x: auto;
+      -webkit-overflow-scrolling: touch;
     }
     th {
+      border-bottom: 1px solid var(--border-strong);
+      text-align: left;
+      padding: 0.32rem 0.6rem;
       color: var(--muted);
       font-weight: 600;
-      font-size: 0.82rem;
+      font-size: 0.7rem;
       text-transform: uppercase;
-      letter-spacing: 0.04em;
+      letter-spacing: 0.06em;
+      white-space: nowrap;
+      background: var(--surface-2);
     }
-    .muted { color: var(--muted); }
+    td {
+      border-bottom: 1px solid var(--border);
+      text-align: left;
+      padding: 0.38rem 0.6rem;
+      vertical-align: middle;
+    }
+    tbody tr:hover td { background: var(--row-hover); }
+    td.num, td.time {
+      font-family: ui-monospace, "SF Mono", "Cascadia Mono", monospace;
+      font-size: 0.8rem;
+      font-variant-numeric: tabular-nums;
+    }
+    .actions { white-space: nowrap; }
+    tbody tr.weekend td { background: var(--weekend-bg); }
+    tbody tr.weekend:hover td { background: #fde9c2; }
+    tbody tr.weekend td:first-child {
+      border-left: 2px solid var(--weekend-line);
+      padding-left: calc(0.6rem - 2px);
+    }
+    tbody tr.today td { background: var(--today-bg); }
+    tbody tr.today td:first-child {
+      border-left: 2px solid var(--today-line);
+      padding-left: calc(0.6rem - 2px);
+    }
+    tfoot td, tfoot th {
+      border-top: 2px solid var(--border-strong);
+      border-bottom: none;
+      background: var(--surface-2);
+      font-weight: 700;
+      font-size: 0.8rem;
+      padding: 0.4rem 0.6rem;
+      color: var(--text);
+    }
+    tfoot td.num {
+      font-family: ui-monospace, "SF Mono", "Cascadia Mono", monospace;
+      font-variant-numeric: tabular-nums;
+    }
+    .delta-pos {
+      color: var(--pos);
+      font-family: ui-monospace, "SF Mono", "Cascadia Mono", monospace;
+      font-size: 0.8rem;
+      font-variant-numeric: tabular-nums;
+      font-weight: 600;
+    }
+    .delta-neg {
+      color: var(--neg);
+      font-family: ui-monospace, "SF Mono", "Cascadia Mono", monospace;
+      font-size: 0.8rem;
+      font-variant-numeric: tabular-nums;
+      font-weight: 600;
+    }
+    tbody tr[data-source="new"] td:first-child { border-left: 3px solid var(--c-new); padding-left: calc(0.6rem - 3px); }
+    tbody tr[data-source="duplicate"] td:first-child { border-left: 3px solid var(--c-dup); padding-left: calc(0.6rem - 3px); }
+    tbody tr[data-source="overlap"] td:first-child { border-left: 3px solid var(--c-overlap); padding-left: calc(0.6rem - 3px); }
+    tbody tr[data-source="remote"] td:first-child { border-left: 3px solid var(--c-remote); padding-left: calc(0.6rem - 3px); }
     .badge {
       display: inline-block;
       border-radius: 999px;
-      padding: 0.1rem 0.55rem;
-      color: white;
-      font-size: 0.75rem;
+      padding: 0.08rem 0.48rem;
+      font-size: 0.65rem;
       font-weight: 700;
       text-transform: uppercase;
-      letter-spacing: 0.03em;
+      letter-spacing: 0.05em;
+      line-height: 1.6;
+      border: 1px solid transparent;
+      white-space: nowrap;
     }
-    .badge-new { background: var(--new); }
-    .badge-duplicate { background: var(--duplicate); }
-    .badge-overlap { background: var(--overlap); }
-    .badge-remote { background: var(--remote); }
-    .delta-pos { color: #0a7f3f; font-weight: 600; }
-    .delta-neg { color: #b42318; font-weight: 600; }
-    .footer {
-      margin-top: 0.8rem;
-      color: var(--muted);
-      font-size: 0.85rem;
-    }
-    .inline-form {
+    .badge-new { background: var(--bg-new); color: var(--txt-new); border-color: #bbf7d0; }
+    .badge-duplicate { background: var(--bg-dup); color: var(--txt-dup); border-color: #bfdbfe; }
+    .badge-overlap { background: var(--bg-overlap); color: var(--txt-overlap); border-color: #fde68a; }
+    .badge-remote { background: var(--bg-remote); color: var(--txt-remote); border-color: #ddd6fe; }
+    .auth-banner {
       display: flex;
+      align-items: flex-start;
       gap: 0.5rem;
-      align-items: center;
-      flex-wrap: wrap;
-      margin-bottom: 0.8rem;
+      background: var(--auth-bg);
+      border: 1px solid var(--auth-bdr);
+      border-left: 3px solid var(--auth-bdr);
+      border-radius: 6px;
+      padding: 0.6rem 0.85rem;
+      margin-bottom: 0.85rem;
+      color: var(--auth-txt);
+      font-size: 0.8rem;
+      line-height: 1.5;
     }
-    .actions { white-space: nowrap; }
-    .toast {
-      position: fixed;
-      right: 1rem;
-      bottom: 1rem;
-      background: #0f172a;
-      color: #fff;
-      border-radius: 8px;
-      padding: 0.55rem 0.8rem;
-      box-shadow: 0 6px 24px rgba(0, 0, 0, 0.25);
-      z-index: 999;
-      max-width: 420px;
+    .auth-banner::before {
+      content: "⚠";
+      flex-shrink: 0;
     }
-    .toast.error { background: #991b1b; }
-    .result-box {
-      border: 1px solid var(--border);
-      border-radius: 10px;
-      padding: 0.65rem 0.8rem;
-      margin: 0.6rem 0;
-      background: #fbfdff;
-    }
-    .nowrap { white-space: nowrap; }
     dialog {
       border: 1px solid var(--border);
-      border-radius: 14px;
-      padding: 1.5rem;
-      width: min(540px, 95vw);
-      box-shadow: 0 12px 40px rgba(0, 0, 0, 0.15);
+      border-radius: 10px;
+      padding: 0;
+      width: min(520px, 95vw);
+      box-shadow: 0 8px 40px rgba(0, 0, 0, 0.16), 0 2px 8px rgba(0, 0, 0, 0.06);
+      font-size: 0.85rem;
     }
-    dialog::backdrop { background: rgba(0, 0, 0, 0.35); }
+    dialog::backdrop {
+      background: rgba(0, 0, 0, 0.42);
+      backdrop-filter: blur(2px);
+    }
+    .dialog-header {
+      padding: 0.85rem 1.1rem 0.7rem;
+      border-bottom: 1px solid var(--border);
+    }
     dialog h2 {
-      margin: 0 0 1rem;
-      font-size: 1.05rem;
+      margin: 0;
+      font-size: 0.9rem;
+      font-weight: 600;
+      letter-spacing: -0.01em;
     }
-    .dialog-actions {
+    .dialog-body {
+      padding: 0.85rem 1.1rem;
+    }
+    .dialog-footer {
       display: flex;
-      gap: 0.5rem;
+      gap: 0.4rem;
       justify-content: flex-end;
-      margin-top: 1rem;
+      padding: 0.7rem 1.1rem;
+      border-top: 1px solid var(--border);
+      background: var(--surface-2);
+      border-radius: 0 0 10px 10px;
     }
     .dialog-field {
       display: flex;
       flex-direction: column;
-      gap: 0.25rem;
-      margin-bottom: 0.75rem;
+      gap: 0.18rem;
+      margin-bottom: 0.65rem;
     }
+    .dialog-field:last-child { margin-bottom: 0; }
     .dialog-field label {
-      font-size: 0.82rem;
+      font-size: 0.68rem;
       color: var(--muted);
       font-weight: 600;
       text-transform: uppercase;
-      letter-spacing: 0.04em;
+      letter-spacing: 0.055em;
     }
     .dialog-field input,
     .dialog-field select,
     .dialog-field textarea { width: 100%; }
     .dialog-field textarea {
       resize: vertical;
+      min-height: 3.5rem;
       font: inherit;
     }
-    .dialog-row {
-      display: flex;
-      gap: 1rem;
-    }
-    .dialog-row .dialog-field { flex: 1; }
+    .dialog-row { display: flex; gap: 0.65rem; }
+    .dialog-row .dialog-field { flex: 1; min-width: 0; }
     .dialog-readonly {
       display: inline-block;
-      padding: 0.35rem 0;
+      padding: 0.28rem 0;
+      font-family: ui-monospace, "SF Mono", "Cascadia Mono", monospace;
+      font-size: 0.82rem;
       color: var(--text);
+    }
+    .toast {
+      position: fixed;
+      right: 1rem;
+      bottom: 1rem;
+      background: var(--accent);
+      color: #fff;
+      border-radius: 6px;
+      padding: 0.48rem 0.75rem;
+      box-shadow: 0 4px 18px rgba(0, 0, 0, 0.2);
+      z-index: 9999;
+      max-width: 360px;
+      font-size: 0.8rem;
+      line-height: 1.45;
+      animation: toast-in 0.14s ease-out;
+    }
+    .toast.error { background: var(--danger); }
+    @keyframes toast-in {
+      from { opacity: 0; transform: translateY(0.35rem); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+    .result-box {
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 0.5rem 0.7rem;
+      margin: 0.5rem 0;
+      background: var(--surface-2);
+      font-family: ui-monospace, "SF Mono", "Cascadia Mono", monospace;
+      font-size: 0.78rem;
+      color: var(--muted);
+      line-height: 1.6;
     }
   </style>
 </head>
 <body>
   <div class="wrap">
     <header class="top">
-      <div class="brand"><a href="/" style="text-decoration:none;color:inherit;">gohour serve</a></div>
+      <div class="brand-group">
+        <a class="brand" href="/">gohour</a>
+        {{ if .CurrentMonth }}<span class="header-month">{{ .CurrentMonth }}</span>{{ end }}
+      </div>
       <div class="nav">
-        <form action="/month" method="get" style="display:flex;gap:0.5rem;align-items:center;">
+        <form action="/month" method="get" style="display:flex;gap:0.4rem;align-items:center;">
           <input type="month" name="month" value="{{ .CurrentMonth }}" required>
           <button type="submit">Go</button>
         </form>
       </div>
     </header>
     <main class="content">
+      {{ if .AuthErrorMsg }}
+      <div class="auth-banner">{{ .AuthErrorMsg }}</div>
+      {{ end }}
       {{ template "page" . }}
     </main>
   </div>
   <script>
     let _lookup = null;
     let _editState = { mode: '', row: null, date: '' };
+    let _confirmCallback = null;
 
     async function apiFetch(method, url, body, options) {
       const fetchOptions = { method: method, headers: {}, body: undefined };
@@ -356,27 +591,155 @@
       });
     }
 
-    function toggleImportForm(id) {
-      const form = document.getElementById(id);
-      if (!form) return;
-      form.hidden = !form.hidden;
+    async function populateImportSelects(form) {
+      const lookup = await getLookup();
+      const projects = (lookup.projects || []).filter((project) => !project.archived);
+      const activitiesAll = lookup.activities || [];
+      const skillsAll = lookup.skills || [];
+
+      const projectSel = form.querySelector('[name=project]');
+      const activitySel = form.querySelector('[name=activity]');
+      const skillSel = form.querySelector('[name=skill]');
+      if (!projectSel || !activitySel || !skillSel) return;
+
+      const selectedNumericID = (select) => {
+        if (!select || !select.options.length || select.selectedIndex < 0) {
+          return NaN;
+        }
+        const option = select.options[select.selectedIndex];
+        return Number(option.dataset.id || '');
+      };
+      const fillImportSelect = (select, items, getID, getName) => {
+        select.innerHTML = '';
+        if (!items.length) {
+          const option = document.createElement('option');
+          option.value = '';
+          option.textContent = 'No options';
+          option.disabled = true;
+          option.selected = true;
+          select.appendChild(option);
+          return;
+        }
+        for (const item of items) {
+          const option = document.createElement('option');
+          option.value = String(getName(item));
+          option.textContent = getName(item);
+          option.dataset.name = getName(item);
+          option.dataset.id = String(getID(item));
+          select.appendChild(option);
+        }
+        select.selectedIndex = 0;
+      };
+
+      const rebuildSkills = () => {
+        const activityID = selectedNumericID(activitySel);
+        fillImportSelect(
+          skillSel,
+          skillsAll.filter((skill) => Number(skill.activityId) === activityID),
+          (skill) => skill.id,
+          (skill) => skill.name,
+        );
+      };
+      const rebuildActivities = () => {
+        const projectID = selectedNumericID(projectSel);
+        fillImportSelect(
+          activitySel,
+          activitiesAll.filter((activity) => Number(activity.projectId) === projectID && !activity.locked),
+          (activity) => activity.id,
+          (activity) => activity.name,
+        );
+        rebuildSkills();
+      };
+
+      fillImportSelect(projectSel, projects, (project) => project.id, (project) => project.name);
+      rebuildActivities();
+      projectSel.addEventListener('change', rebuildActivities);
+      activitySel.addEventListener('change', rebuildSkills);
     }
 
-    async function handleImportSubmit(event, options) {
-      event.preventDefault();
-      const form = event.target;
+    async function openImportDialog(dialogID, formID) {
+      const dialog = document.getElementById(dialogID);
+      const form = document.getElementById(formID);
+      if (!dialog || !form) return;
+      if (!form.dataset.lookupLoaded) {
+        try {
+          await populateImportSelects(form);
+          form.dataset.lookupLoaded = '1';
+        } catch (err) {
+          delete form.dataset.lookupLoaded;
+          showToast(String(err.message || err), true);
+          return;
+        }
+      }
+      dialog.showModal();
+    }
+
+    function closeImportDialog(dialogID) {
+      const dialog = document.getElementById(dialogID);
+      if (dialog && dialog.open) {
+        dialog.close();
+      }
+    }
+
+    function summarizeImportOverlaps(overlaps) {
+      const preview = overlaps.slice(0, 4).map((item) => {
+        const existing = item.existingId ? ('#' + item.existingId) : '?';
+        return item.date + ' ' + item.start + '-' + item.end + ' ' + item.project + ' (existing ' + existing + ')';
+      });
+      const remainder = overlaps.length > 4 ? ('; +' + (overlaps.length - 4) + ' more') : '';
+      return preview.join('; ') + remainder;
+    }
+
+    async function submitImportForm(form, options, modeFlag) {
       const formData = new FormData(form);
+      if (modeFlag) {
+        formData.append(modeFlag, 'true');
+      }
       try {
         const result = await apiFetch('POST', '/api/import', null, { formData: formData });
-        showToast('Imported ' + result.rowsPersisted + ' row(s).', false);
+        if (options && options.dialogID) {
+          closeImportDialog(options.dialogID);
+        }
+        let message = 'Imported ' + result.rowsPersisted + ' row(s).';
+        if (result.overlapsSkipped) {
+          message += ' Skipped ' + result.overlapsSkipped + ' overlapping row(s).';
+        }
+        showToast(message, false);
         if (options && options.day) {
           await reloadDayTable(options.day);
         } else if (options && options.refreshURL) {
           window.location.href = options.refreshURL;
         }
       } catch (err) {
+        if (
+          !modeFlag &&
+          err &&
+          err.status === 409 &&
+          err.payload &&
+          Array.isArray(err.payload.overlaps) &&
+          err.payload.overlaps.length > 0
+        ) {
+          const overlaps = err.payload.overlaps;
+          openConfirmDialog(
+            'Overlapping entries found',
+            'Some imported entries overlap existing local entries: ' + summarizeImportOverlaps(overlaps),
+            function() { submitImportForm(form, options, 'forceOverlapping'); },
+            'Import anyway',
+            {
+              label: 'Skip overlapping',
+              onConfirm: function() { submitImportForm(form, options, 'skipOverlapping'); },
+            },
+          );
+          return;
+        }
         showToast(String(err.message || err), true);
       }
+    }
+
+    async function handleImportSubmit(event, options) {
+      event.preventDefault();
+      const form = event.target;
+      await submitImportForm(form, options || {}, '');
     }
 
     function normalizeName(value) {
@@ -704,10 +1067,8 @@
       }
     }
 
-    async function deleteRow(button) {
-      const row = button.closest('tr');
+    async function deleteRowConfirmed(row) {
       if (!row) return;
-      if (!confirm('Delete this local entry?')) return;
       try {
         await apiFetch('DELETE', '/api/worklog/' + row.dataset.id);
         row.remove();
@@ -715,6 +1076,14 @@
       } catch (err) {
         showToast(String(err.message || err), true);
       }
+    }
+
+    function deleteRow(button) {
+      const row = button.closest('tr');
+      if (!row) return;
+      openConfirmDialog('Delete entry', 'Delete this local entry?', function() {
+        deleteRowConfirmed(row);
+      }, 'Delete');
     }
 
     async function addEntryRow(day) {
@@ -763,13 +1132,13 @@
       row.innerHTML = '' +
         '<td data-col="source"></td>' +
         '<td data-col="date"></td>' +
-        '<td data-col="start"></td>' +
-        '<td data-col="end"></td>' +
-        '<td data-col="duration"></td>' +
+        '<td data-col="start" class="time"></td>' +
+        '<td data-col="end" class="time"></td>' +
+        '<td data-col="duration" class="num"></td>' +
         '<td data-col="project"></td>' +
         '<td data-col="activity"></td>' +
         '<td data-col="skill"></td>' +
-        '<td data-col="billable"></td>' +
+        '<td data-col="billable" class="num"></td>' +
         '<td data-col="description"></td>' +
         '<td data-col="actions" class="actions"></td>';
 
@@ -789,40 +1158,105 @@
       tbody.appendChild(row);
     }
 
+    function openConfirmDialog(title, body, onConfirm, confirmLabel, alternative) {
+      const dialog = document.getElementById('confirm-dialog');
+      document.getElementById('confirm-title').textContent = title;
+      document.getElementById('confirm-body').textContent = body;
+      document.getElementById('confirm-ok').textContent = confirmLabel || 'Submit';
+      const altButton = document.getElementById('confirm-alt');
+      _confirmCallback = onConfirm;
+      if (altButton) {
+        if (alternative && alternative.label && alternative.onConfirm) {
+          altButton.hidden = false;
+          altButton.textContent = alternative.label;
+          altButton.onclick = function() {
+            const callback = alternative.onConfirm;
+            closeConfirmDialog();
+            if (callback) callback();
+          };
+        } else {
+          altButton.hidden = true;
+          altButton.textContent = '';
+          altButton.onclick = null;
+        }
+      }
+      document.getElementById('confirm-ok').onclick = function() {
+        const callback = _confirmCallback;
+        closeConfirmDialog();
+        if (callback) callback();
+      };
+      dialog.showModal();
+    }
+
+    function closeConfirmDialog() {
+      const dialog = document.getElementById('confirm-dialog');
+      if (dialog && dialog.open) dialog.close();
+      const altButton = document.getElementById('confirm-alt');
+      if (altButton) {
+        altButton.hidden = true;
+        altButton.textContent = '';
+        altButton.onclick = null;
+      }
+      _confirmCallback = null;
+    }
+
+    function openSubmitDialog(title, htmlContent) {
+      const dialog = document.getElementById('submit-dialog');
+      const titleNode = document.getElementById('submit-dialog-title');
+      const bodyNode = document.getElementById('submit-dialog-body');
+      if (!dialog || !titleNode || !bodyNode) return;
+      titleNode.textContent = title;
+      bodyNode.innerHTML = htmlContent;
+      applyLocaleFormatting(bodyNode);
+      if (!dialog.open) {
+        dialog.showModal();
+      }
+    }
+
+    function closeSubmitDialog() {
+      const dialog = document.getElementById('submit-dialog');
+      if (dialog && dialog.open) dialog.close();
+    }
+
     async function submitDay(date) {
-      const target = document.getElementById('day-submit-result');
-      if (target) target.textContent = 'Submitting...';
+      openSubmitDialog(
+        'Submit ' + date,
+        '<div class="result-box">Submitting day...</div>'
+      );
       try {
         const result = await apiFetch('POST', '/api/submit/day/' + encodeURIComponent(date));
-        if (target) {
-          target.className = 'result-box';
-          target.textContent = 'Added: ' + result.submitted + ' | Duplicates: ' + result.duplicates + ' | Overlaps: ' + result.overlaps + ' | Locked days: ' + result.lockedDays.length;
-        }
         await reloadDayTable(date);
+        openSubmitDialog(
+          'Submit ' + date,
+          '<div class="result-box">Added: ' + result.submitted +
+            ' | Duplicates: ' + result.duplicates +
+            ' | Overlaps: ' + result.overlaps +
+            ' | Locked days: ' + result.lockedDays.length + '</div>'
+        );
         showToast('Day submission finished.', false);
       } catch (err) {
-        if (target) {
-          target.className = 'result-box';
-          target.textContent = String(err.message || err);
-        }
+        openSubmitDialog(
+          'Submit ' + date,
+          '<div class="result-box">' + escapeHtml(String(err.message || err)) + '</div>'
+        );
         showToast(String(err.message || err), true);
       }
     }
 
     async function submitMonth(month) {
-      const target = document.getElementById('month-submit-result');
-      if (target) target.innerHTML = '<div class="result-box">Submitting month...</div>';
+      openSubmitDialog(
+        'Submit ' + month,
+        '<div class="result-box">Submitting month...</div>'
+      );
       try {
         const result = await apiFetch('POST', '/api/submit/month/' + encodeURIComponent(month));
-        if (target) {
-          target.innerHTML = renderMonthSubmitResult(result);
-          applyLocaleFormatting(target);
-        }
+        openSubmitDialog('Submit ' + month, renderMonthSubmitResult(result));
         showToast('Month submission finished.', false);
       } catch (err) {
-        if (target) {
-          target.innerHTML = '<div class="result-box">' + escapeHtml(String(err.message || err)) + '</div>';
-        }
+        openSubmitDialog(
+          'Submit ' + month,
+          '<div class="result-box">' + escapeHtml(String(err.message || err)) + '</div>'
+        );
         showToast(String(err.message || err), true);
       }
     }
@@ -847,6 +1281,28 @@
       }
     });
   </script>
+  <dialog id="confirm-dialog">
+    <div class="dialog-header">
+      <h2 id="confirm-title"></h2>
+    </div>
+    <div class="dialog-body">
+      <p id="confirm-body" style="margin:0;color:var(--muted);font-size:0.83rem;line-height:1.55;"></p>
+    </div>
+    <div class="dialog-footer">
+      <button type="button" onclick="closeConfirmDialog()">Cancel</button>
+      <button type="button" id="confirm-alt" hidden></button>
+      <button type="button" class="btn-primary" id="confirm-ok">Submit</button>
+    </div>
+  </dialog>
+  <dialog id="submit-dialog">
+    <div class="dialog-header">
+      <h2 id="submit-dialog-title">Submit</h2>
+    </div>
+    <div class="dialog-body" id="submit-dialog-body"></div>
+    <div class="dialog-footer">
+      <button type="button" onclick="closeSubmitDialog()">Close</button>
+    </div>
+  </dialog>
 </body>
 </html>
 {{ end }}

@@ -53,34 +53,24 @@ let you choose each entry interactively, then store a new rules entry in config.
 			return fmt.Errorf("read config %q: %w", configPath, err)
 		}
 
-		baseURL, homeURL, host, err := resolveOnePointURLs(configRuleAddURL)
+		cookieHeader, baseURL, homeURL, host, stateFile, err := ensureAuthenticatedWithStateFile(configRuleAddURL, configRuleAddAuthStateFile)
 		if err != nil {
 			return err
 		}
 
-		stateFile, err := resolveDefaultAuthStatePath(configRuleAddAuthStateFile)
-		if err != nil {
-			return err
-		}
-		cookieHeader, err := onepoint.SessionCookieHeaderFromStateFile(stateFile, host)
-		if err != nil {
-			return fmt.Errorf("read auth state %q: %w", stateFile, err)
-		}
-
-		client, err := onepoint.NewClient(onepoint.ClientConfig{
-			BaseURL:        baseURL,
-			RefererURL:     homeURL,
-			SessionCookies: cookieHeader,
-			UserAgent:      "gohour-config-rule/1.0",
-		})
-		if err != nil {
-			return err
-		}
-
-		ctx, cancel := context.WithTimeout(context.Background(), configRuleAddTimeout)
-		defer cancel()
-
-		snapshot, err := client.FetchLookupSnapshot(ctx)
+		snapshot, err := retryWithRelogin(
+			baseURL,
+			homeURL,
+			host,
+			stateFile,
+			"gohour-config-rule/1.0",
+			&cookieHeader,
+			func(client onepoint.Client) (onepoint.LookupSnapshot, error) {
+				ctx, cancel := context.WithTimeout(context.Background(), configRuleAddTimeout)
+				defer cancel()
+				return client.FetchLookupSnapshot(ctx)
+			},
+		)
 		if err != nil {
 			return fmt.Errorf("fetch OnePoint lookup values: %w", err)
 		}
