@@ -23,6 +23,17 @@ type interval struct {
 }
 
 func Run(store *storage.SQLiteStore) (*Result, error) {
+	return runWithEligibility(store, func(worklog.Entry) bool { return true })
+}
+
+func RunForEligibleIDs(store *storage.SQLiteStore, eligibleIDs map[int64]struct{}) (*Result, error) {
+	return runWithEligibility(store, func(entry worklog.Entry) bool {
+		_, ok := eligibleIDs[entry.ID]
+		return ok
+	})
+}
+
+func runWithEligibility(store *storage.SQLiteStore, canAdjust func(worklog.Entry) bool) (*Result, error) {
 	entries, err := store.ListWorklogs()
 	if err != nil {
 		return nil, err
@@ -42,7 +53,7 @@ func Run(store *storage.SQLiteStore) (*Result, error) {
 		dayEntries := byDay[day]
 		result.OverlapsBefore += countConflicts(dayEntries)
 
-		dayUpdates, adjusted := reconcileDay(dayEntries)
+		dayUpdates, adjusted := reconcileDayEligible(dayEntries, canAdjust)
 		result.EPMEntriesAdjusted += adjusted
 		if len(dayUpdates) > 0 {
 			updates = append(updates, dayUpdates...)
@@ -80,6 +91,10 @@ func sortedKeys(values map[string][]worklog.Entry) []string {
 }
 
 func reconcileDay(entries []worklog.Entry) ([]worklog.Entry, int) {
+	return reconcileDayEligible(entries, func(worklog.Entry) bool { return true })
+}
+
+func reconcileDayEligible(entries []worklog.Entry, canAdjust func(worklog.Entry) bool) ([]worklog.Entry, int) {
 	if len(entries) < 2 {
 		return nil, 0
 	}
@@ -97,6 +112,10 @@ func reconcileDay(entries []worklog.Entry) ([]worklog.Entry, int) {
 
 	for _, entry := range dayEntries {
 		if isEPMEntry(entry) {
+			if !canAdjust(entry) {
+				busy = addInterval(busy, interval{start: entry.StartDateTime, end: entry.EndDateTime})
+				continue
+			}
 			epmEntries = append(epmEntries, entry)
 			continue
 		}

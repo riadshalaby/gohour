@@ -82,6 +82,38 @@ func TestServer_MonthPageRendersMonthDays(t *testing.T) {
 	if !strings.Contains(text, `<dialog id="submit-dialog">`) {
 		t.Fatalf("month page missing shared submit dialog: %s", text)
 	}
+	if strings.Contains(text, "Preview submit") {
+		t.Fatalf("month page still contains preview submit control")
+	}
+	if !strings.Contains(text, `id="submit-dry-run"`) {
+		t.Fatalf("month page missing unified submit dry-run toggle")
+	}
+	if !strings.Contains(text, `id="month-remote-refreshed-at"`) {
+		t.Fatalf("month page missing remote refresh timestamp field")
+	}
+	if !strings.Contains(text, `id="month-auth-error"`) {
+		t.Fatalf("month page missing dynamic auth error surface for in-place reloads")
+	}
+	if !strings.Contains(text, `<details class="actions-menu">`) {
+		t.Fatalf("month page missing actions menu")
+	}
+	if !strings.Contains(text, `window.location.href = '/month/' + encodeURIComponent(month);`) {
+		t.Fatalf("month page JS should reload month route after local delete")
+	}
+	if !strings.Contains(text, `setSubmitDialogMode('status');`) {
+		t.Fatalf("month page missing status-mode dialog handling for remote delete")
+	}
+	if !strings.Contains(text, `Delete remote ' + month`) {
+		t.Fatalf("month page missing remote delete status dialog title")
+	}
+	if !strings.Contains(text, `Locked days:`) {
+		t.Fatalf("month page missing locked-day summary in remote delete status content")
+	}
+	for _, action := range []string{"Refresh remote", "Copy from remote", "Delete all local", "Delete all remote", "Import file"} {
+		if !strings.Contains(text, action) {
+			t.Fatalf("month page missing action %q", action)
+		}
+	}
 }
 
 func TestServer_MonthPageRemoteErrorRendersAuthBanner(t *testing.T) {
@@ -117,6 +149,110 @@ func TestServer_MonthPageRemoteErrorRendersAuthBanner(t *testing.T) {
 	}
 	if !strings.Contains(text, "2026-03-01") {
 		t.Fatalf("expected local month data to render, got: %s", text)
+	}
+}
+
+func TestServer_APIMonth_ReturnsRowsAndRefreshTimestamp(t *testing.T) {
+	t.Parallel()
+
+	store := openTestStore(t)
+	insertWorklogs(t, store, []worklog.Entry{
+		newLocalEntry(time.Date(2026, 3, 1, 9, 0, 0, 0, time.Local)),
+	})
+
+	client := &fakeClient{
+		worklogs: []onepoint.DayWorklog{
+			{
+				WorklogDate: onepoint.FormatDay(time.Date(2026, 3, 1, 0, 0, 0, 0, time.Local)),
+				StartTime:   9 * 60,
+				FinishTime:  10 * 60,
+				Billable:    60,
+			},
+		},
+	}
+	ts := httptest.NewServer(NewServer(store, client, testConfig(nil)))
+	defer ts.Close()
+
+	resp, err := http.Get(ts.URL + "/api/month/2026-03")
+	if err != nil {
+		t.Fatalf("request month api: %v", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		t.Fatalf("expected 200, got %d body=%s", resp.StatusCode, string(body))
+	}
+
+	var payload monthAPIResponse
+	if err := json.NewDecoder(resp.Body).Decode(&payload); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if payload.Month != "2026-03" {
+		t.Fatalf("unexpected month in payload: %+v", payload)
+	}
+	if len(payload.Rows) != 31 {
+		t.Fatalf("expected 31 rows in month payload, got %d", len(payload.Rows))
+	}
+	if payload.RemoteRefreshedAt == "" {
+		t.Fatalf("expected non-empty refresh timestamp: %+v", payload)
+	}
+	if _, err := time.Parse(time.RFC3339, payload.RemoteRefreshedAt); err != nil {
+		t.Fatalf("expected RFC3339 refresh timestamp, got %q", payload.RemoteRefreshedAt)
+	}
+}
+
+func TestServer_APIMonth_RemoteErrorWithoutRefresh_DegradesGracefully(t *testing.T) {
+	t.Parallel()
+
+	store := openTestStore(t)
+	insertWorklogs(t, store, []worklog.Entry{
+		newLocalEntry(time.Date(2026, 3, 1, 9, 0, 0, 0, time.Local)),
+	})
+	client := &fakeClient{filteredErr: errors.New("session expired")}
+	ts := httptest.NewServer(NewServer(store, client, testConfig(nil)))
+	defer ts.Close()
+
+	resp, err := http.Get(ts.URL + "/api/month/2026-03")
+	if err != nil {
+		t.Fatalf("request month api: %v", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		t.Fatalf("expected 200, got %d body=%s", resp.StatusCode, string(body))
+	}
+
+	var payload monthAPIResponse
+	if err := json.NewDecoder(resp.Body).Decode(&payload); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if payload.AuthErrorMsg == "" {
+		t.Fatalf("expected auth error message in payload")
+	}
+	if payload.TotalLocal <= 0 {
+		t.Fatalf("expected local totals in degraded payload: %+v", payload)
+	}
+}
+
+func TestServer_APIMonth_RemoteErrorWithRefresh_ReturnsBadGateway(t *testing.T) {
+	t.Parallel()
+
+	store := openTestStore(t)
+	insertWorklogs(t, store, []worklog.Entry{
+		newLocalEntry(time.Date(2026, 3, 1, 9, 0, 0, 0, time.Local)),
+	})
+	client := &fakeClient{filteredErr: errors.New("session expired")}
+	ts := httptest.NewServer(NewServer(store, client, testConfig(nil)))
+	defer ts.Close()
+
+	resp, err := http.Get(ts.URL + "/api/month/2026-03?refresh=1")
+	if err != nil {
+		t.Fatalf("request month api refresh: %v", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusBadGateway {
+		body, _ := io.ReadAll(resp.Body)
+		t.Fatalf("expected 502, got %d body=%s", resp.StatusCode, string(body))
 	}
 }
 
@@ -216,6 +352,12 @@ func TestServer_DayPageShowsClassificationBadges(t *testing.T) {
 			t.Fatalf("expected badge label %q in response body", label)
 		}
 	}
+	if strings.Contains(text, "Preview submit") {
+		t.Fatalf("day page still contains preview submit control")
+	}
+	if !strings.Contains(text, `id="day-remote-refreshed-at"`) {
+		t.Fatalf("day page missing remote refresh timestamp field")
+	}
 }
 
 func TestServer_DayPageRemoteErrorRendersAuthBanner(t *testing.T) {
@@ -281,13 +423,20 @@ func TestServer_DayPageIncludesResponsiveTableAndEditDialog(t *testing.T) {
 		`<dialog id="day-import-dialog">`,
 		`<dialog id="confirm-dialog">`,
 		`<dialog id="submit-dialog">`,
+		`id="submit-dry-run"`,
 		`class="dialog-row"`,
 		`<textarea id="edit-description" name="description" rows="3"></textarea>`,
 		`class="dialog-readonly"`,
 		`function formatCreateConflictMessage(err)`,
 		`function openImportDialog(dialogID, formID)`,
+		`function setImportFormStatus(form, message, isError)`,
+		`function setImportPreviewStatus(message, isError)`,
 		`function openConfirmDialog(title, body, onConfirm, confirmLabel, alternative)`,
 		`function openSubmitDialog(title, htmlContent)`,
+		`function openStatusDialog(title, htmlContent)`,
+		`function setSubmitDialogMode(mode)`,
+		`const action = { scope: _submitState.scope, value: _submitState.value };`,
+		`if (runToken !== _submitRunToken) {`,
 		`[hidden] { display: none !important; }`,
 		`Delete this local entry?`,
 		`option.value = String(getName(item));`,
@@ -296,6 +445,8 @@ func TestServer_DayPageIncludesResponsiveTableAndEditDialog(t *testing.T) {
 		`class="dialog-footer"`,
 		`onclick="saveEditDialog()"`,
 		`onclick="document.getElementById('edit-dialog').close()"`,
+		`'<div class="result-box">' + escapeHtml(String(err.message || err)) + '</div>'`,
+		`id="preview-status"`,
 	} {
 		if !strings.Contains(text, needle) {
 			t.Fatalf("day page missing %q", needle)
@@ -312,6 +463,94 @@ func TestServer_DayPageIncludesResponsiveTableAndEditDialog(t *testing.T) {
 	}
 	if strings.Contains(text, `id="day-submit-result"`) {
 		t.Fatalf("day page still contains inline day submit result placeholder")
+	}
+}
+
+func TestServer_APIDay_RefreshForcesRemoteReload(t *testing.T) {
+	t.Parallel()
+
+	store := openTestStore(t)
+	insertWorklogs(t, store, []worklog.Entry{
+		newLocalEntry(time.Date(2026, 3, 1, 9, 0, 0, 0, time.Local)),
+	})
+	client := &fakeClient{
+		worklogs: []onepoint.DayWorklog{
+			{
+				WorklogDate: onepoint.FormatDay(time.Date(2026, 3, 1, 0, 0, 0, 0, time.Local)),
+				StartTime:   9 * 60,
+				FinishTime:  10 * 60,
+				Billable:    60,
+			},
+		},
+	}
+	ts := httptest.NewServer(NewServer(store, client, testConfig(nil)))
+	defer ts.Close()
+
+	firstResp, err := http.Get(ts.URL + "/api/day/2026-03-01")
+	if err != nil {
+		t.Fatalf("first day request: %v", err)
+	}
+	defer firstResp.Body.Close()
+	if firstResp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(firstResp.Body)
+		t.Fatalf("expected 200, got %d body=%s", firstResp.StatusCode, string(body))
+	}
+	var first dayAPIResponse
+	if err := json.NewDecoder(firstResp.Body).Decode(&first); err != nil {
+		t.Fatalf("decode first response: %v", err)
+	}
+	if first.RemoteHours != 1.0 {
+		t.Fatalf("expected first remote hours=1.0, got %+v", first)
+	}
+	if first.RemoteRefreshedAt == "" {
+		t.Fatalf("expected first response refresh timestamp")
+	}
+	if client.filteredCalls != 1 {
+		t.Fatalf("expected one remote fetch, got %d", client.filteredCalls)
+	}
+
+	client.worklogs = []onepoint.DayWorklog{
+		{
+			WorklogDate: onepoint.FormatDay(time.Date(2026, 3, 1, 0, 0, 0, 0, time.Local)),
+			StartTime:   9 * 60,
+			FinishTime:  10 * 60,
+			Billable:    30,
+		},
+	}
+
+	cachedResp, err := http.Get(ts.URL + "/api/day/2026-03-01")
+	if err != nil {
+		t.Fatalf("cached day request: %v", err)
+	}
+	defer cachedResp.Body.Close()
+	var cached dayAPIResponse
+	if err := json.NewDecoder(cachedResp.Body).Decode(&cached); err != nil {
+		t.Fatalf("decode cached response: %v", err)
+	}
+	if cached.RemoteHours != 1.0 {
+		t.Fatalf("expected cached remote hours=1.0, got %+v", cached)
+	}
+	if client.filteredCalls != 1 {
+		t.Fatalf("expected cached request to avoid refetch, got %d", client.filteredCalls)
+	}
+
+	refreshedResp, err := http.Get(ts.URL + "/api/day/2026-03-01?refresh=1")
+	if err != nil {
+		t.Fatalf("refresh day request: %v", err)
+	}
+	defer refreshedResp.Body.Close()
+	var refreshed dayAPIResponse
+	if err := json.NewDecoder(refreshedResp.Body).Decode(&refreshed); err != nil {
+		t.Fatalf("decode refreshed response: %v", err)
+	}
+	if refreshed.RemoteHours != 0.5 {
+		t.Fatalf("expected refreshed remote hours=0.5, got %+v", refreshed)
+	}
+	if refreshed.RemoteRefreshedAt == "" {
+		t.Fatalf("expected refreshed response timestamp")
+	}
+	if client.filteredCalls != 2 {
+		t.Fatalf("expected forced refresh to refetch remote data, got %d calls", client.filteredCalls)
 	}
 }
 
@@ -935,6 +1174,82 @@ func TestServer_SubmitMonth_DryRun_DoesNotPersist(t *testing.T) {
 	}
 }
 
+func TestServer_SubmitDay_AuditSuccessAndFailure(t *testing.T) {
+	t.Parallel()
+
+	t.Run("success", func(t *testing.T) {
+		day := time.Date(2026, 3, 1, 9, 0, 0, 0, time.Local)
+		store := openTestStore(t)
+		insertWorklogs(t, store, []worklog.Entry{newLocalEntry(day)})
+
+		client := &fakeClient{dayWorklogs: map[string][]onepoint.DayWorklog{}}
+		auditSink := &testAuditLogger{}
+		handler, ok := NewServer(store, client, testConfig([]config.Rule{ruleForLocal()})).(*Server)
+		if !ok {
+			t.Fatalf("expected *Server handler")
+		}
+		handler.audit = auditSink
+		ts := httptest.NewServer(handler)
+		defer ts.Close()
+
+		resp, err := http.Post(ts.URL+"/api/submit/day/2026-03-01", "application/json", nil)
+		if err != nil {
+			t.Fatalf("submit day request: %v", err)
+		}
+		defer resp.Body.Close()
+		if resp.StatusCode != http.StatusOK {
+			body, _ := io.ReadAll(resp.Body)
+			t.Fatalf("expected 200, got %d body=%s", resp.StatusCode, string(body))
+		}
+
+		if len(auditSink.records) < 2 {
+			t.Fatalf("expected attempt and success audit records, got %+v", auditSink.records)
+		}
+		attempt := auditSink.records[0]
+		success := auditSink.records[len(auditSink.records)-1]
+		if attempt.Operation != "submit" || attempt.Scope != "day" || attempt.Target != "2026-03-01" || attempt.Outcome != "attempt" {
+			t.Fatalf("unexpected attempt audit record: %+v", attempt)
+		}
+		if success.Outcome != "success" || success.Submitted != 1 {
+			t.Fatalf("unexpected success audit record: %+v", success)
+		}
+	})
+
+	t.Run("failure", func(t *testing.T) {
+		day := time.Date(2026, 3, 1, 9, 0, 0, 0, time.Local)
+		store := openTestStore(t)
+		insertWorklogs(t, store, []worklog.Entry{newLocalEntry(day)})
+
+		client := &fakeClient{getDayErr: errors.New("upstream unavailable")}
+		auditSink := &testAuditLogger{}
+		handler, ok := NewServer(store, client, testConfig([]config.Rule{ruleForLocal()})).(*Server)
+		if !ok {
+			t.Fatalf("expected *Server handler")
+		}
+		handler.audit = auditSink
+		ts := httptest.NewServer(handler)
+		defer ts.Close()
+
+		resp, err := http.Post(ts.URL+"/api/submit/day/2026-03-01", "application/json", nil)
+		if err != nil {
+			t.Fatalf("submit day request: %v", err)
+		}
+		defer resp.Body.Close()
+		if resp.StatusCode != http.StatusBadGateway {
+			body, _ := io.ReadAll(resp.Body)
+			t.Fatalf("expected 502, got %d body=%s", resp.StatusCode, string(body))
+		}
+
+		if len(auditSink.records) < 2 {
+			t.Fatalf("expected attempt and error audit records, got %+v", auditSink.records)
+		}
+		failure := auditSink.records[len(auditSink.records)-1]
+		if failure.Outcome != "error" || failure.Error == "" {
+			t.Fatalf("unexpected failure audit record: %+v", failure)
+		}
+	})
+}
+
 func TestSubmitDay_LocalErrorReturns500(t *testing.T) {
 	t.Parallel()
 
@@ -1025,6 +1340,290 @@ func TestImport_ValidFile(t *testing.T) {
 	}
 	if len(entries) != 1 {
 		t.Fatalf("expected one imported entry, got %d", len(entries))
+	}
+}
+
+func TestImport_AutoReconcileFailure_ReturnsSuccessWithWarning(t *testing.T) {
+	t.Parallel()
+
+	store := openTestStore(t)
+	cfg := testConfig(nil)
+	cfg.Import.AutoReconcileAfterImport = true
+	client := &fakeClient{filteredErr: errors.New("onepoint unavailable")}
+	ts := httptest.NewServer(NewServer(store, client, cfg))
+	defer ts.Close()
+
+	var body bytes.Buffer
+	writer := multipart.NewWriter(&body)
+	part, err := writer.CreateFormFile("file", "import.csv")
+	if err != nil {
+		t.Fatalf("create form file: %v", err)
+	}
+	_, _ = part.Write([]byte("description,startdatetime,enddatetime,project,activity,skill\nTask,2026-03-01 09:00,2026-03-01 10:00,P,A,S\n"))
+	_ = writer.WriteField("mapper", "generic")
+	if err := writer.Close(); err != nil {
+		t.Fatalf("close multipart writer: %v", err)
+	}
+
+	resp, err := http.Post(ts.URL+"/api/import", writer.FormDataContentType(), &body)
+	if err != nil {
+		t.Fatalf("import request: %v", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		payload, _ := io.ReadAll(resp.Body)
+		t.Fatalf("expected 200, got %d body=%s", resp.StatusCode, string(payload))
+	}
+
+	var payload importResponse
+	if err := json.NewDecoder(resp.Body).Decode(&payload); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if payload.RowsPersisted != 1 {
+		t.Fatalf("expected rowsPersisted=1, got %+v", payload)
+	}
+	if payload.ReconcileWarning == "" {
+		t.Fatalf("expected reconcile warning in partial-success response: %+v", payload)
+	}
+
+	entries, err := store.ListWorklogs()
+	if err != nil {
+		t.Fatalf("list worklogs: %v", err)
+	}
+	if len(entries) != 1 {
+		t.Fatalf("expected inserted row despite reconcile failure, got %d", len(entries))
+	}
+}
+
+func TestServer_Import_AutoReconcileOnlyUnsyncedEntriesInRange(t *testing.T) {
+	t.Parallel()
+
+	day := time.Date(2026, 3, 1, 0, 0, 0, 0, time.Local)
+	store := openTestStore(t)
+	insertWorklogs(t, store, []worklog.Entry{
+		{
+			StartDateTime: day.Add(9 * time.Hour),
+			EndDateTime:   day.Add(10 * time.Hour),
+			Billable:      60,
+			Description:   "generic-fixed",
+			Project:       "P",
+			Activity:      "A",
+			Skill:         "S",
+			SourceFormat:  "csv",
+			SourceMapper:  "generic",
+			SourceFile:    "a.csv",
+		},
+		{
+			StartDateTime: day.Add(10 * time.Hour),
+			EndDateTime:   day.Add(11 * time.Hour),
+			Billable:      60,
+			Description:   "synced-epm",
+			Project:       "P",
+			Activity:      "A",
+			Skill:         "S",
+			SourceFormat:  "excel",
+			SourceMapper:  "epm",
+			SourceFile:    "EPMExportRZ202603.xlsx",
+		},
+		{
+			StartDateTime: day.Add(9*time.Hour + 30*time.Minute),
+			EndDateTime:   day.Add(10*time.Hour + 30*time.Minute),
+			Billable:      60,
+			Description:   "unsynced-epm",
+			Project:       "P",
+			Activity:      "A",
+			Skill:         "S",
+			SourceFormat:  "excel",
+			SourceMapper:  "epm",
+			SourceFile:    "EPMExportRZ202603.xlsx",
+		},
+	})
+
+	cfg := testConfig(nil)
+	cfg.Import.AutoReconcileAfterImport = true
+	client := &fakeClient{
+		worklogs: []onepoint.DayWorklog{
+			{
+				WorklogDate: onepoint.FormatDay(day),
+				StartTime:   10 * 60,
+				FinishTime:  11 * 60,
+				Billable:    60,
+			},
+		},
+	}
+	handler, ok := NewServer(store, client, cfg).(*Server)
+	if !ok {
+		t.Fatalf("expected *Server handler")
+	}
+	ts := httptest.NewServer(handler)
+	defer ts.Close()
+
+	var body bytes.Buffer
+	writer := multipart.NewWriter(&body)
+	part, err := writer.CreateFormFile("file", "import.csv")
+	if err != nil {
+		t.Fatalf("create form file: %v", err)
+	}
+	_, _ = part.Write([]byte("description,startdatetime,enddatetime,project,activity,skill\ntrigger,2026-03-01 13:00,2026-03-01 14:00,P,A,S\n"))
+	_ = writer.WriteField("mapper", "generic")
+	if err := writer.Close(); err != nil {
+		t.Fatalf("close multipart writer: %v", err)
+	}
+
+	resp, err := http.Post(ts.URL+"/api/import", writer.FormDataContentType(), &body)
+	if err != nil {
+		t.Fatalf("import request: %v", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		payload, _ := io.ReadAll(resp.Body)
+		t.Fatalf("expected 200, got %d body=%s", resp.StatusCode, string(payload))
+	}
+
+	entries, err := store.ListWorklogs()
+	if err != nil {
+		t.Fatalf("list worklogs: %v", err)
+	}
+	var synced, unsynced worklog.Entry
+	foundImport := false
+	for _, entry := range entries {
+		switch entry.Description {
+		case "synced-epm":
+			synced = entry
+		case "unsynced-epm":
+			unsynced = entry
+		case "trigger":
+			foundImport = true
+		}
+	}
+	if !foundImport {
+		t.Fatalf("expected imported trigger entry")
+	}
+	if got := synced.StartDateTime.Format("15:04"); got != "10:00" {
+		t.Fatalf("expected synced epm start to stay 10:00, got %s", got)
+	}
+	if got := synced.EndDateTime.Format("15:04"); got != "11:00" {
+		t.Fatalf("expected synced epm end to stay 11:00, got %s", got)
+	}
+	if got := unsynced.StartDateTime.Format("15:04"); got != "11:00" {
+		t.Fatalf("expected unsynced epm start to move to 11:00, got %s", got)
+	}
+	if got := unsynced.EndDateTime.Format("15:04"); got != "12:00" {
+		t.Fatalf("expected unsynced epm end to move to 12:00, got %s", got)
+	}
+}
+
+func TestServer_Import_AutoReconcile_UsesFreshRemoteData(t *testing.T) {
+	t.Parallel()
+
+	day := time.Date(2026, 3, 1, 0, 0, 0, 0, time.Local)
+	store := openTestStore(t)
+	insertWorklogs(t, store, []worklog.Entry{
+		{
+			StartDateTime: day.Add(9 * time.Hour),
+			EndDateTime:   day.Add(10 * time.Hour),
+			Billable:      60,
+			Description:   "generic-fixed",
+			Project:       "P",
+			Activity:      "A",
+			Skill:         "S",
+			SourceFormat:  "csv",
+			SourceMapper:  "generic",
+			SourceFile:    "a.csv",
+		},
+		{
+			StartDateTime: day.Add(9*time.Hour + 30*time.Minute),
+			EndDateTime:   day.Add(10*time.Hour + 30*time.Minute),
+			Billable:      60,
+			Description:   "synced-epm",
+			Project:       "P",
+			Activity:      "A",
+			Skill:         "S",
+			SourceFormat:  "excel",
+			SourceMapper:  "epm",
+			SourceFile:    "EPMExportRZ202603.xlsx",
+		},
+	})
+
+	cfg := testConfig(nil)
+	cfg.Import.AutoReconcileAfterImport = true
+	client := &fakeClient{
+		// Prime cache with stale remote data that does NOT include synced time range.
+		worklogs: []onepoint.DayWorklog{
+			{
+				WorklogDate: onepoint.FormatDay(day),
+				StartTime:   8 * 60,
+				FinishTime:  9 * 60,
+				Billable:    60,
+			},
+		},
+	}
+	ts := httptest.NewServer(NewServer(store, client, cfg))
+	defer ts.Close()
+
+	primeResp, err := http.Get(ts.URL + "/api/day/2026-03-01")
+	if err != nil {
+		t.Fatalf("prime cache request: %v", err)
+	}
+	_ = primeResp.Body.Close()
+	if primeResp.StatusCode != http.StatusOK {
+		t.Fatalf("expected 200 priming response, got %d", primeResp.StatusCode)
+	}
+	if client.filteredCalls != 1 {
+		t.Fatalf("expected one priming remote call, got %d", client.filteredCalls)
+	}
+
+	// Update remote source to current data where synced-epm should be classified as synced.
+	client.worklogs = []onepoint.DayWorklog{
+		{
+			WorklogDate: onepoint.FormatDay(day),
+			StartTime:   9*60 + 30,
+			FinishTime:  10*60 + 30,
+			Billable:    60,
+		},
+	}
+
+	var body bytes.Buffer
+	writer := multipart.NewWriter(&body)
+	part, err := writer.CreateFormFile("file", "import.csv")
+	if err != nil {
+		t.Fatalf("create form file: %v", err)
+	}
+	_, _ = part.Write([]byte("description,startdatetime,enddatetime,project,activity,skill\ntrigger,2026-03-01 13:00,2026-03-01 14:00,P,A,S\n"))
+	_ = writer.WriteField("mapper", "generic")
+	if err := writer.Close(); err != nil {
+		t.Fatalf("close multipart writer: %v", err)
+	}
+
+	resp, err := http.Post(ts.URL+"/api/import", writer.FormDataContentType(), &body)
+	if err != nil {
+		t.Fatalf("import request: %v", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		payload, _ := io.ReadAll(resp.Body)
+		t.Fatalf("expected 200, got %d body=%s", resp.StatusCode, string(payload))
+	}
+
+	entries, err := store.ListWorklogs()
+	if err != nil {
+		t.Fatalf("list worklogs: %v", err)
+	}
+	var synced worklog.Entry
+	for _, entry := range entries {
+		if entry.Description == "synced-epm" {
+			synced = entry
+			break
+		}
+	}
+	if synced.ID == 0 {
+		t.Fatalf("expected synced epm row")
+	}
+	if got := synced.StartDateTime.Format("15:04"); got != "09:30" {
+		t.Fatalf("expected synced row to remain unchanged with fresh remote lookup, got %s", got)
+	}
+	if client.filteredCalls < 2 {
+		t.Fatalf("expected auto-reconcile to force remote refresh, got %d remote calls", client.filteredCalls)
 	}
 }
 
@@ -1600,6 +2199,74 @@ func TestServer_DeleteMonthRemoteWorklogs_SkipsLocked(t *testing.T) {
 	}
 }
 
+func TestServer_DeleteMonthRemoteWorklogs_AuditSuccessAndFailure(t *testing.T) {
+	t.Parallel()
+
+	t.Run("success", func(t *testing.T) {
+		store := openTestStore(t)
+		client := &fakeClient{}
+		auditSink := &testAuditLogger{}
+		handler, ok := NewServer(store, client, testConfig(nil)).(*Server)
+		if !ok {
+			t.Fatalf("expected *Server handler")
+		}
+		handler.audit = auditSink
+		ts := httptest.NewServer(handler)
+		defer ts.Close()
+
+		req, _ := http.NewRequest(http.MethodDelete, ts.URL+"/api/month/2026-03/remote-worklogs", nil)
+		resp, err := http.DefaultClient.Do(req)
+		if err != nil {
+			t.Fatalf("delete remote month request: %v", err)
+		}
+		defer resp.Body.Close()
+		if resp.StatusCode != http.StatusOK {
+			body, _ := io.ReadAll(resp.Body)
+			t.Fatalf("expected 200, got %d body=%s", resp.StatusCode, string(body))
+		}
+
+		if len(auditSink.records) < 2 {
+			t.Fatalf("expected attempt and success audit records, got %+v", auditSink.records)
+		}
+		last := auditSink.records[len(auditSink.records)-1]
+		if last.Operation != "delete_remote_month" || last.Outcome != "success" {
+			t.Fatalf("unexpected success audit record: %+v", last)
+		}
+	})
+
+	t.Run("failure", func(t *testing.T) {
+		store := openTestStore(t)
+		client := &fakeClient{getDayErr: errors.New("cannot load day")}
+		auditSink := &testAuditLogger{}
+		handler, ok := NewServer(store, client, testConfig(nil)).(*Server)
+		if !ok {
+			t.Fatalf("expected *Server handler")
+		}
+		handler.audit = auditSink
+		ts := httptest.NewServer(handler)
+		defer ts.Close()
+
+		req, _ := http.NewRequest(http.MethodDelete, ts.URL+"/api/month/2026-03/remote-worklogs", nil)
+		resp, err := http.DefaultClient.Do(req)
+		if err != nil {
+			t.Fatalf("delete remote month request: %v", err)
+		}
+		defer resp.Body.Close()
+		if resp.StatusCode != http.StatusBadGateway {
+			body, _ := io.ReadAll(resp.Body)
+			t.Fatalf("expected 502, got %d body=%s", resp.StatusCode, string(body))
+		}
+
+		if len(auditSink.records) < 2 {
+			t.Fatalf("expected attempt and error audit records, got %+v", auditSink.records)
+		}
+		last := auditSink.records[len(auditSink.records)-1]
+		if last.Operation != "delete_remote_month" || last.Outcome != "error" || last.Error == "" {
+			t.Fatalf("unexpected failure audit record: %+v", last)
+		}
+	})
+}
+
 func TestServer_CopyMonthRemote(t *testing.T) {
 	t.Parallel()
 
@@ -1789,17 +2456,23 @@ func TestLoadRemoteRange_SortsOnceAndUsesCache(t *testing.T) {
 	from := time.Date(2026, 3, 1, 0, 0, 0, 0, time.Local)
 	to := time.Date(2026, 3, 2, 0, 0, 0, 0, time.Local)
 
-	first, err := server.loadRemoteRange(context.Background(), from, to)
+	first, firstRefreshedAt, err := server.loadRemoteRange(context.Background(), from, to, false)
 	if err != nil {
 		t.Fatalf("first loadRemoteRange: %v", err)
 	}
-	second, err := server.loadRemoteRange(context.Background(), from, to)
+	second, secondRefreshedAt, err := server.loadRemoteRange(context.Background(), from, to, false)
 	if err != nil {
 		t.Fatalf("second loadRemoteRange: %v", err)
 	}
 
 	if client.filteredCalls != 1 {
 		t.Fatalf("expected one filtered fetch call, got %d", client.filteredCalls)
+	}
+	if firstRefreshedAt.IsZero() || secondRefreshedAt.IsZero() {
+		t.Fatalf("expected refresh timestamps for cached days")
+	}
+	if !firstRefreshedAt.Equal(secondRefreshedAt) {
+		t.Fatalf("expected cached fetch timestamp to be stable, got first=%s second=%s", firstRefreshedAt, secondRefreshedAt)
 	}
 	for i, values := range [][]onepoint.DayWorklog{first, second} {
 		got := make([]string, 0, len(values))
@@ -1962,6 +2635,15 @@ func (f *fakeClient) FetchLookupSnapshot(ctx context.Context) (onepoint.LookupSn
 
 func (f *fakeClient) ResolveIDs(ctx context.Context, projectName, activityName, skillName string, options onepoint.ResolveOptions) (onepoint.ResolvedIDs, error) {
 	return onepoint.ResolvedIDs{}, errors.New("not implemented in test fake")
+}
+
+type testAuditLogger struct {
+	records []auditRecord
+}
+
+func (l *testAuditLogger) Log(record auditRecord) error {
+	l.records = append(l.records, record)
+	return nil
 }
 
 func strconvI64(value int64) string {

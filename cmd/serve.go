@@ -33,10 +33,11 @@ var (
 
 var serveCmd = &cobra.Command{
 	Use:   "serve",
-	Short: "Start local read-only web UI for OnePoint/local worklog comparison",
+	Short: "Start local interactive web UI for local/remote review and submit",
 	Long: `Start a local HTTP server with monthly and daily overview pages.
 
-The UI is read-only and compares local SQLite entries against current OnePoint entries.`,
+The UI supports in-place remote refresh, local import/edit/delete actions, and day/month submit
+with dry-run mode while comparing local SQLite entries against current OnePoint entries.`,
 	Example: `
   # Start local server on default port
   gohour serve

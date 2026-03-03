@@ -39,11 +39,13 @@ type Server struct {
 	cfg    config.Config
 
 	submitOptions onepoint.ResolveOptions
+	audit         auditLogger
 	mux           *http.ServeMux
 
 	mu          sync.RWMutex
 	dayCache    map[string][]onepoint.DayWorklog
 	dayFetched  map[string]bool
+	dayRefresh  map[string]time.Time
 	localByDay  map[string][]worklog.Entry
 	localLoaded bool
 
@@ -57,37 +59,64 @@ type Server struct {
 }
 
 type monthRowView struct {
-	Date         string
-	IsWeekend    bool
-	IsToday      bool
-	LocalHours   float64
-	RemoteHours  float64
-	LocalWorked  float64
-	RemoteWorked float64
-	DeltaHours   float64
-	DayLink      string
+	Date               string  `json:"date"`
+	IsWeekend          bool    `json:"isWeekend"`
+	IsToday            bool    `json:"isToday"`
+	LocalHours         float64 `json:"localHours"`
+	RemoteHours        float64 `json:"remoteHours"`
+	LocalWorked        float64 `json:"localWorked"`
+	RemoteWorked       float64 `json:"remoteWorked"`
+	WorkedDeltaHours   float64 `json:"workedDeltaHours"`
+	BillableDeltaHours float64 `json:"billableDeltaHours"`
+	DayLink            string  `json:"dayLink"`
 }
 
 type monthPageView struct {
-	Title             string
-	CurrentMonth      string
-	PreviousMonth     string
-	NextMonth         string
-	AuthErrorMsg      string
-	Rows              []monthRowView
-	TotalLocal        float64
-	TotalRemote       float64
-	TotalLocalWorked  float64
-	TotalRemoteWorked float64
-	TotalDelta        float64
+	Title              string
+	CurrentMonth       string
+	PreviousMonth      string
+	NextMonth          string
+	AuthErrorMsg       string
+	Rows               []monthRowView
+	TotalLocal         float64
+	TotalRemote        float64
+	TotalLocalWorked   float64
+	TotalRemoteWorked  float64
+	TotalWorkedDelta   float64
+	TotalBillableDelta float64
+	RemoteRefreshedAt  string
 }
 
 type dayPageView struct {
-	Title        string
-	CurrentMonth string
-	Day          string
-	AuthErrorMsg string
-	DayRow       DayRow
+	Title             string
+	CurrentMonth      string
+	Day               string
+	AuthErrorMsg      string
+	DayRow            DayRow
+	RemoteRefreshedAt string
+}
+
+type dayAPIResponse struct {
+	Date              string     `json:"date"`
+	LocalHours        float64    `json:"localHours"`
+	RemoteHours       float64    `json:"remoteHours"`
+	LocalWorkedHours  float64    `json:"localWorkedHours"`
+	RemoteWorkedHours float64    `json:"remoteWorkedHours"`
+	Entries           []EntryRow `json:"entries"`
+	RemoteRefreshedAt string     `json:"remoteRefreshedAt,omitempty"`
+}
+
+type monthAPIResponse struct {
+	Month              string         `json:"month"`
+	Rows               []monthRowView `json:"rows"`
+	TotalLocal         float64        `json:"totalLocal"`
+	TotalRemote        float64        `json:"totalRemote"`
+	TotalLocalWorked   float64        `json:"totalLocalWorked"`
+	TotalRemoteWorked  float64        `json:"totalRemoteWorked"`
+	TotalWorkedDelta   float64        `json:"totalWorkedDelta"`
+	TotalBillableDelta float64        `json:"totalBillableDelta"`
+	AuthErrorMsg       string         `json:"authErrorMsg,omitempty"`
+	RemoteRefreshedAt  string         `json:"remoteRefreshedAt,omitempty"`
 }
 
 type worklogMutationRequest struct {
@@ -102,12 +131,13 @@ type worklogMutationRequest struct {
 }
 
 type importResponse struct {
-	FilesProcessed  int `json:"filesProcessed"`
-	RowsRead        int `json:"rowsRead"`
-	RowsMapped      int `json:"rowsMapped"`
-	RowsSkipped     int `json:"rowsSkipped"`
-	RowsPersisted   int `json:"rowsPersisted"`
-	OverlapsSkipped int `json:"overlapsSkipped,omitempty"`
+	FilesProcessed   int    `json:"filesProcessed"`
+	RowsRead         int    `json:"rowsRead"`
+	RowsMapped       int    `json:"rowsMapped"`
+	RowsSkipped      int    `json:"rowsSkipped"`
+	RowsPersisted    int    `json:"rowsPersisted"`
+	ReconcileWarning string `json:"reconcileWarning,omitempty"`
+	OverlapsSkipped  int    `json:"overlapsSkipped,omitempty"`
 }
 
 type importPreviewEntry struct {
@@ -212,8 +242,10 @@ func NewServer(store *storage.SQLiteStore, client onepoint.Client, cfg config.Co
 		store:      store,
 		client:     client,
 		cfg:        cfg,
+		audit:      newFileAuditLogger(defaultAuditLogPath()),
 		dayCache:   make(map[string][]onepoint.DayWorklog),
 		dayFetched: make(map[string]bool),
+		dayRefresh: make(map[string]time.Time),
 		localByDay: make(map[string][]worklog.Entry),
 	}
 
@@ -221,6 +253,7 @@ func NewServer(store *storage.SQLiteStore, client onepoint.Client, cfg config.Co
 	mux.HandleFunc("GET /month", server.handleMonthPicker)
 	mux.HandleFunc("GET /month/{month}", server.handleMonth)
 	mux.HandleFunc("GET /day/{date}", server.handleDay)
+	mux.HandleFunc("GET /api/month/{month}", server.handleAPIMonth)
 	mux.HandleFunc("GET /api/day/{date}", server.handleAPIDay)
 	mux.HandleFunc("GET /api/lookup", server.handleAPILookup)
 	mux.HandleFunc("POST /api/worklog", server.handleAPIWorklogCreate)
@@ -271,7 +304,7 @@ func (s *Server) handleMonth(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	authErrorMsg := ""
-	remoteEntries, err := s.loadRemoteRange(r.Context(), monthStart, monthEnd)
+	remoteEntries, refreshedAt, err := s.loadRemoteRange(r.Context(), monthStart, monthEnd, false)
 	if err != nil {
 		authErrorMsg = fmt.Sprintf(
 			"OnePoint session may have expired (%v). In a new terminal run: gohour auth login",
@@ -280,41 +313,22 @@ func (s *Server) handleMonth(w http.ResponseWriter, r *http.Request) {
 		remoteEntries = nil
 	}
 
-	dayRows := BuildDailyView(localEntries, remoteEntries)
-	dayRows = fillMonthDays(monthStart, dayRows)
-	summary := BuildMonthlyView(dayRows)
-
-	now := timeutil.StartOfDay(time.Now())
-	rows := make([]monthRowView, 0, len(summary.Days))
-	for _, day := range summary.Days {
-		dayDate := timeutil.StartOfDay(day.Date)
-		dayISO := dayDate.Format("2006-01-02")
-		wd := dayDate.Weekday()
-		rows = append(rows, monthRowView{
-			Date:         dayISO,
-			IsWeekend:    wd == time.Saturday || wd == time.Sunday,
-			IsToday:      dayDate.Equal(now),
-			LocalHours:   day.LocalHours,
-			RemoteHours:  day.RemoteHours,
-			LocalWorked:  day.LocalWorkedHours,
-			RemoteWorked: day.RemoteWorkedHours,
-			DeltaHours:   day.DeltaHours,
-			DayLink:      "/day/" + dayISO,
-		})
-	}
+	rows, summary := buildMonthRows(monthStart, localEntries, remoteEntries)
 
 	view := monthPageView{
-		Title:             "gohour - month " + monthRaw,
-		CurrentMonth:      monthRaw,
-		PreviousMonth:     monthStart.AddDate(0, -1, 0).Format("2006-01"),
-		NextMonth:         monthStart.AddDate(0, 1, 0).Format("2006-01"),
-		AuthErrorMsg:      authErrorMsg,
-		Rows:              rows,
-		TotalLocal:        summary.TotalLocalHours,
-		TotalRemote:       summary.TotalRemoteHours,
-		TotalLocalWorked:  summary.TotalLocalWorkedHours,
-		TotalRemoteWorked: summary.TotalRemoteWorkedHours,
-		TotalDelta:        summary.TotalDeltaHours,
+		Title:              "gohour - month " + monthRaw,
+		CurrentMonth:       monthRaw,
+		PreviousMonth:      monthStart.AddDate(0, -1, 0).Format("2006-01"),
+		NextMonth:          monthStart.AddDate(0, 1, 0).Format("2006-01"),
+		AuthErrorMsg:       authErrorMsg,
+		Rows:               rows,
+		TotalLocal:         summary.TotalLocalHours,
+		TotalRemote:        summary.TotalRemoteHours,
+		TotalLocalWorked:   summary.TotalLocalWorkedHours,
+		TotalRemoteWorked:  summary.TotalRemoteWorkedHours,
+		TotalWorkedDelta:   summary.TotalLocalWorkedHours - summary.TotalRemoteWorkedHours,
+		TotalBillableDelta: summary.TotalDeltaHours,
+		RemoteRefreshedAt:  formatRefreshTime(refreshedAt),
 	}
 	if err := renderTemplate(w, "month.html", view); err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
@@ -335,7 +349,7 @@ func (s *Server) handleDay(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	authErrorMsg := ""
-	remoteEntries, err := s.loadRemoteRange(r.Context(), day, day)
+	remoteEntries, refreshedAt, err := s.loadRemoteRange(r.Context(), day, day, false)
 	if err != nil {
 		authErrorMsg = fmt.Sprintf(
 			"OnePoint session may have expired (%v). In a new terminal run: gohour auth login",
@@ -350,15 +364,62 @@ func (s *Server) handleDay(w http.ResponseWriter, r *http.Request) {
 	}
 
 	view := dayPageView{
-		Title:        "gohour - day " + dayRaw,
-		CurrentMonth: day.Format("2006-01"),
-		Day:          dayRaw,
-		AuthErrorMsg: authErrorMsg,
-		DayRow:       row,
+		Title:             "gohour - day " + dayRaw,
+		CurrentMonth:      day.Format("2006-01"),
+		Day:               dayRaw,
+		AuthErrorMsg:      authErrorMsg,
+		DayRow:            row,
+		RemoteRefreshedAt: formatRefreshTime(refreshedAt),
 	}
 	if err := renderTemplate(w, "day.html", view); err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 	}
+}
+
+func (s *Server) handleAPIMonth(w http.ResponseWriter, r *http.Request) {
+	monthRaw := strings.TrimSpace(r.PathValue("month"))
+	monthStart, err := parseMonth(monthRaw)
+	if err != nil {
+		http.Error(w, "invalid month format (expected YYYY-MM)", http.StatusBadRequest)
+		return
+	}
+	monthEnd := endOfMonth(monthStart)
+	refresh := strings.TrimSpace(r.URL.Query().Get("refresh")) == "1"
+
+	localEntries, err := s.loadLocalRange(monthStart, monthEnd)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	authErrorMsg := ""
+	remoteEntries, refreshedAt, err := s.loadRemoteRange(r.Context(), monthStart, monthEnd, refresh)
+	if err != nil {
+		// Local-only month refreshes should still succeed when remote auth is
+		// unavailable, mirroring page rendering behavior.
+		if refresh {
+			http.Error(w, fmt.Sprintf("load remote worklogs: %v", err), http.StatusBadGateway)
+			return
+		}
+		authErrorMsg = fmt.Sprintf(
+			"OnePoint session may have expired (%v). In a new terminal run: gohour auth login",
+			err,
+		)
+		remoteEntries = nil
+	}
+
+	rows, summary := buildMonthRows(monthStart, localEntries, remoteEntries)
+	writeJSON(w, http.StatusOK, monthAPIResponse{
+		Month:              monthRaw,
+		Rows:               rows,
+		TotalLocal:         summary.TotalLocalHours,
+		TotalRemote:        summary.TotalRemoteHours,
+		TotalLocalWorked:   summary.TotalLocalWorkedHours,
+		TotalRemoteWorked:  summary.TotalRemoteWorkedHours,
+		TotalWorkedDelta:   summary.TotalLocalWorkedHours - summary.TotalRemoteWorkedHours,
+		TotalBillableDelta: summary.TotalDeltaHours,
+		AuthErrorMsg:       authErrorMsg,
+		RemoteRefreshedAt:  formatRefreshTime(refreshedAt),
+	})
 }
 
 func (s *Server) handleAPIDay(w http.ResponseWriter, r *http.Request) {
@@ -374,7 +435,8 @@ func (s *Server) handleAPIDay(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
-	remoteEntries, err := s.loadRemoteRange(r.Context(), day, day)
+	refresh := strings.TrimSpace(r.URL.Query().Get("refresh")) == "1"
+	remoteEntries, refreshedAt, err := s.loadRemoteRange(r.Context(), day, day, refresh)
 	if err != nil {
 		http.Error(w, fmt.Sprintf("load remote worklogs: %v", err), http.StatusBadGateway)
 		return
@@ -385,7 +447,15 @@ func (s *Server) handleAPIDay(w http.ResponseWriter, r *http.Request) {
 		row = dayRows[0]
 	}
 
-	writeJSON(w, http.StatusOK, row)
+	writeJSON(w, http.StatusOK, dayAPIResponse{
+		Date:              row.Date.Format("2006-01-02"),
+		LocalHours:        row.LocalHours,
+		RemoteHours:       row.RemoteHours,
+		LocalWorkedHours:  row.LocalWorkedHours,
+		RemoteWorkedHours: row.RemoteWorkedHours,
+		Entries:           row.Entries,
+		RemoteRefreshedAt: formatRefreshTime(refreshedAt),
+	})
 }
 
 func (s *Server) handleAPILookup(w http.ResponseWriter, r *http.Request) {
@@ -585,6 +655,11 @@ func (s *Server) handleAPIImport(w http.ResponseWriter, r *http.Request) {
 	toInsert := result.Entries
 	overlapsSkipped := 0
 	duplicateCount := 0
+	var (
+		importRangeStart time.Time
+		importRangeEnd   time.Time
+		hasImportRange   bool
+	)
 	if len(result.Entries) > 0 {
 		minDay := timeutil.StartOfDay(result.Entries[0].StartDateTime)
 		maxDay := minDay
@@ -597,6 +672,9 @@ func (s *Server) handleAPIImport(w http.ResponseWriter, r *http.Request) {
 				maxDay = day
 			}
 		}
+		importRangeStart = minDay
+		importRangeEnd = maxDay
+		hasImportRange = true
 
 		existingEntries, err := s.loadLocalRange(minDay, maxDay)
 		if err != nil {
@@ -662,21 +740,22 @@ func (s *Server) handleAPIImport(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if s.cfg.Import.AutoReconcileAfterImport {
-		if _, err := reconcile.Run(s.store); err != nil {
-			http.Error(w, fmt.Sprintf("reconcile imported worklogs: %v", err), http.StatusInternalServerError)
-			return
+	reconcileWarning := ""
+	if s.cfg.Import.AutoReconcileAfterImport && hasImportRange {
+		if _, err := s.autoReconcileImportedRange(r.Context(), importRangeStart, importRangeEnd); err != nil {
+			reconcileWarning = fmt.Sprintf("reconcile imported worklogs: %v", err)
 		}
 	}
 
 	s.invalidateLocalCache()
 	writeJSON(w, http.StatusOK, importResponse{
-		FilesProcessed:  result.FilesProcessed,
-		RowsRead:        result.RowsRead,
-		RowsMapped:      result.RowsMapped,
-		RowsSkipped:     result.RowsSkipped + duplicateCount + overlapsSkipped,
-		RowsPersisted:   inserted,
-		OverlapsSkipped: overlapsSkipped,
+		FilesProcessed:   result.FilesProcessed,
+		RowsRead:         result.RowsRead,
+		RowsMapped:       result.RowsMapped,
+		RowsSkipped:      result.RowsSkipped + duplicateCount + overlapsSkipped,
+		RowsPersisted:    inserted,
+		ReconcileWarning: reconcileWarning,
+		OverlapsSkipped:  overlapsSkipped,
 	})
 }
 
@@ -777,6 +856,12 @@ func (s *Server) handleAPIDeleteMonthRemoteWorklogs(w http.ResponseWriter, r *ht
 		http.Error(w, "invalid month format (expected YYYY-MM)", http.StatusBadRequest)
 		return
 	}
+	s.logAudit(auditRecord{
+		Operation: "delete_remote_month",
+		Scope:     "month",
+		Target:    monthRaw,
+		Outcome:   "attempt",
+	})
 	monthEnd := endOfMonth(monthStart)
 	// Clear every calendar day in the month, not only days returned by
 	// getFilteredWorklogs, because OnePoint can retain stale month totals for
@@ -791,6 +876,16 @@ func (s *Server) handleAPIDeleteMonthRemoteWorklogs(w http.ResponseWriter, r *ht
 		dayKey := day.Format("2006-01-02")
 		existing, err := client.GetDayWorklogs(r.Context(), day)
 		if err != nil {
+			s.logAudit(auditRecord{
+				Operation:     "delete_remote_month",
+				Scope:         "month",
+				Target:        monthRaw,
+				Deleted:       deleted,
+				SkippedLocked: len(lockedDays),
+				LockedDays:    append([]string(nil), lockedDays...),
+				Outcome:       "error",
+				Error:         fmt.Sprintf("load day %s: %v", dayKey, err),
+			})
 			http.Error(w, fmt.Sprintf("load existing day %s failed: %v", dayKey, err), http.StatusBadGateway)
 			return
 		}
@@ -799,6 +894,16 @@ func (s *Server) handleAPIDeleteMonthRemoteWorklogs(w http.ResponseWriter, r *ht
 			continue
 		}
 		if _, err := client.PersistWorklogs(r.Context(), day, []onepoint.PersistWorklog{}); err != nil {
+			s.logAudit(auditRecord{
+				Operation:     "delete_remote_month",
+				Scope:         "month",
+				Target:        monthRaw,
+				Deleted:       deleted,
+				SkippedLocked: len(lockedDays),
+				LockedDays:    append([]string(nil), lockedDays...),
+				Outcome:       "error",
+				Error:         fmt.Sprintf("clear day %s: %v", dayKey, err),
+			})
 			http.Error(w, fmt.Sprintf("clear remote day %s failed: %v", dayKey, err), http.StatusBadGateway)
 			return
 		}
@@ -807,6 +912,15 @@ func (s *Server) handleAPIDeleteMonthRemoteWorklogs(w http.ResponseWriter, r *ht
 	}
 
 	s.invalidateRemoteDays(clearedDays)
+	s.logAudit(auditRecord{
+		Operation:     "delete_remote_month",
+		Scope:         "month",
+		Target:        monthRaw,
+		Deleted:       deleted,
+		SkippedLocked: len(lockedDays),
+		LockedDays:    append([]string(nil), lockedDays...),
+		Outcome:       "success",
+	})
 	writeJSON(w, http.StatusOK, map[string]any{
 		"deleted":       deleted,
 		"skippedLocked": len(lockedDays),
@@ -829,7 +943,7 @@ func (s *Server) handleAPICopyMonthRemote(w http.ResponseWriter, r *http.Request
 		return
 	}
 
-	remoteEntries, err := s.loadRemoteRange(r.Context(), monthStart, monthEnd)
+	remoteEntries, _, err := s.loadRemoteRange(r.Context(), monthStart, monthEnd, false)
 	if err != nil {
 		http.Error(w, fmt.Sprintf("load remote worklogs: %v", err), http.StatusBadGateway)
 		return
@@ -905,11 +1019,37 @@ func (s *Server) handleAPISubmitDay(w http.ResponseWriter, r *http.Request) {
 	}
 
 	dryRun := strings.TrimSpace(r.URL.Query().Get("dry_run")) == "1"
+	s.logAudit(auditRecord{
+		Operation: "submit",
+		Scope:     "day",
+		Target:    dayRaw,
+		DryRun:    dryRun,
+		Outcome:   "attempt",
+	})
 	resp, err := s.submitRange(r.Context(), day, day, dryRun)
 	if err != nil {
+		s.logAudit(auditRecord{
+			Operation: "submit",
+			Scope:     "day",
+			Target:    dayRaw,
+			DryRun:    dryRun,
+			Outcome:   "error",
+			Error:     err.Error(),
+		})
 		http.Error(w, err.Error(), submitErrorStatus(err))
 		return
 	}
+	s.logAudit(auditRecord{
+		Operation:  "submit",
+		Scope:      "day",
+		Target:     dayRaw,
+		DryRun:     dryRun,
+		Submitted:  resp.Submitted,
+		Duplicates: resp.Duplicates,
+		Overlaps:   resp.Overlaps,
+		LockedDays: append([]string(nil), resp.LockedDays...),
+		Outcome:    "success",
+	})
 	writeJSON(w, http.StatusOK, resp)
 }
 
@@ -922,11 +1062,37 @@ func (s *Server) handleAPISubmitMonth(w http.ResponseWriter, r *http.Request) {
 	}
 
 	dryRun := strings.TrimSpace(r.URL.Query().Get("dry_run")) == "1"
+	s.logAudit(auditRecord{
+		Operation: "submit",
+		Scope:     "month",
+		Target:    monthRaw,
+		DryRun:    dryRun,
+		Outcome:   "attempt",
+	})
 	resp, err := s.submitRange(r.Context(), monthStart, endOfMonth(monthStart), dryRun)
 	if err != nil {
+		s.logAudit(auditRecord{
+			Operation: "submit",
+			Scope:     "month",
+			Target:    monthRaw,
+			DryRun:    dryRun,
+			Outcome:   "error",
+			Error:     err.Error(),
+		})
 		http.Error(w, err.Error(), submitErrorStatus(err))
 		return
 	}
+	s.logAudit(auditRecord{
+		Operation:  "submit",
+		Scope:      "month",
+		Target:     monthRaw,
+		DryRun:     dryRun,
+		Submitted:  resp.Submitted,
+		Duplicates: resp.Duplicates,
+		Overlaps:   resp.Overlaps,
+		LockedDays: append([]string(nil), resp.LockedDays...),
+		Outcome:    "success",
+	})
 	writeJSON(w, http.StatusOK, resp)
 }
 
@@ -1015,8 +1181,11 @@ func (s *Server) loadLocalRange(from, to time.Time) ([]worklog.Entry, error) {
 	return filtered, nil
 }
 
-func (s *Server) loadRemoteRange(ctx context.Context, from, to time.Time) ([]onepoint.DayWorklog, error) {
+func (s *Server) loadRemoteRange(ctx context.Context, from, to time.Time, refresh bool) ([]onepoint.DayWorklog, time.Time, error) {
 	days := rangeDays(from, to)
+	if refresh {
+		s.invalidateRemoteDays(days)
+	}
 	if s.hasRemoteCacheMiss(days) {
 		// Serialize miss handling so concurrent requests don't trigger duplicate fetches.
 		s.remoteFetchMu.Lock()
@@ -1024,7 +1193,7 @@ func (s *Server) loadRemoteRange(ctx context.Context, from, to time.Time) ([]one
 			loaded, err := s.client.GetFilteredWorklogs(ctx, from, to)
 			if err != nil {
 				s.remoteFetchMu.Unlock()
-				return nil, err
+				return nil, time.Time{}, err
 			}
 			byKey := make(map[string][]onepoint.DayWorklog, len(days))
 			for _, day := range days {
@@ -1045,11 +1214,13 @@ func (s *Server) loadRemoteRange(ctx context.Context, from, to time.Time) ([]one
 				sortDayWorklogs(byKey[key])
 			}
 
+			refreshedAt := time.Now().UTC()
 			s.mu.Lock()
 			for _, day := range days {
 				key := day.Format("2006-01-02")
 				s.dayCache[key] = append([]onepoint.DayWorklog(nil), byKey[key]...)
 				s.dayFetched[key] = true
+				s.dayRefresh[key] = refreshedAt
 			}
 			s.mu.Unlock()
 		}
@@ -1063,7 +1234,8 @@ func (s *Server) loadRemoteRange(ctx context.Context, from, to time.Time) ([]one
 		out = append(out, s.dayCache[key]...)
 	}
 	s.mu.RUnlock()
-	return out, nil
+	refreshedAt, _ := s.remoteRangeRefreshTime(days)
+	return out, refreshedAt, nil
 }
 
 func (s *Server) ensureLocalCache() error {
@@ -1131,8 +1303,30 @@ func (s *Server) invalidateRemoteDays(days []time.Time) {
 		key := timeutil.StartOfDay(day).Format("2006-01-02")
 		delete(s.dayCache, key)
 		delete(s.dayFetched, key)
+		delete(s.dayRefresh, key)
 	}
 	s.mu.Unlock()
+}
+
+func (s *Server) remoteRangeRefreshTime(days []time.Time) (time.Time, bool) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	var latest time.Time
+	for _, day := range days {
+		key := day.Format("2006-01-02")
+		ts, ok := s.dayRefresh[key]
+		if !ok {
+			continue
+		}
+		if latest.IsZero() || ts.After(latest) {
+			latest = ts
+		}
+	}
+	if latest.IsZero() {
+		return time.Time{}, false
+	}
+	return latest, true
 }
 
 func (s *Server) loadLookupSnapshot(ctx context.Context, refresh bool) (onepoint.LookupSnapshot, error) {
@@ -1157,6 +1351,101 @@ func (s *Server) loadLookupSnapshot(ctx context.Context, refresh bool) (onepoint
 	s.lookupMu.Unlock()
 
 	return snapshot, nil
+}
+
+func (s *Server) autoReconcileImportedRange(ctx context.Context, from, to time.Time) (*reconcile.Result, error) {
+	allEntries, err := s.store.ListWorklogs()
+	if err != nil {
+		return nil, fmt.Errorf("list local worklogs: %w", err)
+	}
+	localEntries := make([]worklog.Entry, 0, len(allEntries))
+	for _, entry := range allEntries {
+		day := timeutil.StartOfDay(entry.StartDateTime)
+		if day.Before(timeutil.StartOfDay(from)) || day.After(timeutil.StartOfDay(to)) {
+			continue
+		}
+		localEntries = append(localEntries, entry)
+	}
+	if len(localEntries) == 0 {
+		return &reconcile.Result{}, nil
+	}
+
+	remoteEntries, _, err := s.loadRemoteRange(ctx, from, to, true)
+	if err != nil {
+		return nil, fmt.Errorf("load remote range: %w", err)
+	}
+
+	remoteByDay := make(map[string][]onepoint.PersistWorklog)
+	for _, item := range remoteEntries {
+		day, parseErr := onepoint.ParseDay(item.WorklogDate)
+		if parseErr != nil {
+			continue
+		}
+		key := timeutil.StartOfDay(day).Format("2006-01-02")
+		remoteByDay[key] = append(remoteByDay[key], item.ToPersistWorklog())
+	}
+
+	eligibleIDs := make(map[int64]struct{})
+	for _, entry := range localEntries {
+		if entry.ID <= 0 {
+			continue
+		}
+		dayKey := timeutil.StartOfDay(entry.StartDateTime).Format("2006-01-02")
+		if localEntryIsSynced(entry, remoteByDay[dayKey]) {
+			continue
+		}
+		eligibleIDs[entry.ID] = struct{}{}
+	}
+	if len(eligibleIDs) == 0 {
+		return &reconcile.Result{}, nil
+	}
+
+	return reconcile.RunForEligibleIDs(s.store, eligibleIDs)
+}
+
+func localEntryIsSynced(entry worklog.Entry, remote []onepoint.PersistWorklog) bool {
+	candidate := localEntryToPersistWorklog(entry)
+	for _, item := range remote {
+		if hasSameTimeRange(candidate, item) {
+			return true
+		}
+	}
+	return false
+}
+
+func buildMonthRows(monthStart time.Time, localEntries []worklog.Entry, remoteEntries []onepoint.DayWorklog) ([]monthRowView, MonthSummary) {
+	dayRows := BuildDailyView(localEntries, remoteEntries)
+	dayRows = fillMonthDays(monthStart, dayRows)
+	summary := BuildMonthlyView(dayRows)
+
+	now := timeutil.StartOfDay(time.Now())
+	rows := make([]monthRowView, 0, len(summary.Days))
+	for _, day := range summary.Days {
+		dayDate := timeutil.StartOfDay(day.Date)
+		dayISO := dayDate.Format("2006-01-02")
+		wd := dayDate.Weekday()
+		rows = append(rows, monthRowView{
+			Date:               dayISO,
+			IsWeekend:          wd == time.Saturday || wd == time.Sunday,
+			IsToday:            dayDate.Equal(now),
+			LocalHours:         day.LocalHours,
+			RemoteHours:        day.RemoteHours,
+			LocalWorked:        day.LocalWorkedHours,
+			RemoteWorked:       day.RemoteWorkedHours,
+			WorkedDeltaHours:   day.LocalWorkedHours - day.RemoteWorkedHours,
+			BillableDeltaHours: day.DeltaHours,
+			DayLink:            "/day/" + dayISO,
+		})
+	}
+
+	return rows, summary
+}
+
+func formatRefreshTime(value time.Time) string {
+	if value.IsZero() {
+		return ""
+	}
+	return value.UTC().Format(time.RFC3339)
 }
 
 func (s *Server) parseAndRunImportForm(r *http.Request) (importFormResult, error) {
@@ -1260,6 +1549,9 @@ func renderTemplate(w http.ResponseWriter, pageTemplate string, data any) error 
 		},
 		"fmtDelta": func(value float64) string {
 			return fmt.Sprintf("%+.2f", value)
+		},
+		"isZeroDelta": func(value float64) bool {
+			return math.Abs(value) < 0.0001
 		},
 		"toMins": func(hours float64) int {
 			return int(math.Round(hours * 60))
