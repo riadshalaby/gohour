@@ -1,18 +1,54 @@
-# ROADMAP
+# ROADMAP for v0.2.3
 
-## v0.2.2 (Completed)
-- Import billable override and two-step import preview with per-row conflict selection.
-- Submit CLI two-phase classification, detailed dry-run output, and pre-flight confirmation.
-- Month/day reporting updates for worked vs billable visibility.
-- Local overlap save warning flow (`X-Force-Overlap`) and month bulk actions.
-- Remote month actions: copy from remote (skip already-local) and delete remote (skip locked days).
-- Web submit dry-run preview actions on day/month pages.
-- Day status badge model (`local`, `synced`, `conflict`, `remote`) with legend.
-- Version command: `gohour version`.
-- Submit update propagation for billable/comment edits on already-synced entries.
+## Release Goal
+Improve reliability and usability of month/day workflows in the web UI, with a focus on remote data consistency, faster operator feedback, and cleaner release handling.
 
-## Next Candidates
-- Add server-side pagination/filtering for large month/day tables.
-- Add audit logging for remote destructive operations (delete all remote, submit).
-- Add e2e browser tests for import preview and submit preview flows.
-- Add release pipeline that injects semantic version/build metadata automatically.
+## Scope (Planned)
+
+### P0 - Must Have
+- Web UI: add explicit remote refresh action
+  - Add a `Refresh remote` control in month and day views.
+  - Force reload of remote worklogs/totals for the visible range.
+  - Show last refresh timestamp in UI.
+
+- Web UI: unify preview and submit into one flow
+  - Remove separate `Preview submit` button.
+  - Add `Dry run` option directly in submit dialog/action.
+  - Reuse one result view for dry-run and real submit.
+
+- Web UI: post-import reconcile for unsynced local entries only
+  - Trigger reconcile automatically after web import.
+  - Reconcile only local entries that are not already synced to remote.
+  - Keep synced entries untouched.
+
+- Web UI: compact month totals and delta display
+  - Show delta next to remote worked and remote billable totals.
+  - Remove extra delta column.
+  - Color semantics: green = no delta, orange = delta present.
+
+### P1 - Should Have
+- Web UI actions menu cleanup
+  - Move destructive/secondary actions into one menu.
+  - Keep only primary navigation/actions as direct buttons (`Previous`, `Next`, `Submit month`).
+
+- Audit log for remote write operations
+  - Log `submit` and `delete all remote` operations locally with timestamp, range/day, and result summary.
+  - Keep implementation lightweight (file-based log).
+
+### P2 - Nice to Have
+- Release automation improvements
+  - Build distribution binaries with version metadata injection by default.
+  - Generate checksums for release artifacts.
+  - Add one release command/script for tag + notes + asset upload.
+
+## Non-Goals for v0.2.3
+- No server-side workaround for OnePoint internal aggregation/cache behavior.
+- No broad redesign of existing page layout beyond action/menu cleanup.
+
+## Acceptance Criteria
+- Users can refresh remote data without page reload and see updated timestamp.
+- Dry-run is available in submit flow without separate preview action.
+- Web import auto-reconcile does not mutate entries already synced to remote.
+- Month view displays deltas inline with remote totals and expected colors.
+- Remote write actions produce auditable local log entries.
+- README and Cobra help text are updated when CLI/UI behavior changes.
