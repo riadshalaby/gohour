@@ -213,6 +213,10 @@ Day view includes:
 - local add/edit/delete with overlap warning + "save anyway" flow
 - status badges: `local`, `synced`, `conflict`, `remote`
 
+Important OnePoint UI note:
+- If a OnePoint browser tab/window was already open while gohour changed worklogs (for example import/delete/submit), the OnePoint UI can show stale totals or stale day values.
+- If that happens, close the open OnePoint window/tab and open/login again to refresh the displayed values.
+
 Main flags:
 
 - `--port` (optional): HTTP port (default `8080`)
