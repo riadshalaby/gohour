@@ -2,10 +2,9 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
-cd "$REPO_ROOT"
+agent="${1:-claude}"
+if [[ $# -gt 0 ]]; then
+  shift
+fi
 
-echo "Claude started in PLAN mode"
-echo "Expected output: .ai/PLAN.md"
-
-exec claude --system-prompt-file .ai/prompts/planner.md
+exec "$SCRIPT_DIR/ai-launch.sh" plan "$agent" "$@"

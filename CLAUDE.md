@@ -1,39 +1,64 @@
 # CLAUDE
 
 ## Project Overview
-- `gohour` is a Go CLI built with Cobra + Viper.
-- Purpose: import time-tracking files, normalize worklogs, store in SQLite, reconcile overlaps, submit to OnePoint, and export reports.
+- `gohour` is a Go project with:
+  - a CLI (Cobra + Viper),
+  - a localhost web UI started via `gohour serve`.
+- Core purpose: import time-tracking files, normalize/store worklogs in SQLite, reconcile overlaps, compare local vs. OnePoint, submit to OnePoint, and export reports.
+
+## Current Status (v0.2.x)
+- Implemented commands include: `config`, `import`, `reconcile`, `submit`, `serve`, `export`, `delete`, `auth`, `version`.
+- `serve` now exposes an interactive UI (not read-only in practice):
+  - month/day compare views (local vs. remote),
+  - local worklog create/update/delete,
+  - import preview + import execution,
+  - day/month submit + dry-run preview,
+  - month-level local delete, remote delete, remote-to-local copy/sync actions.
+- Import UI supports `billable` mode selection and conflict-aware preview (clean/duplicate/overlap).
+- Day/month views show worked and billable totals for both local and remote.
 
 ## Architecture Layers
-- `cmd` -> `importer` -> `reconcile` -> `storage` -> `onepoint` -> `output`
+- CLI flow: `cmd` -> `importer` / `reconcile` / `storage` / `submitter` / `onepoint` / `output`
+- Web flow: `cmd/serve` -> `web` -> `storage` + `onepoint` + `submitter`
+- Shared utilities: `internal/classify`, `internal/timeutil`
 
 ## Submit Command Invariants
 - If a remote day contains any locked entry, skip the full day.
 - Duplicate detection compares only: `StartTime`, `FinishTime`, `ProjectID`, `ActivityID`, `SkillID`.
-- Overlaps are handled interactively in normal mode (`w`/`s`/`W`/`S`/`a`).
-- `--dry-run` reads remote day worklogs, reports locked days/overlaps, and performs no persist call.
+- If duplicate key matches but billable/comment differ, treat it as an update candidate (not a duplicate skip).
+- Overlaps are handled interactively in normal CLI mode (`w`/`s`/`W`/`S`/`a`).
+- `--dry-run` still loads remote day worklogs, reports locked/duplicate/overlap outcomes, and performs no persist call.
 
 ## Coding Rules
 - Return errors; never panic.
 - Prefer small, test-backed changes.
 - Avoid global mutable state.
+- Keep documentation aligned with behavior:
+  - Update `README.md` whenever commands, flags, workflows, or defaults change.
+  - Update Cobra command help text (`Use`, `Short`, `Long`, `Example`, and flag descriptions) whenever related behavior changes.
 
 ## AI Workflow Rules
-- Claude:
+- Plan Mode:
   - writes `.ai/PLAN.md`
+  - never edits code
+- Review Mode:
   - writes `.ai/REVIEW.md`
   - never edits code
-- Codex:
+- Implement Mode:
   - implements `.ai/PLAN.md`
   - updates tests
   - must not invent requirements
 
 ## AI Operating Mode
-- No `.ai/MODE` file is required or used.
 - Mode is selected by the launcher prompt/context:
-  - Planner (`.ai/prompts/planner.md`): update ONLY `.ai/PLAN.md`, never modify source code.
-  - Reviewer (`.ai/prompts/reviewer.md`): update ONLY `.ai/REVIEW.md`, never modify source code.
-  - Implementer/Codex: implement `.ai/PLAN.md` and update tests under the rules above.
+  - Generic launcher: `scripts/ai-launch.sh <role> <agent> [agent-options...]`
+    - roles: `plan`, `implement`, `review`
+    - agents: `claude`, `codex`
+  - Convenience wrappers:
+    - `scripts/ai-plan.sh [agent] [agent-options...]` (default agent: `claude`)
+    - `scripts/ai-implement.sh [agent] [agent-options...]` (default agent: `codex`)
+    - `scripts/ai-review.sh [agent] [agent-options...]` (default agent: `codex`)
+- No `.ai/MODE` file is used.
 
 ## Git Rules
 - Work in the current branch.

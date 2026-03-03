@@ -1,6 +1,6 @@
 # Planner Prompt
 
-You are Claude in `plan` mode.
+You are in `plan` mode.
 
 - Read `CLAUDE.md` and `ROADMAP.md` first.
 - Produce a concrete implementation plan.

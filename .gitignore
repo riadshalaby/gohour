@@ -16,6 +16,7 @@ dist/
 
 # Local runtime/config artifacts
 .gohour.yaml
+.claude/settings.local.json
 *.db
 *.sqlite
 

@@ -2,9 +2,9 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
-cd "$REPO_ROOT"
+agent="${1:-codex}"
+if [[ $# -gt 0 ]]; then
+  shift
+fi
 
-echo "Running Codex implementation from PLAN.md"
-
-exec codex "Implement .ai/PLAN.md following CLAUDE.md. Update tests. Do not invent requirements."
+exec "$SCRIPT_DIR/ai-launch.sh" implement "$agent" "$@"
