@@ -1,0 +1,109 @@
+/* Reset and global element styles. References tokens from tokens.css. */
+
+/* ── Reset ── */
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+[hidden] {
+  display: none !important;
+}
+
+[x-cloak] {
+  display: none !important;
+}
+
+/* ── Base ── */
+html {
+  font-size: 100%;
+  -webkit-text-size-adjust: 100%;
+}
+
+body {
+  margin: 0;
+  padding: var(--sp-5);
+  background: var(--bg);
+  color: var(--text);
+  font: 13.5px / var(--leading-normal) var(--font-sans);
+  min-height: 100vh;
+}
+
+/* ── Headings ── */
+h1, h2, h3, h4, h5, h6 {
+  margin: 0;
+  line-height: var(--leading-tight);
+}
+
+h1 {
+  font-size: var(--text-md);
+  font-weight: var(--font-semibold);
+  letter-spacing: -0.01em;
+  margin-bottom: var(--sp-3);
+}
+
+h2 {
+  font-size: var(--text-md);
+  font-weight: var(--font-semibold);
+  letter-spacing: -0.01em;
+}
+
+/* ── Paragraphs ── */
+p {
+  margin: 0 0 var(--sp-3);
+}
+
+p:last-child {
+  margin-bottom: 0;
+}
+
+/* ── Links ── */
+a {
+  color: var(--text);
+  text-decoration: none;
+}
+
+a:hover {
+  text-decoration: underline;
+}
+
+/* ── Utilities ── */
+.muted {
+  color: var(--muted);
+}
+
+.nowrap {
+  white-space: nowrap;
+}
+
+.text-mono {
+  font-family: var(--font-mono);
+}
+
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  border: 0;
+}
+
+.text-danger {
+  color: var(--danger);
+}
+
+.text-success {
+  color: var(--success);
+}
+
+.text-ok {
+  color: var(--delta-ok);
+}
+
+.text-warn {
+  color: var(--delta-warn);
+}

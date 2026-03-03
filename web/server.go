@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"html/template"
 	"io"
+	"io/fs"
 	"math"
 	"net/http"
 	"os"
@@ -30,8 +31,11 @@ import (
 	"gohour/worklog"
 )
 
-//go:embed templates/*.html
+//go:embed templates
 var templateFS embed.FS
+
+//go:embed static
+var staticFS embed.FS
 
 type Server struct {
 	store  *storage.SQLiteStore
@@ -62,6 +66,7 @@ type monthRowView struct {
 	Date               string  `json:"date"`
 	IsWeekend          bool    `json:"isWeekend"`
 	IsToday            bool    `json:"isToday"`
+	HasLockedRemote    bool    `json:"hasLockedRemote"`
 	LocalHours         float64 `json:"localHours"`
 	RemoteHours        float64 `json:"remoteHours"`
 	LocalWorked        float64 `json:"localWorked"`
@@ -72,10 +77,13 @@ type monthRowView struct {
 }
 
 type monthPageView struct {
-	Title              string
-	CurrentMonth       string
-	PreviousMonth      string
-	NextMonth          string
+	Title         string
+	CurrentMonth  string
+	PreviousMonth string
+	NextMonth     string
+	// Day is intentionally empty for month pages; defined here so the shared
+	// base.html template can safely access .Day without causing a template error.
+	Day                string
 	AuthErrorMsg       string
 	Rows               []monthRowView
 	TotalLocal         float64
@@ -206,6 +214,15 @@ type worklogConflictResponse struct {
 	ExistingID int64  `json:"existingId"`
 }
 
+type submitPartialView struct {
+	Scope   string
+	Target  string
+	DryRun  bool
+	Result  submitResponse
+	Error   string
+	IsError bool
+}
+
 type lookupProject struct {
 	ID       int64  `json:"id"`
 	Name     string `json:"name"`
@@ -250,9 +267,26 @@ func NewServer(store *storage.SQLiteStore, client onepoint.Client, cfg config.Co
 	}
 
 	mux := http.NewServeMux()
+
+	// Static file serving (embedded; served at /static/)
+	staticSub, _ := fs.Sub(staticFS, "static")
+	mux.Handle("GET /static/", http.StripPrefix("/static/", http.FileServer(http.FS(staticSub))))
+
+	// Page routes
 	mux.HandleFunc("GET /month", server.handleMonthPicker)
 	mux.HandleFunc("GET /month/{month}", server.handleMonth)
 	mux.HandleFunc("GET /day/{date}", server.handleDay)
+
+	// HTMX partial routes (Phase 2)
+	mux.HandleFunc("GET /partials/month/{month}", server.handlePartialMonth)
+	mux.HandleFunc("GET /partials/day/{date}", server.handlePartialDay)
+	mux.HandleFunc("POST /partials/day/{date}/worklog", server.handlePartialWorklogCreate)
+	mux.HandleFunc("POST /partials/day/{date}/worklog/{id}", server.handlePartialWorklogUpdate)
+	mux.HandleFunc("POST /partials/day/{date}/worklog/{id}/delete", server.handlePartialWorklogDelete)
+	mux.HandleFunc("POST /partials/submit/day/{date}", server.handlePartialSubmitDay)
+	mux.HandleFunc("POST /partials/submit/month/{month}", server.handlePartialSubmitMonth)
+
+	// JSON API routes
 	mux.HandleFunc("GET /api/month/{month}", server.handleAPIMonth)
 	mux.HandleFunc("GET /api/day/{date}", server.handleAPIDay)
 	mux.HandleFunc("GET /api/lookup", server.handleAPILookup)
@@ -374,6 +408,362 @@ func (s *Server) handleDay(w http.ResponseWriter, r *http.Request) {
 	if err := renderTemplate(w, "day.html", view); err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 	}
+}
+
+// handlePartialMonth returns just the month table rows as an HTML fragment
+// (HTMX partial, Phase 2.1). The response includes OOB swaps for stats.
+func (s *Server) handlePartialMonth(w http.ResponseWriter, r *http.Request) {
+	monthRaw := strings.TrimSpace(r.PathValue("month"))
+	monthStart, err := parseMonth(monthRaw)
+	if err != nil {
+		http.Error(w, "invalid month format (expected YYYY-MM)", http.StatusBadRequest)
+		return
+	}
+	monthEnd := endOfMonth(monthStart)
+	refresh := strings.TrimSpace(r.URL.Query().Get("refresh")) == "1"
+
+	localEntries, err := s.loadLocalRange(monthStart, monthEnd)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	authErrorMsg := ""
+	remoteEntries, refreshedAt, err := s.loadRemoteRange(r.Context(), monthStart, monthEnd, refresh)
+	if err != nil {
+		if refresh {
+			http.Error(w, fmt.Sprintf("load remote worklogs: %v", err), http.StatusBadGateway)
+			return
+		}
+		authErrorMsg = fmt.Sprintf(
+			"OnePoint session may have expired (%v). In a new terminal run: gohour auth login",
+			err,
+		)
+		remoteEntries = nil
+	}
+
+	rows, summary := buildMonthRows(monthStart, localEntries, remoteEntries)
+	view := monthPageView{
+		CurrentMonth:       monthRaw,
+		Rows:               rows,
+		TotalLocal:         summary.TotalLocalHours,
+		TotalRemote:        summary.TotalRemoteHours,
+		TotalLocalWorked:   summary.TotalLocalWorkedHours,
+		TotalRemoteWorked:  summary.TotalRemoteWorkedHours,
+		TotalWorkedDelta:   summary.TotalLocalWorkedHours - summary.TotalRemoteWorkedHours,
+		TotalBillableDelta: summary.TotalDeltaHours,
+		AuthErrorMsg:       authErrorMsg,
+		RemoteRefreshedAt:  formatRefreshTime(refreshedAt),
+	}
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	if err := renderPartialTemplate(w, "partials/month_tbody.html", view); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+	}
+}
+
+// handlePartialDay returns the day entry rows + OOB stat swaps as HTML
+// (HTMX partial, Phase 2.2).
+func (s *Server) handlePartialDay(w http.ResponseWriter, r *http.Request) {
+	dayRaw := strings.TrimSpace(r.PathValue("date"))
+	day, err := parseISODate(dayRaw)
+	if err != nil {
+		http.Error(w, "invalid date format (expected YYYY-MM-DD)", http.StatusBadRequest)
+		return
+	}
+	refresh := strings.TrimSpace(r.URL.Query().Get("refresh")) == "1"
+	// Match month partial behavior: only fail closed on explicit remote refresh.
+	view, err := s.buildDayPartialView(r.Context(), day, refresh, refresh)
+	if err != nil {
+		http.Error(w, fmt.Sprintf("load remote worklogs: %v", err), http.StatusBadGateway)
+		return
+	}
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	if err := renderPartialTemplate(w, "partials/day_tbody.html", view); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+	}
+}
+
+func (s *Server) handlePartialWorklogCreate(w http.ResponseWriter, r *http.Request) {
+	dayRaw := strings.TrimSpace(r.PathValue("date"))
+	day, err := parseISODate(dayRaw)
+	if err != nil {
+		http.Error(w, "invalid date format (expected YYYY-MM-DD)", http.StatusBadRequest)
+		return
+	}
+
+	body, err := parseMutationFromForm(r, dayRaw)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	if parseBoolFormValue(r.FormValue("force_overlap")) {
+		r.Header.Set("X-Force-Overlap", "1")
+	}
+	entry, err := buildEntryFromMutation(body)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	entry.SourceFormat = "manual"
+	entry.SourceMapper = "manual"
+	entry.SourceFile = "web-ui"
+
+	s.createMu.Lock()
+	defer s.createMu.Unlock()
+
+	existingEntries, err := s.loadLocalRange(day, day)
+	if err != nil {
+		http.Error(w, fmt.Sprintf("load local worklogs: %v", err), http.StatusInternalServerError)
+		return
+	}
+	if s.writeMutationConflictIfAny(w, r, entry, existingEntries, 0) {
+		return
+	}
+
+	id, inserted, err := s.store.InsertWorklog(entry)
+	if err != nil {
+		http.Error(w, fmt.Sprintf("insert worklog: %v", err), http.StatusInternalServerError)
+		return
+	}
+	if !inserted {
+		http.Error(w, "worklog already exists", http.StatusConflict)
+		return
+	}
+
+	s.invalidateLocalCache()
+	w.Header().Set(
+		"HX-Trigger",
+		fmt.Sprintf(`{"day-worklog-changed":{"day":"%s","action":"created","id":%d}}`, dayRaw, id),
+	)
+	if err := s.renderDayPartial(w, r, day, false, false); err != nil {
+		http.Error(w, err.Error(), http.StatusBadGateway)
+	}
+}
+
+func (s *Server) handlePartialWorklogUpdate(w http.ResponseWriter, r *http.Request) {
+	dayRaw := strings.TrimSpace(r.PathValue("date"))
+	day, err := parseISODate(dayRaw)
+	if err != nil {
+		http.Error(w, "invalid date format (expected YYYY-MM-DD)", http.StatusBadRequest)
+		return
+	}
+	id, err := parsePositiveInt64(r.PathValue("id"))
+	if err != nil {
+		http.Error(w, "invalid worklog id", http.StatusBadRequest)
+		return
+	}
+
+	existing, found, err := s.store.GetWorklogByID(id)
+	if err != nil {
+		http.Error(w, fmt.Sprintf("get worklog by id: %v", err), http.StatusInternalServerError)
+		return
+	}
+	if !found {
+		http.Error(w, "worklog not found", http.StatusNotFound)
+		return
+	}
+
+	body, err := parseMutationFromForm(r, dayRaw)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	if parseBoolFormValue(r.FormValue("force_overlap")) {
+		r.Header.Set("X-Force-Overlap", "1")
+	}
+	entry, err := buildEntryFromMutation(body)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	entry.ID = existing.ID
+	entry.SourceFormat = existing.SourceFormat
+	entry.SourceMapper = existing.SourceMapper
+	entry.SourceFile = existing.SourceFile
+
+	s.createMu.Lock()
+	defer s.createMu.Unlock()
+
+	existingEntries, err := s.loadLocalRange(day, day)
+	if err != nil {
+		http.Error(w, fmt.Sprintf("load local worklogs: %v", err), http.StatusInternalServerError)
+		return
+	}
+	if s.writeMutationConflictIfAny(w, r, entry, existingEntries, entry.ID) {
+		return
+	}
+
+	if err := s.store.UpdateWorklog(entry); err != nil {
+		if errors.Is(err, storage.ErrWorklogNotFound) {
+			http.Error(w, "worklog not found", http.StatusNotFound)
+			return
+		}
+		http.Error(w, fmt.Sprintf("update worklog: %v", err), http.StatusInternalServerError)
+		return
+	}
+
+	s.invalidateLocalCache()
+	w.Header().Set(
+		"HX-Trigger",
+		fmt.Sprintf(`{"day-worklog-changed":{"day":"%s","action":"updated","id":%d}}`, dayRaw, id),
+	)
+	if err := s.renderDayPartial(w, r, day, false, false); err != nil {
+		http.Error(w, err.Error(), http.StatusBadGateway)
+	}
+}
+
+func (s *Server) handlePartialWorklogDelete(w http.ResponseWriter, r *http.Request) {
+	dayRaw := strings.TrimSpace(r.PathValue("date"))
+	day, err := parseISODate(dayRaw)
+	if err != nil {
+		http.Error(w, "invalid date format (expected YYYY-MM-DD)", http.StatusBadRequest)
+		return
+	}
+	id, err := parsePositiveInt64(r.PathValue("id"))
+	if err != nil {
+		http.Error(w, "invalid worklog id", http.StatusBadRequest)
+		return
+	}
+
+	deleted, err := s.store.DeleteWorklog(id)
+	if err != nil {
+		http.Error(w, fmt.Sprintf("delete worklog: %v", err), http.StatusInternalServerError)
+		return
+	}
+	if !deleted {
+		http.Error(w, "worklog not found", http.StatusNotFound)
+		return
+	}
+
+	s.invalidateLocalCache()
+	w.Header().Set(
+		"HX-Trigger",
+		fmt.Sprintf(`{"day-worklog-changed":{"day":"%s","action":"deleted","id":%d}}`, dayRaw, id),
+	)
+	if err := s.renderDayPartial(w, r, day, false, false); err != nil {
+		http.Error(w, err.Error(), http.StatusBadGateway)
+	}
+}
+
+func (s *Server) handlePartialSubmitDay(w http.ResponseWriter, r *http.Request) {
+	dayRaw := strings.TrimSpace(r.PathValue("date"))
+	day, err := parseISODate(dayRaw)
+	if err != nil {
+		http.Error(w, "invalid date format (expected YYYY-MM-DD)", http.StatusBadRequest)
+		return
+	}
+	s.handlePartialSubmit(w, r, "day", dayRaw, day, day)
+}
+
+func (s *Server) handlePartialSubmitMonth(w http.ResponseWriter, r *http.Request) {
+	monthRaw := strings.TrimSpace(r.PathValue("month"))
+	monthStart, err := parseMonth(monthRaw)
+	if err != nil {
+		http.Error(w, "invalid month format (expected YYYY-MM)", http.StatusBadRequest)
+		return
+	}
+	s.handlePartialSubmit(w, r, "month", monthRaw, monthStart, endOfMonth(monthStart))
+}
+
+func (s *Server) handlePartialSubmit(w http.ResponseWriter, r *http.Request, scope, target string, from, to time.Time) {
+	if err := r.ParseForm(); err != nil {
+		http.Error(w, fmt.Sprintf("parse form: %v", err), http.StatusBadRequest)
+		return
+	}
+	dryRun := parseBoolFormValue(r.FormValue("dry_run"))
+	if !dryRun {
+		dryRun = strings.TrimSpace(r.URL.Query().Get("dry_run")) == "1"
+	}
+
+	s.logAudit(auditRecord{
+		Operation: "submit",
+		Scope:     scope,
+		Target:    target,
+		DryRun:    dryRun,
+		Outcome:   "attempt",
+	})
+
+	view := submitPartialView{
+		Scope:  scope,
+		Target: target,
+		DryRun: dryRun,
+		Result: submitResponse{
+			DryRun:     dryRun,
+			LockedDays: []string{},
+			Days:       []submitDayResult{},
+		},
+	}
+	result, err := s.submitRange(r.Context(), from, to, dryRun)
+	if err != nil {
+		s.logAudit(auditRecord{
+			Operation: "submit",
+			Scope:     scope,
+			Target:    target,
+			DryRun:    dryRun,
+			Outcome:   "error",
+			Error:     err.Error(),
+		})
+		view.Error = err.Error()
+		view.IsError = true
+	} else {
+		s.logAudit(auditRecord{
+			Operation:  "submit",
+			Scope:      scope,
+			Target:     target,
+			DryRun:     dryRun,
+			Submitted:  result.Submitted,
+			Duplicates: result.Duplicates,
+			Overlaps:   result.Overlaps,
+			LockedDays: append([]string(nil), result.LockedDays...),
+			Outcome:    "success",
+		})
+		view.Result = result
+		if !dryRun {
+			if scope == "day" {
+				w.Header().Set("HX-Trigger", fmt.Sprintf(`{"refresh-day":{"day":"%s"}}`, target))
+			} else if scope == "month" {
+				w.Header().Set("HX-Trigger", fmt.Sprintf(`{"refresh-month":{"month":"%s"}}`, target))
+			}
+		}
+	}
+
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	if err := renderPartialTemplate(w, "partials/submit_result.html", view); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+	}
+}
+
+func (s *Server) renderDayPartial(w http.ResponseWriter, r *http.Request, day time.Time, refresh bool, failOnRemoteErr bool) error {
+	view, err := s.buildDayPartialView(r.Context(), day, refresh, failOnRemoteErr)
+	if err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	return renderPartialTemplate(w, "partials/day_tbody.html", view)
+}
+
+func (s *Server) buildDayPartialView(ctx context.Context, day time.Time, refresh bool, failOnRemoteErr bool) (dayPageView, error) {
+	localEntries, err := s.loadLocalRange(day, day)
+	if err != nil {
+		return dayPageView{}, err
+	}
+	remoteEntries, refreshedAt, err := s.loadRemoteRange(ctx, day, day, refresh)
+	if err != nil {
+		if failOnRemoteErr {
+			return dayPageView{}, err
+		}
+		remoteEntries = nil
+		refreshedAt = time.Time{}
+	}
+	dayRows := BuildDailyView(localEntries, remoteEntries)
+	row := DayRow{Date: day}
+	if len(dayRows) > 0 {
+		row = dayRows[0]
+	}
+	return dayPageView{
+		Day:               day.Format("2006-01-02"),
+		DayRow:            row,
+		RemoteRefreshedAt: formatRefreshTime(refreshedAt),
+	}, nil
 }
 
 func (s *Server) handleAPIMonth(w http.ResponseWriter, r *http.Request) {
@@ -1417,6 +1807,17 @@ func buildMonthRows(monthStart time.Time, localEntries []worklog.Entry, remoteEn
 	dayRows := BuildDailyView(localEntries, remoteEntries)
 	dayRows = fillMonthDays(monthStart, dayRows)
 	summary := BuildMonthlyView(dayRows)
+	lockedByDay := make(map[string]bool)
+	for _, item := range remoteEntries {
+		if item.Locked == 0 {
+			continue
+		}
+		day, err := onepoint.ParseDay(item.WorklogDate)
+		if err != nil {
+			continue
+		}
+		lockedByDay[timeutil.StartOfDay(day).Format("2006-01-02")] = true
+	}
 
 	now := timeutil.StartOfDay(time.Now())
 	rows := make([]monthRowView, 0, len(summary.Days))
@@ -1428,6 +1829,7 @@ func buildMonthRows(monthStart time.Time, localEntries []worklog.Entry, remoteEn
 			Date:               dayISO,
 			IsWeekend:          wd == time.Saturday || wd == time.Sunday,
 			IsToday:            dayDate.Equal(now),
+			HasLockedRemote:    lockedByDay[dayISO],
 			LocalHours:         day.LocalHours,
 			RemoteHours:        day.RemoteHours,
 			LocalWorked:        day.LocalWorkedHours,
@@ -1542,8 +1944,8 @@ func (s *Server) writeMutationConflictIfAny(w http.ResponseWriter, r *http.Reque
 	return false
 }
 
-func renderTemplate(w http.ResponseWriter, pageTemplate string, data any) error {
-	tmpl, err := template.New("base.html").Funcs(template.FuncMap{
+func templateFuncMap() template.FuncMap {
+	return template.FuncMap{
 		"fmtHours": func(value float64) string {
 			return fmt.Sprintf("%.2f", value)
 		},
@@ -1556,12 +1958,42 @@ func renderTemplate(w http.ResponseWriter, pageTemplate string, data any) error 
 		"toMins": func(hours float64) int {
 			return int(math.Round(hours * 60))
 		},
-	}).ParseFS(templateFS, "templates/base.html", "templates/"+pageTemplate)
+		// dayOffset returns the ISO date string offset by n days from the given ISO date.
+		// Used in day.html for prev/next navigation links.
+		"dayOffset": func(isoDate string, n int) string {
+			t, err := time.ParseInLocation("2006-01-02", strings.TrimSpace(isoDate), time.Local)
+			if err != nil {
+				return isoDate
+			}
+			return t.AddDate(0, 0, n).Format("2006-01-02")
+		},
+	}
+}
+
+func renderTemplate(w http.ResponseWriter, pageTemplate string, data any) error {
+	tmpl, err := template.New("base.html").Funcs(templateFuncMap()).ParseFS(
+		templateFS, "templates/base.html", "templates/"+pageTemplate,
+	)
 	if err != nil {
 		return fmt.Errorf("parse template %s: %w", pageTemplate, err)
 	}
 	if err := tmpl.ExecuteTemplate(w, "base", data); err != nil {
 		return fmt.Errorf("render template %s: %w", pageTemplate, err)
+	}
+	return nil
+}
+
+// renderPartialTemplate renders an HTML partial (no base wrapper).
+// The partial template must define a template named "partial".
+func renderPartialTemplate(w http.ResponseWriter, partialTemplate string, data any) error {
+	tmpl, err := template.New("partial").Funcs(templateFuncMap()).ParseFS(
+		templateFS, "templates/"+partialTemplate,
+	)
+	if err != nil {
+		return fmt.Errorf("parse partial template %s: %w", partialTemplate, err)
+	}
+	if err := tmpl.ExecuteTemplate(w, "partial", data); err != nil {
+		return fmt.Errorf("render partial template %s: %w", partialTemplate, err)
 	}
 	return nil
 }
@@ -1591,6 +2023,47 @@ func parsePositiveInt64(value string) (int64, error) {
 		return 0, fmt.Errorf("value must be > 0")
 	}
 	return parsed, nil
+}
+
+func parseMutationFromForm(r *http.Request, fallbackDate string) (worklogMutationRequest, error) {
+	if err := r.ParseForm(); err != nil {
+		return worklogMutationRequest{}, fmt.Errorf("parse form: %w", err)
+	}
+
+	date := strings.TrimSpace(r.FormValue("date"))
+	if date == "" {
+		date = strings.TrimSpace(fallbackDate)
+	}
+
+	billable := 0
+	if rawMins := strings.TrimSpace(r.FormValue("billable")); rawMins != "" {
+		parsed, err := strconv.Atoi(rawMins)
+		if err != nil {
+			return worklogMutationRequest{}, fmt.Errorf("invalid billable minutes")
+		}
+		billable = parsed
+	} else {
+		rawHours := strings.TrimSpace(r.FormValue("billableHours"))
+		if rawHours == "" {
+			return worklogMutationRequest{}, fmt.Errorf("missing billable hours")
+		}
+		hours, err := strconv.ParseFloat(rawHours, 64)
+		if err != nil {
+			return worklogMutationRequest{}, fmt.Errorf("invalid billable hours")
+		}
+		billable = int(math.Round(hours * 60))
+	}
+
+	return worklogMutationRequest{
+		Start:       strings.TrimSpace(r.FormValue("start")),
+		End:         strings.TrimSpace(r.FormValue("end")),
+		Project:     strings.TrimSpace(r.FormValue("project")),
+		Activity:    strings.TrimSpace(r.FormValue("activity")),
+		Skill:       strings.TrimSpace(r.FormValue("skill")),
+		Billable:    billable,
+		Description: strings.TrimSpace(r.FormValue("description")),
+		Date:        date,
+	}, nil
 }
 
 func buildEntryFromMutation(body worklogMutationRequest) (worklog.Entry, error) {

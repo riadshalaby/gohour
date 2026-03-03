@@ -1,70 +1,85 @@
 {{ define "page" }}
-<h1>Day detail: <span class="js-fmt-date" data-iso="{{ .Day }}">{{ .Day }}</span></h1>
+<div class="day-page day-table-mobile-cards">
+<!-- Day navigation (Phase 4.4) -->
 <div class="page-nav">
-  <a href="/month/{{ .CurrentMonth }}">Back to month</a>
+  <!-- Back to month + prev/next day arrows -->
+  <a href="/month/{{ .CurrentMonth }}" style="font-size:0.8rem;color:var(--muted);">← {{ .CurrentMonth }}</a>
+
+  <div class="day-nav">
+    {{- /* Compute previous and next day links from template. We emit anchor IDs for keyboard nav. */}}
+    {{- /* The anchors are built from the Day value; keyboard nav in app.js reads #day-prev-link / #day-next-link */}}
+    <a id="day-prev-link" class="nav-arrow"
+      href="/day/{{ dayOffset .Day -1 }}"
+      title="Previous day (←)">&#8592;</a>
+    <span class="nav-current"><span class="js-fmt-date" data-iso="{{ .Day }}">{{ .Day }}</span></span>
+    <a id="day-next-link" class="nav-arrow"
+      href="/day/{{ dayOffset .Day 1 }}"
+      title="Next day (→)">&#8594;</a>
+  </div>
+
+  <!-- Primary actions -->
   <button type="button" class="btn-primary" onclick="openSubmitAction('day', '{{ .Day }}')">Submit day</button>
-  <button type="button" onclick="refreshDayRemote('{{ .Day }}')">Refresh remote</button>
-  <button type="button" onclick="openImportDialog('day-import-dialog', 'day-import-form')">Import file</button>
+
+  <!-- Secondary actions -->
+  <button type="button"
+    hx-get="/partials/day/{{ .Day }}?refresh=1"
+    hx-target="#day-entries"
+    hx-swap="innerHTML"
+    hx-indicator="#day-refresh-head"
+    @htmx:after-settle="showToast('Remote day data refreshed.', false)"
+    @htmx:response-error="showToast('Failed to refresh remote data.', true)">
+    Refresh remote
+  </button>
+  <span id="day-refresh-head" class="htmx-indicator day-refresh-head" aria-live="polite">
+    <span class="spinner" aria-hidden="true"></span>
+    Refreshing remote...
+  </span>
 </div>
-<p class="muted" style="margin-top:0;">
-  Remote last refresh:
-  <span id="day-remote-refreshed-at" class="js-fmt-datetime" data-iso="{{ .RemoteRefreshedAt }}">{{ .RemoteRefreshedAt }}</span>
-</p>
-<dialog id="day-import-dialog">
-  <form id="day-import-form" onsubmit="handleImportSubmit(event, { day: '{{ .Day }}', dialogID: 'day-import-dialog' })">
-    <div class="dialog-header">
-      <h2>Import file</h2>
+
+<!-- Auth error -->
+{{ if .AuthErrorMsg }}
+<div class="auth-banner">{{ .AuthErrorMsg }}</div>
+{{ end }}
+
+<!-- Day stat cards (Phase 4.1) -->
+<div class="stat-cards">
+  <div class="stat-card">
+    <div class="stat-label">Local Worked</div>
+    <div class="stat-value">
+      <span id="day-local-worked" class="js-fmt-hours" data-mins="{{ toMins .DayRow.LocalWorkedHours }}">{{ toMins .DayRow.LocalWorkedHours }}</span>
     </div>
-    <div class="dialog-body import-fields">
-      <div class="dialog-field">
-        <label for="day-import-file">File</label>
-        <input id="day-import-file" type="file" name="file" required>
-      </div>
-      <div class="dialog-field">
-        <label for="day-import-mapper">Mapper</label>
-        <select id="day-import-mapper" name="mapper">
-          <option value="epm">epm</option>
-          <option value="generic">generic</option>
-          <option value="atwork">atwork</option>
-        </select>
-      </div>
-      <div class="dialog-field">
-        <label for="day-import-project">Project</label>
-        <select id="day-import-project" name="project" required></select>
-      </div>
-      <div class="dialog-field">
-        <label for="day-import-activity">Activity</label>
-        <select id="day-import-activity" name="activity" required></select>
-      </div>
-      <div class="dialog-field">
-        <label for="day-import-skill">Skill</label>
-        <select id="day-import-skill" name="skill" required></select>
-      </div>
-      <div class="dialog-field">
-        <label for="day-import-billable">Billable</label>
-        <select id="day-import-billable" name="billable">
-          <option value="auto">Auto (computed from file)</option>
-          <option value="non-billable">Non-billable (force 0)</option>
-        </select>
-      </div>
+    <div class="stat-sublabel">hours</div>
+  </div>
+  <div class="stat-card">
+    <div class="stat-label">Local Billable</div>
+    <div class="stat-value">
+      <span id="day-local-hours" class="js-fmt-hours" data-mins="{{ toMins .DayRow.LocalHours }}">{{ toMins .DayRow.LocalHours }}</span>
     </div>
-    <div class="dialog-footer">
-      <button type="button" onclick="closeImportDialog('day-import-dialog')">Cancel</button>
-      <button type="submit" class="btn-primary">Upload</button>
+    <div class="stat-sublabel">hours</div>
+  </div>
+  <div class="stat-card">
+    <div class="stat-label">Remote Worked</div>
+    <div class="stat-value">
+      <span id="day-remote-worked" class="js-fmt-hours" data-mins="{{ toMins .DayRow.RemoteWorkedHours }}">{{ toMins .DayRow.RemoteWorkedHours }}</span>
     </div>
-  </form>
-</dialog>
-<p class="muted" style="margin-top:0;">
-  Local:
-  <span id="day-local-worked" class="js-fmt-hours" data-mins="{{ toMins .DayRow.LocalWorkedHours }}">{{ toMins .DayRow.LocalWorkedHours }}</span> worked
-  /
-  <span id="day-local-hours" class="js-fmt-hours" data-mins="{{ toMins .DayRow.LocalHours }}">{{ toMins .DayRow.LocalHours }}</span> billable
-  &nbsp;&nbsp;|&nbsp;&nbsp;
-  Remote:
-  <span id="day-remote-worked" class="js-fmt-hours" data-mins="{{ toMins .DayRow.RemoteWorkedHours }}">{{ toMins .DayRow.RemoteWorkedHours }}</span> worked
-  /
-  <span id="day-remote-hours" class="js-fmt-hours" data-mins="{{ toMins .DayRow.RemoteHours }}">{{ toMins .DayRow.RemoteHours }}</span> billable
-</p>
+    <div class="stat-sublabel">hours</div>
+  </div>
+  <div class="stat-card">
+    <div class="stat-label">Remote Billable</div>
+    <div class="stat-value">
+      <span id="day-remote-hours" class="js-fmt-hours" data-mins="{{ toMins .DayRow.RemoteHours }}">{{ toMins .DayRow.RemoteHours }}</span>
+    </div>
+    <div class="stat-sublabel">hours</div>
+  </div>
+</div>
+
+<!-- Remote refresh status (Phase 4.5) -->
+<div class="refresh-status">
+  <span class="muted">Remote last refresh:</span>
+  <span id="day-remote-refreshed-at" class="js-fmt-datetime refresh-timestamp" data-iso="{{ .RemoteRefreshedAt }}">{{ .RemoteRefreshedAt }}</span>
+</div>
+
+<!-- Entry table (Phase 4.2) -->
 <div class="table-wrap">
   <table>
     <thead>
@@ -85,22 +100,22 @@
     <tbody id="day-entries">
       {{ range .DayRow.Entries }}
       <tr data-id="{{ .ID }}" data-date="{{ $.Day }}" data-source="{{ .Source }}" data-start="{{ .Start }}" data-end="{{ .End }}" data-duration-mins="{{ .DurationMins }}" data-project="{{ .Project }}" data-activity="{{ .Activity }}" data-skill="{{ .Skill }}" data-billable-mins="{{ .BillableMins }}" data-description="{{ .Description }}">
-        <td data-col="source"><span class="badge badge-{{ .Source }}">{{ .Source }}</span></td>
-        <td data-col="date"><span class="js-fmt-date" data-iso="{{ $.Day }}">{{ $.Day }}</span></td>
-        <td data-col="start" class="time"><span class="js-fmt-time" data-hhmm="{{ .Start }}">{{ .Start }}</span></td>
-        <td data-col="end" class="time"><span class="js-fmt-time" data-hhmm="{{ .End }}">{{ .End }}</span></td>
-        <td data-col="duration" class="num"><span class="js-fmt-hours" data-mins="{{ .DurationMins }}">{{ .DurationMins }}</span></td>
-        <td data-col="project">{{ .Project }}</td>
-        <td data-col="activity">{{ .Activity }}</td>
-        <td data-col="skill">{{ .Skill }}</td>
-        <td data-col="billable" class="num"><span class="js-fmt-hours" data-mins="{{ .BillableMins }}">{{ .BillableMins }}</span></td>
-        <td data-col="description">{{ .Description }}</td>
-        <td data-col="actions" class="actions">
+        <td data-col="source" data-label="Status"><span class="badge badge-{{ .Source }}">{{ .Source }}</span></td>
+        <td data-col="date" data-label="Date"><span class="js-fmt-date" data-iso="{{ $.Day }}">{{ $.Day }}</span></td>
+        <td data-col="start" data-label="Start" class="time"><span class="js-fmt-time" data-hhmm="{{ .Start }}">{{ .Start }}</span></td>
+        <td data-col="end" data-label="End" class="time"><span class="js-fmt-time" data-hhmm="{{ .End }}">{{ .End }}</span></td>
+        <td data-col="duration" data-label="Duration" class="num"><span class="js-fmt-hours" data-mins="{{ .DurationMins }}">{{ .DurationMins }}</span></td>
+        <td data-col="project" data-label="Project">{{ .Project }}</td>
+        <td data-col="activity" data-label="Activity">{{ .Activity }}</td>
+        <td data-col="skill" data-label="Skill">{{ .Skill }}</td>
+        <td data-col="billable" data-label="Billable" class="num"><span class="js-fmt-hours" data-mins="{{ .BillableMins }}">{{ .BillableMins }}</span></td>
+        <td data-col="description" data-label="Description">{{ .Description }}</td>
+        <td data-col="actions" data-label="Actions" class="actions">
           {{ if ne .Source "remote" }}
-          <button type="button" onclick="editRow(this)">Edit</button>
-          <button type="button" class="btn-danger" onclick="deleteRow(this)">Delete</button>
+          <button type="button" class="btn-icon" title="Edit entry" aria-label="Edit entry" onclick="editRow(this)">✎</button>
+          <button type="button" class="btn-danger btn-icon" title="Delete entry" aria-label="Delete entry" onclick="deleteRow(this)">🗑</button>
           {{ else }}
-          <span class="muted">-</span>
+          <span class="muted">—</span>
           {{ end }}
         </td>
       </tr>
@@ -108,63 +123,24 @@
     </tbody>
   </table>
 </div>
+
+<!-- Add entry + footer -->
 <div class="page-nav" style="margin-top:0.8rem;">
   <button type="button" onclick="addEntryRow('{{ .Day }}')">Add entry</button>
 </div>
+
 <div class="footer">
-  Status: <span class="badge badge-local">local</span> not submitted &nbsp;
+  <span class="badge badge-local">local</span> not submitted &nbsp;
   <span class="badge badge-synced">synced</span> exists on OnePoint &nbsp;
   <span class="badge badge-conflict">conflict</span> overlaps remote &nbsp;
   <span class="badge badge-remote">remote</span> remote only
 </div>
-<div class="footer">Duration is read-only; Billable auto-fills from Start/End and can be overridden.</div>
-<dialog id="edit-dialog">
-  <form id="edit-form" onsubmit="event.preventDefault(); saveEditDialog()">
-    <div class="dialog-header">
-      <h2 id="edit-dialog-title">Edit entry</h2>
-    </div>
-    <div class="dialog-body">
-      <div class="dialog-row">
-        <div class="dialog-field">
-          <label for="edit-start">Start</label>
-          <input id="edit-start" type="time" name="start" required>
-        </div>
-        <div class="dialog-field">
-          <label for="edit-end">End</label>
-          <input id="edit-end" type="time" name="end" required>
-        </div>
-      </div>
-      <div class="dialog-field">
-        <label for="edit-project">Project</label>
-        <select id="edit-project" name="project" required></select>
-      </div>
-      <div class="dialog-field">
-        <label for="edit-activity">Activity</label>
-        <select id="edit-activity" name="activity" required></select>
-      </div>
-      <div class="dialog-field">
-        <label for="edit-skill">Skill</label>
-        <select id="edit-skill" name="skill" required></select>
-      </div>
-      <div class="dialog-row">
-        <div class="dialog-field">
-          <label>Duration</label>
-          <span id="edit-duration" class="dialog-readonly">0.00 h</span>
-        </div>
-        <div class="dialog-field">
-          <label for="edit-billable-hours">Billable (h)</label>
-          <input id="edit-billable-hours" type="number" name="billableHours" min="0" step="0.25" required>
-        </div>
-      </div>
-      <div class="dialog-field">
-        <label for="edit-description">Description</label>
-        <textarea id="edit-description" name="description" rows="3"></textarea>
-      </div>
-    </div>
-    <div class="dialog-footer">
-      <button type="button" onclick="document.getElementById('edit-dialog').close()">Cancel</button>
-      <button type="button" class="btn-primary" onclick="saveEditDialog()">Save</button>
-    </div>
-  </form>
-</dialog>
+<div class="footer" style="margin-top:0.25rem;">Duration is read-only; Billable auto-fills from Start/End and can be overridden.</div>
+
+</div>
+
+<div class="sticky-bar">
+  <button type="button" onclick="addEntryRow('{{ .Day }}')">Add entry</button>
+  <button type="button" class="btn-primary" onclick="openSubmitAction('day', '{{ .Day }}')">Submit day</button>
+</div>
 {{ end }}

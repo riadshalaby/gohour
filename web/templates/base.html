@@ -5,482 +5,31 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>{{ .Title }}</title>
-  <style>
-    :root {
-      --bg: #f5f4f1;
-      --surface: #ffffff;
-      --surface-2: #f0efeb;
-      --hdr-bg: #0f1117;
-      --hdr-text: #e8e8e5;
-      --hdr-muted: #5c6070;
-      --hdr-border: rgba(255, 255, 255, 0.07);
-      --text: #111318;
-      --muted: #6b7280;
-      --border: #e3e2de;
-      --border-strong: #c8c7c2;
-      --c-local: #16a34a;
-      --c-synced: #2563eb;
-      --c-conflict: #d97706;
-      --c-remote: #7c3aed;
-      --bg-local: #dcfce7;
-      --bg-synced: #dbeafe;
-      --bg-conflict: #fef3c7;
-      --bg-remote: #ede9fe;
-      --txt-local: #15803d;
-      --txt-synced: #1d4ed8;
-      --txt-conflict: #92400e;
-      --txt-remote: #5b21b6;
-      --weekend-bg: #fdf5ea;
-      --weekend-line: #f59e0b;
-      --today-bg: #eff6ff;
-      --today-line: #2563eb;
-      --row-hover: rgba(0, 0, 0, 0.025);
-      --pos: #15803d;
-      --neg: #dc2626;
-      --delta-ok: #15803d;
-      --delta-warn: #c2410c;
-      --accent: #0f1117;
-      --accent-hover: #1f2937;
-      --danger: #dc2626;
-      --danger-lt: #fee2e2;
-      --danger-bdr: #fca5a5;
-      --auth-bg: #fffbeb;
-      --auth-bdr: #f59e0b;
-      --auth-txt: #78350f;
-    }
-    [hidden] { display: none !important; }
-    * { box-sizing: border-box; }
-    body {
-      margin: 0;
-      padding: 1.25rem;
-      background: var(--bg);
-      color: var(--text);
-      font: 13.5px/1.5 system-ui, -apple-system, "Segoe UI", "Helvetica Neue", sans-serif;
-    }
-    .wrap {
-      max-width: 1120px;
-      margin: 0 auto;
-      background: var(--surface);
-      border: 1px solid var(--border);
-      border-radius: 10px;
-      overflow: hidden;
-      box-shadow: 0 2px 12px rgba(0, 0, 0, 0.07), 0 1px 3px rgba(0, 0, 0, 0.05);
-    }
-    h1 {
-      margin: 0 0 0.7rem;
-      font-size: 0.95rem;
-      font-weight: 600;
-      letter-spacing: -0.01em;
-    }
-    .muted { color: var(--muted); }
-    .nowrap { white-space: nowrap; }
-    .content {
-      padding: 1rem 1rem 1.25rem;
-    }
-    .footer {
-      margin-top: 0.8rem;
-      color: var(--muted);
-      font-size: 0.75rem;
-    }
-    .top {
-      display: flex;
-      flex-wrap: wrap;
-      gap: 0.5rem;
-      justify-content: space-between;
-      align-items: center;
-      padding: 0.65rem 1rem;
-      background: var(--hdr-bg);
-      border-bottom: 1px solid var(--hdr-border);
-    }
-    .brand-group {
-      display: flex;
-      align-items: center;
-      gap: 0.65rem;
-    }
-    .brand {
-      font-size: 0.78rem;
-      font-weight: 700;
-      letter-spacing: 0.1em;
-      text-transform: uppercase;
-      color: var(--hdr-text);
-      text-decoration: none;
-    }
-    .header-month {
-      font-family: ui-monospace, "SF Mono", "Cascadia Mono", monospace;
-      font-size: 0.72rem;
-      letter-spacing: 0.04em;
-      color: var(--hdr-muted);
-      background: rgba(255, 255, 255, 0.06);
-      border: 1px solid rgba(255, 255, 255, 0.1);
-      border-radius: 4px;
-      padding: 0.1rem 0.45rem;
-    }
-    button, .nav a, .page-nav a {
-      display: inline-flex;
-      align-items: center;
-      border: 1px solid var(--border);
-      border-radius: 5px;
-      background: var(--surface);
-      color: var(--text);
-      text-decoration: none;
-      padding: 0.28rem 0.6rem;
-      cursor: pointer;
-      font: inherit;
-      font-size: 0.8rem;
-      line-height: 1.4;
-      white-space: nowrap;
-      transition: background 0.1s, border-color 0.1s;
-    }
-    button:hover, .nav a:hover, .page-nav a:hover {
-      background: var(--surface-2);
-    }
-    button.btn-primary {
-      background: var(--accent);
-      color: #fff;
-      border-color: transparent;
-      font-weight: 600;
-    }
-    button.btn-primary:hover { background: var(--accent-hover); }
-    button.btn-danger {
-      border-color: var(--danger-bdr);
-      color: var(--danger);
-      background: transparent;
-    }
-    button.btn-danger:hover { background: var(--danger-lt); }
-    .top button, .top .nav a {
-      border-color: rgba(255, 255, 255, 0.13);
-      background: rgba(255, 255, 255, 0.06);
-      color: var(--hdr-text);
-    }
-    .top button:hover, .top .nav a:hover {
-      background: rgba(255, 255, 255, 0.12);
-      border-color: rgba(255, 255, 255, 0.22);
-    }
-    .top button.btn-primary {
-      background: #ffffff;
-      color: var(--hdr-bg);
-      border-color: transparent;
-      font-weight: 600;
-    }
-    .top button.btn-primary:hover { background: #e8e8e5; }
-    .top input[type="month"] {
-      background: rgba(255, 255, 255, 0.07);
-      border: 1px solid rgba(255, 255, 255, 0.13);
-      border-radius: 5px;
-      color: var(--hdr-text);
-      padding: 0.26rem 0.5rem;
-      font: inherit;
-      font-size: 0.8rem;
-    }
-    .top input[type="month"]:focus {
-      outline: 2px solid rgba(255, 255, 255, 0.35);
-      outline-offset: 1px;
-    }
-    input, select {
-      border: 1px solid var(--border);
-      border-radius: 5px;
-      padding: 0.28rem 0.45rem;
-      background: var(--surface);
-      color: var(--text);
-      font: inherit;
-      font-size: 0.8rem;
-      min-width: 0;
-    }
-    input:focus, select:focus {
-      outline: 2px solid var(--accent);
-      outline-offset: 1px;
-      border-color: transparent;
-    }
-    .nav {
-      display: flex;
-      align-items: center;
-      gap: 0.4rem;
-      flex-wrap: wrap;
-    }
-    .page-nav {
-      display: flex;
-      align-items: center;
-      gap: 0.4rem;
-      flex-wrap: wrap;
-      margin-bottom: 0.75rem;
-    }
-    .actions-menu {
-      position: relative;
-    }
-    .actions-menu > summary {
-      list-style: none;
-      display: inline-flex;
-      align-items: center;
-      border: 1px solid var(--border);
-      border-radius: 5px;
-      background: var(--surface);
-      color: var(--text);
-      padding: 0.28rem 0.6rem;
-      font-size: 0.8rem;
-      cursor: pointer;
-      user-select: none;
-    }
-    .actions-menu > summary::-webkit-details-marker {
-      display: none;
-    }
-    .actions-menu > summary::after {
-      content: " ▾";
-      font-size: 0.72rem;
-      color: var(--muted);
-    }
-    .actions-menu[open] > summary {
-      background: var(--surface-2);
-    }
-    .actions-menu-items {
-      position: absolute;
-      top: calc(100% + 0.35rem);
-      right: 0;
-      z-index: 30;
-      min-width: 210px;
-      display: flex;
-      flex-direction: column;
-      gap: 0.3rem;
-      border: 1px solid var(--border);
-      border-radius: 8px;
-      padding: 0.45rem;
-      background: var(--surface);
-      box-shadow: 0 8px 24px rgba(0, 0, 0, 0.12);
-    }
-    .actions-menu-items button {
-      width: 100%;
-      justify-content: flex-start;
-    }
-    .import-fields {
-      display: grid;
-      grid-template-columns: 1fr;
-      gap: 0.6rem;
-    }
-    table {
-      width: 100%;
-      border-collapse: collapse;
-      font-size: 0.85rem;
-    }
-    .table-wrap {
-      overflow-x: auto;
-      -webkit-overflow-scrolling: touch;
-    }
-    th {
-      border-bottom: 1px solid var(--border-strong);
-      text-align: left;
-      padding: 0.32rem 0.6rem;
-      color: var(--muted);
-      font-weight: 600;
-      font-size: 0.7rem;
-      text-transform: uppercase;
-      letter-spacing: 0.06em;
-      white-space: nowrap;
-      background: var(--surface-2);
-    }
-    td {
-      border-bottom: 1px solid var(--border);
-      text-align: left;
-      padding: 0.38rem 0.6rem;
-      vertical-align: middle;
-    }
-    tbody tr:hover td { background: var(--row-hover); }
-    td.num, td.time {
-      font-family: ui-monospace, "SF Mono", "Cascadia Mono", monospace;
-      font-size: 0.8rem;
-      font-variant-numeric: tabular-nums;
-    }
-    .actions { white-space: nowrap; }
-    tbody tr.weekend td { background: var(--weekend-bg); }
-    tbody tr.weekend:hover td { background: #fde9c2; }
-    tbody tr.weekend td:first-child {
-      border-left: 2px solid var(--weekend-line);
-      padding-left: calc(0.6rem - 2px);
-    }
-    tbody tr.today td { background: var(--today-bg); }
-    tbody tr.today td:first-child {
-      border-left: 2px solid var(--today-line);
-      padding-left: calc(0.6rem - 2px);
-    }
-    tfoot td, tfoot th {
-      border-top: 2px solid var(--border-strong);
-      border-bottom: none;
-      background: var(--surface-2);
-      font-weight: 700;
-      font-size: 0.8rem;
-      padding: 0.4rem 0.6rem;
-      color: var(--text);
-    }
-    tfoot td.num {
-      font-family: ui-monospace, "SF Mono", "Cascadia Mono", monospace;
-      font-variant-numeric: tabular-nums;
-    }
-    .delta-pos {
-      color: var(--pos);
-      font-family: ui-monospace, "SF Mono", "Cascadia Mono", monospace;
-      font-size: 0.8rem;
-      font-variant-numeric: tabular-nums;
-      font-weight: 600;
-    }
-    .delta-neg {
-      color: var(--neg);
-      font-family: ui-monospace, "SF Mono", "Cascadia Mono", monospace;
-      font-size: 0.8rem;
-      font-variant-numeric: tabular-nums;
-      font-weight: 600;
-    }
-    .inline-delta {
-      font-family: ui-monospace, "SF Mono", "Cascadia Mono", monospace;
-      font-size: 0.72rem;
-      margin-left: 0.2rem;
-      white-space: nowrap;
-    }
-    .inline-delta-ok {
-      color: var(--delta-ok);
-    }
-    .inline-delta-warn {
-      color: var(--delta-warn);
-    }
-    tbody tr[data-source="local"] td:first-child { border-left: 3px solid var(--c-local); padding-left: calc(0.6rem - 3px); }
-    tbody tr[data-source="synced"] td:first-child { border-left: 3px solid var(--c-synced); padding-left: calc(0.6rem - 3px); }
-    tbody tr[data-source="conflict"] td:first-child { border-left: 3px solid var(--c-conflict); padding-left: calc(0.6rem - 3px); }
-    tbody tr[data-source="remote"] td:first-child { border-left: 3px solid var(--c-remote); padding-left: calc(0.6rem - 3px); }
-    .badge {
-      display: inline-block;
-      border-radius: 999px;
-      padding: 0.08rem 0.48rem;
-      font-size: 0.65rem;
-      font-weight: 700;
-      text-transform: uppercase;
-      letter-spacing: 0.05em;
-      line-height: 1.6;
-      border: 1px solid transparent;
-      white-space: nowrap;
-    }
-    .badge-local { background: var(--bg-local); color: var(--txt-local); border-color: #bbf7d0; }
-    .badge-synced { background: var(--bg-synced); color: var(--txt-synced); border-color: #bfdbfe; }
-    .badge-conflict { background: var(--bg-conflict); color: var(--txt-conflict); border-color: #fde68a; }
-    .badge-remote { background: var(--bg-remote); color: var(--txt-remote); border-color: #ddd6fe; }
-    .auth-banner {
-      display: flex;
-      align-items: flex-start;
-      gap: 0.5rem;
-      background: var(--auth-bg);
-      border: 1px solid var(--auth-bdr);
-      border-left: 3px solid var(--auth-bdr);
-      border-radius: 6px;
-      padding: 0.6rem 0.85rem;
-      margin-bottom: 0.85rem;
-      color: var(--auth-txt);
-      font-size: 0.8rem;
-      line-height: 1.5;
-    }
-    .auth-banner::before {
-      content: "⚠";
-      flex-shrink: 0;
-    }
-    dialog {
-      border: 1px solid var(--border);
-      border-radius: 10px;
-      padding: 0;
-      width: min(520px, 95vw);
-      box-shadow: 0 8px 40px rgba(0, 0, 0, 0.16), 0 2px 8px rgba(0, 0, 0, 0.06);
-      font-size: 0.85rem;
-    }
-    dialog::backdrop {
-      background: rgba(0, 0, 0, 0.42);
-      backdrop-filter: blur(2px);
-    }
-    .dialog-header {
-      padding: 0.85rem 1.1rem 0.7rem;
-      border-bottom: 1px solid var(--border);
-    }
-    dialog h2 {
-      margin: 0;
-      font-size: 0.9rem;
-      font-weight: 600;
-      letter-spacing: -0.01em;
-    }
-    .dialog-body {
-      padding: 0.85rem 1.1rem;
-    }
-    .dialog-footer {
-      display: flex;
-      gap: 0.4rem;
-      justify-content: flex-end;
-      padding: 0.7rem 1.1rem;
-      border-top: 1px solid var(--border);
-      background: var(--surface-2);
-      border-radius: 0 0 10px 10px;
-    }
-    .dialog-field {
-      display: flex;
-      flex-direction: column;
-      gap: 0.18rem;
-      margin-bottom: 0.65rem;
-    }
-    .dialog-field:last-child { margin-bottom: 0; }
-    .dialog-field label {
-      font-size: 0.68rem;
-      color: var(--muted);
-      font-weight: 600;
-      text-transform: uppercase;
-      letter-spacing: 0.055em;
-    }
-    .dialog-field input,
-    .dialog-field select,
-    .dialog-field textarea { width: 100%; }
-    .dialog-field textarea {
-      resize: vertical;
-      min-height: 3.5rem;
-      font: inherit;
-    }
-    .dialog-row { display: flex; gap: 0.65rem; }
-    .dialog-row .dialog-field { flex: 1; min-width: 0; }
-    .dialog-readonly {
-      display: inline-block;
-      padding: 0.28rem 0;
-      font-family: ui-monospace, "SF Mono", "Cascadia Mono", monospace;
-      font-size: 0.82rem;
-      color: var(--text);
-    }
-    .toast {
-      position: fixed;
-      right: 1rem;
-      bottom: 1rem;
-      background: var(--accent);
-      color: #fff;
-      border-radius: 6px;
-      padding: 0.48rem 0.75rem;
-      box-shadow: 0 4px 18px rgba(0, 0, 0, 0.2);
-      z-index: 9999;
-      max-width: 360px;
-      font-size: 0.8rem;
-      line-height: 1.45;
-      animation: toast-in 0.14s ease-out;
-    }
-    .toast.error { background: var(--danger); }
-    @keyframes toast-in {
-      from { opacity: 0; transform: translateY(0.35rem); }
-      to { opacity: 1; transform: translateY(0); }
-    }
-    .result-box {
-      border: 1px solid var(--border);
-      border-radius: 6px;
-      padding: 0.5rem 0.7rem;
-      margin: 0.5rem 0;
-      background: var(--surface-2);
-      font-family: ui-monospace, "SF Mono", "Cascadia Mono", monospace;
-      font-size: 0.78rem;
-      color: var(--muted);
-      line-height: 1.6;
-    }
-  </style>
+  <link rel="stylesheet" href="/static/css/tokens.css">
+  <link rel="stylesheet" href="/static/css/base.css">
+  <link rel="stylesheet" href="/static/css/components.css">
+  <link rel="stylesheet" href="/static/css/layout.css">
+  <!-- Alpine.js: defer so it inits after DOM, before DOMContentLoaded fires -->
+  <script defer src="/static/vendor/alpine.min.js"></script>
+  <!-- HTMX -->
+  <script src="/static/vendor/htmx.min.js"></script>
 </head>
-<body>
+<body class="has-sticky-bar">
   <div class="wrap">
     <header class="top">
       <div class="brand-group">
-        <a class="brand" href="/">gohour</a>
-        {{ if .CurrentMonth }}<span class="header-month">{{ .CurrentMonth }}</span>{{ end }}
+        <a class="brand" href="/month/{{ .CurrentMonth }}">gohour</a>
+        {{- if .CurrentMonth }}
+        <div class="header-breadcrumb">
+          {{ if .Day }}
+          <a href="/month/{{ .CurrentMonth }}">{{ .CurrentMonth }}</a>
+          <span class="header-breadcrumb-sep">›</span>
+          <span class="header-breadcrumb-current">{{ .Day }}</span>
+          {{ else }}
+          <span class="header-breadcrumb-current">{{ .CurrentMonth }}</span>
+          {{ end }}
+        </div>
+        {{ end }}
       </div>
       <div class="nav">
         <form action="/month" method="get" style="display:flex;gap:0.4rem;align-items:center;">
@@ -489,6 +38,7 @@
         </form>
       </div>
     </header>
+
     <main class="content">
       {{ if .AuthErrorMsg }}
       <div class="auth-banner">{{ .AuthErrorMsg }}</div>
@@ -496,1416 +46,90 @@
       {{ template "page" . }}
     </main>
   </div>
-  <script>
-    let _lookup = null;
-    let _editState = { mode: '', row: null, date: '' };
-    let _confirmCallback = null;
-    let _importPreviewState = { form: null, options: null, entries: [] };
-    let _submitState = { scope: '', value: '' };
-    let _submitRunToken = 0;
 
-    async function apiFetch(method, url, body, options) {
-      const fetchOptions = { method: method, headers: {}, body: undefined };
-      if (options && options.formData) {
-        fetchOptions.body = options.formData;
-      } else if (body !== undefined && body !== null) {
-        fetchOptions.headers['Content-Type'] = 'application/json';
-        fetchOptions.body = JSON.stringify(body);
-      }
-      if (options && options.headers && typeof options.headers === 'object') {
-        for (const [key, value] of Object.entries(options.headers)) {
-          fetchOptions.headers[key] = value;
-        }
-      }
-      const response = await fetch(url, fetchOptions);
-      const contentType = response.headers.get('content-type') || '';
-      const payload = contentType.includes('application/json') ? await response.json() : await response.text();
-      if (!response.ok) {
-        const message = typeof payload === 'string'
-          ? payload
-          : (payload && payload.error ? String(payload.error) : JSON.stringify(payload));
-        const error = new Error(message || ('HTTP ' + response.status));
-        error.status = response.status;
-        error.payload = payload;
-        throw error;
-      }
-      return payload;
-    }
+  <!-- Alpine.js: toast (visible via store) -->
+  <div
+    x-data
+    x-show="$store.toast.visible"
+    x-text="$store.toast.message"
+    :class="$store.toast.isError ? 'toast error' : 'toast'"
+    x-cloak
+    style="pointer-events:none;"
+  ></div>
 
-    function showToast(msg, isError) {
-      const existing = document.getElementById('toast');
-      if (existing) {
-        existing.remove();
-      }
-      const toast = document.createElement('div');
-      toast.id = 'toast';
-      toast.className = 'toast' + (isError ? ' error' : '');
-      toast.textContent = msg;
-      document.body.appendChild(toast);
-      setTimeout(() => {
-        const current = document.getElementById('toast');
-        if (current) {
-          current.remove();
-        }
-      }, 2600);
-    }
-
-    function formatCreateConflictMessage(err) {
-      let payload = null;
-      if (err && typeof err === 'object' && err.payload && typeof err.payload === 'object') {
-        payload = err.payload;
-      } else if (err && err.message) {
-        try {
-          payload = JSON.parse(String(err.message));
-        } catch {
-          payload = null;
-        }
-      }
-
-      if (!payload || typeof payload !== 'object') {
-        return String((err && err.message) || err);
-      }
-      if (payload.type === 'duplicate') {
-        if (payload.existingId) {
-          return 'A local entry already exists for this time slot (entry #' + payload.existingId + ').';
-        }
-        return 'A local entry already exists for this time slot.';
-      }
-      if (payload.type === 'overlap') {
-        if (payload.existingId) {
-          return 'This time slot overlaps with entry #' + payload.existingId + '.';
-        }
-        return 'This time slot overlaps with an existing local entry.';
-      }
-      return String(payload.error || ((err && err.message) || err));
-    }
-
-    function fmtHours(mins) {
-      return new Intl.NumberFormat(navigator.language, {
-        minimumFractionDigits: 2,
-        maximumFractionDigits: 2,
-      }).format(Number(mins) / 60);
-    }
-
-    function fmtTime(hhmm) {
-      const parts = String(hhmm || '').split(':');
-      if (parts.length !== 2) return String(hhmm || '');
-      const d = new Date(2000, 0, 1, Number(parts[0]), Number(parts[1]));
-      return new Intl.DateTimeFormat(navigator.language, { timeStyle: 'short' }).format(d);
-    }
-
-    function fmtDate(iso) {
-      const parts = String(iso || '').split('-');
-      if (parts.length !== 3) return String(iso || '');
-      const d = new Date(Number(parts[0]), Number(parts[1]) - 1, Number(parts[2]));
-      return new Intl.DateTimeFormat(navigator.language, { dateStyle: 'medium' }).format(d);
-    }
-
-    function fmtDateTime(iso) {
-      const d = new Date(String(iso || ''));
-      if (Number.isNaN(d.getTime())) return String(iso || 'Not loaded yet');
-      return new Intl.DateTimeFormat(navigator.language, {
-        dateStyle: 'medium',
-        timeStyle: 'short',
-      }).format(d);
-    }
-
-    function toMins(hhmm) {
-      const parts = String(hhmm || '').split(':');
-      if (parts.length !== 2) return NaN;
-      const h = Number(parts[0]);
-      const m = Number(parts[1]);
-      if (!Number.isInteger(h) || !Number.isInteger(m) || h < 0 || h > 23 || m < 0 || m > 59) {
-        return NaN;
-      }
-      return h * 60 + m;
-    }
-
-    function recalcBillable(container) {
-      const startInput = container.querySelector('[name=start]');
-      const endInput = container.querySelector('[name=end]');
-      const billableHoursInput = container.querySelector('[name=billableHours]');
-      if (!startInput || !endInput || !billableHoursInput) return;
-
-      const startMins = toMins(startInput.value);
-      const endMins = toMins(endInput.value);
-      const diff = endMins - startMins;
-      if (Number.isFinite(diff) && diff > 0) {
-        billableHoursInput.value = (diff / 60).toFixed(2);
-      }
-    }
-
-    async function getLookup(refresh) {
-      if (!_lookup || refresh) {
-        const url = refresh ? '/api/lookup?refresh=1' : '/api/lookup';
-        _lookup = await apiFetch('GET', url);
-      }
-      return _lookup;
-    }
-
-    function applyLocaleFormatting(root) {
-      const target = root || document;
-      target.querySelectorAll('.js-fmt-hours').forEach((el) => {
-        const mins = Number(el.dataset.mins || '0');
-        if (Number.isFinite(mins)) {
-          el.textContent = fmtHours(mins);
+  <!-- Confirm dialog -->
+  <dialog id="confirm-dialog"
+    x-data
+    x-ref="confirmDialog"
+    x-init="
+      $watch('$store.confirm.open', value => {
+        if (value) {
+          if (!$refs.confirmDialog.open) $refs.confirmDialog.showModal();
+        } else if ($refs.confirmDialog.open) {
+          $refs.confirmDialog.close();
         }
       });
-      target.querySelectorAll('.js-fmt-time').forEach((el) => {
-        el.textContent = fmtTime(el.dataset.hhmm || el.textContent);
-      });
-      target.querySelectorAll('.js-fmt-date').forEach((el) => {
-        el.textContent = fmtDate(el.dataset.iso || el.textContent);
-      });
-      target.querySelectorAll('.js-fmt-datetime').forEach((el) => {
-        const raw = el.dataset.iso || el.textContent;
-        el.textContent = fmtDateTime(raw);
-      });
-      target.querySelectorAll('.js-fmt-delta').forEach((el) => {
-        const value = Number(el.dataset.hours || '0');
-        const formatted = new Intl.NumberFormat(navigator.language, {
-          minimumFractionDigits: 2,
-          maximumFractionDigits: 2,
-          signDisplay: 'always',
-        }).format(value);
-        el.textContent = formatted;
-      });
-    }
-
-    async function populateImportSelects(form) {
-      const lookup = await getLookup();
-      const projects = (lookup.projects || []).filter((project) => !project.archived);
-      const activitiesAll = lookup.activities || [];
-      const skillsAll = lookup.skills || [];
-
-      const projectSel = form.querySelector('[name=project]');
-      const activitySel = form.querySelector('[name=activity]');
-      const skillSel = form.querySelector('[name=skill]');
-      if (!projectSel || !activitySel || !skillSel) return;
-
-      const selectedNumericID = (select) => {
-        if (!select || !select.options.length || select.selectedIndex < 0) {
-          return NaN;
-        }
-        const option = select.options[select.selectedIndex];
-        return Number(option.dataset.id || '');
-      };
-      const fillImportSelect = (select, items, getID, getName) => {
-        select.innerHTML = '';
-        if (!items.length) {
-          const option = document.createElement('option');
-          option.value = '';
-          option.textContent = 'No options';
-          option.disabled = true;
-          option.selected = true;
-          select.appendChild(option);
-          return;
-        }
-        for (const item of items) {
-          const option = document.createElement('option');
-          option.value = String(getName(item));
-          option.textContent = getName(item);
-          option.dataset.name = getName(item);
-          option.dataset.id = String(getID(item));
-          select.appendChild(option);
-        }
-        select.selectedIndex = 0;
-      };
-
-      const rebuildSkills = () => {
-        const activityID = selectedNumericID(activitySel);
-        fillImportSelect(
-          skillSel,
-          skillsAll.filter((skill) => Number(skill.activityId) === activityID),
-          (skill) => skill.id,
-          (skill) => skill.name,
-        );
-      };
-      const rebuildActivities = () => {
-        const projectID = selectedNumericID(projectSel);
-        fillImportSelect(
-          activitySel,
-          activitiesAll.filter((activity) => Number(activity.projectId) === projectID && !activity.locked),
-          (activity) => activity.id,
-          (activity) => activity.name,
-        );
-        rebuildSkills();
-      };
-
-      fillImportSelect(projectSel, projects, (project) => project.id, (project) => project.name);
-      rebuildActivities();
-      projectSel.addEventListener('change', rebuildActivities);
-      activitySel.addEventListener('change', rebuildSkills);
-    }
-
-    async function openImportDialog(dialogID, formID) {
-      const dialog = document.getElementById(dialogID);
-      const form = document.getElementById(formID);
-      if (!dialog || !form) return;
-      clearImportFormStatus(form);
-      if (!form.dataset.lookupLoaded) {
-        try {
-          await populateImportSelects(form);
-          form.dataset.lookupLoaded = '1';
-        } catch (err) {
-          delete form.dataset.lookupLoaded;
-          setImportFormStatus(form, String(err.message || err), true);
-          showToast(String(err.message || err), true);
-          return;
-        }
-      }
-      dialog.showModal();
-    }
-
-    function closeImportDialog(dialogID) {
-      const dialog = document.getElementById(dialogID);
-      if (dialog && dialog.open) {
-        dialog.close();
-      }
-    }
-
-    function setImportFormStatus(form, message, isError) {
-      if (!form) return;
-      let statusNode = form.querySelector('.import-form-status');
-      if (!statusNode) {
-        statusNode = document.createElement('p');
-        statusNode.className = 'import-form-status muted';
-        statusNode.style.marginTop = '0';
-        statusNode.style.marginBottom = '0.55rem';
-        const bodyNode = form.querySelector('.dialog-body');
-        if (bodyNode) {
-          bodyNode.prepend(statusNode);
-        } else {
-          form.prepend(statusNode);
-        }
-      }
-      statusNode.textContent = String(message || '');
-      statusNode.style.color = isError ? 'var(--danger)' : 'var(--muted)';
-    }
-
-    function clearImportFormStatus(form) {
-      if (!form) return;
-      const statusNode = form.querySelector('.import-form-status');
-      if (statusNode) {
-        statusNode.textContent = '';
-      }
-    }
-
-    function summarizeImportOverlaps(overlaps) {
-      const preview = overlaps.slice(0, 4).map((item) => {
-        const existing = item.existingId ? ('#' + item.existingId) : '?';
-        return item.date + ' ' + item.start + '-' + item.end + ' ' + item.project + ' (existing ' + existing + ')';
-      });
-      const remainder = overlaps.length > 4 ? ('; +' + (overlaps.length - 4) + ' more') : '';
-      return preview.join('; ') + remainder;
-    }
-
-    async function submitImportForm(form, options) {
-      const formData = new FormData(form);
-      const preview = await apiFetch('POST', '/api/import-preview', null, { formData: formData });
-      openImportPreviewDialog(preview, form, options || {});
-    }
-
-    function openImportPreviewDialog(previewData, form, options) {
-      const dialog = document.getElementById('import-preview-dialog');
-      const body = document.getElementById('preview-body');
-      const summary = document.getElementById('preview-summary');
-      const filenameNode = document.getElementById('preview-filename');
-      if (!dialog || !body || !summary || !filenameNode) return;
-
-      _importPreviewState.form = form;
-      _importPreviewState.options = options || {};
-      _importPreviewState.entries = Array.isArray(previewData.entries) ? previewData.entries : [];
-      setImportPreviewStatus('', false);
-
-      const fileInput = form ? form.querySelector('input[name=file]') : null;
-      const fileName = fileInput && fileInput.files && fileInput.files[0] ? fileInput.files[0].name : '';
-      filenameNode.textContent = fileName;
-
-      body.innerHTML = '';
-      let cleanCount = 0;
-      let overlapCount = 0;
-      let duplicateCount = 0;
-
-      for (const entry of _importPreviewState.entries) {
-        const status = String(entry.status || '');
-        if (status === 'clean') cleanCount++;
-        if (status === 'overlap') overlapCount++;
-        if (status === 'duplicate') duplicateCount++;
-
-        const row = document.createElement('tr');
-        row.dataset.index = String(Number(entry.index || 0));
-        row.dataset.status = status;
-
-        let checkboxHTML = '<span class="muted">-</span>';
-        if (status === 'clean') {
-          checkboxHTML = '<input type="checkbox" class="preview-select" checked onchange="updatePreviewCount()">';
-        } else if (status === 'overlap') {
-          checkboxHTML = '<input type="checkbox" class="preview-select" onchange="updatePreviewCount()">';
-        }
-
-        let conflictText = '';
-        if (status === 'overlap' && entry.conflictId) {
-          conflictText = ' \u26A0 conflicts #' + String(entry.conflictId);
-        } else if (status === 'duplicate' && entry.conflictId) {
-          conflictText = ' already exists #' + String(entry.conflictId);
-        }
-
-        let badgeClass = 'badge-local';
-        let badgeLabel = 'clean';
-        if (status === 'overlap') {
-          badgeClass = 'badge-conflict';
-          badgeLabel = 'overlap';
-        } else if (status === 'duplicate') {
-          badgeClass = 'badge-synced';
-          badgeLabel = 'already exists';
-        }
-
-        row.innerHTML = '' +
-          '<td>' + checkboxHTML + '</td>' +
-          '<td><span class="js-fmt-date" data-iso="' + escapeHtml(String(entry.date || '')) + '">' + escapeHtml(String(entry.date || '')) + '</span></td>' +
-          '<td><span class="js-fmt-time" data-hhmm="' + escapeHtml(String(entry.start || '')) + '">' + escapeHtml(String(entry.start || '')) + '</span></td>' +
-          '<td><span class="js-fmt-time" data-hhmm="' + escapeHtml(String(entry.end || '')) + '">' + escapeHtml(String(entry.end || '')) + '</span></td>' +
-          '<td>' + escapeHtml(String(entry.project || '')) + '</td>' +
-          '<td>' + escapeHtml(String(entry.activity || '')) + '</td>' +
-          '<td>' + escapeHtml(String(entry.skill || '')) + '</td>' +
-          '<td class="num"><span class="js-fmt-hours" data-mins="' + escapeHtml(String(Number(entry.durationMins || 0))) + '">' + escapeHtml(String(Number(entry.durationMins || 0))) + '</span></td>' +
-          '<td class="num"><span class="js-fmt-hours" data-mins="' + escapeHtml(String(Number(entry.billableMins || 0))) + '">' + escapeHtml(String(Number(entry.billableMins || 0))) + '</span></td>' +
-          '<td>' + escapeHtml(String(entry.description || '')) + '</td>' +
-          '<td><span class="badge ' + badgeClass + '">' + badgeLabel + '</span>' + escapeHtml(conflictText) + '</td>';
-        body.appendChild(row);
-      }
-
-      summary.textContent = _importPreviewState.entries.length + ' entries: ' +
-        cleanCount + ' clean, ' + overlapCount + ' overlapping, ' + duplicateCount + ' duplicate';
-      updatePreviewCount();
-      applyLocaleFormatting(dialog);
-      dialog.showModal();
-    }
-
-    function updatePreviewCount() {
-      const body = document.getElementById('preview-body');
-      const button = document.getElementById('preview-import-btn');
-      if (!body || !button) return;
-
-      let count = 0;
-      for (const row of Array.from(body.querySelectorAll('tr'))) {
-        const status = row.dataset.status || '';
-        const checkbox = row.querySelector('input.preview-select');
-        if ((status === 'clean' || status === 'overlap') && checkbox && checkbox.checked) {
-          count++;
-        }
-      }
-      button.textContent = 'Import selected (' + count + ')';
-    }
-
-    function setImportPreviewStatus(message, isError) {
-      const statusNode = document.getElementById('preview-status');
-      if (!statusNode) return;
-      statusNode.textContent = String(message || '');
-      statusNode.style.color = isError ? 'var(--danger)' : 'var(--muted)';
-    }
-
-    function cancelImportPreview() {
-      const dialog = document.getElementById('import-preview-dialog');
-      if (dialog && dialog.open) {
-        dialog.close();
-      }
-      setImportPreviewStatus('', false);
-      _importPreviewState = { form: null, options: null, entries: [] };
-    }
-
-    async function confirmImportPreview(modeFlag) {
-      const form = _importPreviewState.form;
-      if (!form) return;
-      const importButton = document.getElementById('preview-import-btn');
-      if (importButton) {
-        importButton.disabled = true;
-      }
-      setImportPreviewStatus('Importing selected rows...', false);
-
-      const body = document.getElementById('preview-body');
-      const skipIndices = [];
-      if (body) {
-        for (const row of Array.from(body.querySelectorAll('tr'))) {
-          const index = Number(row.dataset.index || '-1');
-          const status = row.dataset.status || '';
-          if (!Number.isInteger(index) || index < 0) continue;
-
-          if (status === 'duplicate') {
-            skipIndices.push(index);
-            continue;
-          }
-
-          const checkbox = row.querySelector('input.preview-select');
-          const checked = checkbox ? checkbox.checked : false;
-          if ((status === 'clean' || status === 'overlap') && !checked) {
-            skipIndices.push(index);
-          }
-        }
-      }
-
-      const formData = new FormData(form);
-      formData.append('skipIndices', skipIndices.join(','));
-      if (modeFlag) {
-        formData.append(modeFlag, 'true');
-      }
-
-      try {
-        const result = await apiFetch('POST', '/api/import', null, { formData: formData });
-        const options = _importPreviewState.options || {};
-        let message = 'Imported ' + result.rowsPersisted + ' row(s).';
-        if (result.overlapsSkipped) {
-          message += ' Skipped ' + result.overlapsSkipped + ' overlapping row(s).';
-        }
-        if (result.reconcileWarning) {
-          message += ' Reconcile warning: ' + String(result.reconcileWarning);
-        }
-        setImportPreviewStatus(message, false);
-        openStatusDialog('Import result', '<div class="result-box">' + escapeHtml(message) + '</div>');
-        cancelImportPreview();
-        if (options && options.dialogID) {
-          closeImportDialog(options.dialogID);
-        }
-        showToast(message, false);
-        if (options && options.day) {
-          await reloadDayTable(options.day);
-        } else if (options && options.refreshURL) {
-          window.location.href = options.refreshURL;
-        } else if (options && options.refreshMonth) {
-          await reloadMonthTable(options.refreshMonth, true);
-        }
-      } catch (err) {
-        if (
-          !modeFlag &&
-          err &&
-          err.status === 409 &&
-          err.payload &&
-          Array.isArray(err.payload.overlaps) &&
-          err.payload.overlaps.length > 0
-        ) {
-          const overlaps = err.payload.overlaps;
-          openConfirmDialog(
-            'Overlapping entries found',
-            'Some imported entries overlap existing local entries: ' + summarizeImportOverlaps(overlaps),
-            function() { confirmImportPreview('forceOverlapping'); },
-            'Import anyway',
-            {
-              label: 'Skip overlapping',
-              onConfirm: function() { confirmImportPreview('skipOverlapping'); },
-            },
-          );
-          if (importButton) {
-            importButton.disabled = false;
-          }
-          return;
-        }
-        const errMsg = String(err.message || err);
-        setImportPreviewStatus(errMsg, true);
-        openStatusDialog(
-          'Import failed',
-          '<div class="result-box">' + escapeHtml(errMsg) + '</div>'
-        );
-        showToast(errMsg, true);
-      } finally {
-        if (importButton) {
-          importButton.disabled = false;
-        }
-      }
-    }
-
-    async function handleImportSubmit(event, options) {
-      event.preventDefault();
-      const form = event.target;
-      clearImportFormStatus(form);
-      try {
-        await submitImportForm(form, options || {});
-      } catch (err) {
-        const errMsg = String(err.message || err);
-        setImportFormStatus(form, errMsg, true);
-        openStatusDialog(
-          'Import failed',
-          '<div class="result-box">' + escapeHtml(errMsg) + '</div>'
-        );
-        showToast(errMsg, true);
-      }
-    }
-
-    function normalizeName(value) {
-      return String(value || '').trim().toLowerCase();
-    }
-
-    function escapeHtml(value) {
-      return String(value)
-        .replaceAll('&', '&amp;')
-        .replaceAll('<', '&lt;')
-        .replaceAll('>', '&gt;')
-        .replaceAll('"', '&quot;')
-        .replaceAll("'", '&#39;');
-    }
-
-    function fillSelectByName(select, items, currentName, getID, getName) {
-      select.innerHTML = '';
-      const currentNorm = normalizeName(currentName);
-      let found = false;
-      for (const item of items) {
-        const name = getName(item);
-        const option = document.createElement('option');
-        option.value = String(getID(item));
-        option.textContent = name;
-        option.dataset.name = name;
-        if (currentNorm && normalizeName(name) === currentNorm && !found) {
-          option.selected = true;
-          found = true;
-        }
-        select.appendChild(option);
-      }
-      if (!found && currentName) {
-        const option = document.createElement('option');
-        option.value = '';
-        option.textContent = currentName + ' (unavailable)';
-        option.dataset.name = currentName;
-        option.disabled = true;
-        option.selected = true;
-        select.appendChild(option);
-      }
-      if (!select.options.length) {
-        const option = document.createElement('option');
-        option.value = '';
-        option.textContent = 'No options';
-        option.disabled = true;
-        option.selected = true;
-        select.appendChild(option);
-      }
-      if (!found && !currentName && select.options.length > 0) {
-        select.selectedIndex = 0;
-      }
-    }
-
-    async function buildLookupSelects(currentProject, currentActivity, currentSkill) {
-      const lookup = await getLookup();
-      const projects = (lookup.projects || []).filter((project) => !project.archived);
-      const activitiesAll = (lookup.activities || []);
-      const skillsAll = (lookup.skills || []);
-
-      const projectSelect = document.createElement('select');
-      projectSelect.name = 'project';
-      const activitySelect = document.createElement('select');
-      activitySelect.name = 'activity';
-      const skillSelect = document.createElement('select');
-      skillSelect.name = 'skill';
-
-      fillSelectByName(projectSelect, projects, currentProject, (item) => item.id, (item) => item.name);
-
-      const rebuildSkills = (selectedSkill) => {
-        const activityID = projectSelect.value && activitySelect.value ? Number(activitySelect.value) : NaN;
-        const skills = skillsAll.filter((skill) => Number(skill.activityId) === activityID);
-        fillSelectByName(skillSelect, skills, selectedSkill || '', (item) => item.id, (item) => item.name);
-      };
-
-      const rebuildActivities = (selectedActivity, selectedSkill) => {
-        const projectID = projectSelect.value ? Number(projectSelect.value) : NaN;
-        const activities = activitiesAll.filter((activity) => Number(activity.projectId) === projectID && !activity.locked);
-        fillSelectByName(activitySelect, activities, selectedActivity || '', (item) => item.id, (item) => item.name);
-        rebuildSkills(selectedSkill || '');
-      };
-
-      rebuildActivities(currentActivity, currentSkill);
-      projectSelect.addEventListener('change', () => rebuildActivities('', ''));
-      activitySelect.addEventListener('change', () => rebuildSkills(''));
-
-      return { projectSelect, activitySelect, skillSelect };
-    }
-
-    function parseDayRow(row) {
-      return {
-        id: Number(row.dataset.id || '0'),
-        date: row.dataset.date,
-        source: row.dataset.source,
-        start: row.dataset.start,
-        end: row.dataset.end,
-        durationMins: Number(row.dataset.durationMins || '0'),
-        project: row.dataset.project,
-        activity: row.dataset.activity,
-        skill: row.dataset.skill,
-        billableMins: Number(row.dataset.billableMins || '0'),
-        description: row.dataset.description || ''
-      };
-    }
-
-    function renderDayRowCells(row, values) {
-      row.dataset.id = String(values.id || 0);
-      row.dataset.date = values.date || row.dataset.date || '';
-      row.dataset.source = values.source || '';
-      row.dataset.start = values.start || '';
-      row.dataset.end = values.end || '';
-      row.dataset.durationMins = String(Number(values.durationMins || 0));
-      row.dataset.project = values.project || '';
-      row.dataset.activity = values.activity || '';
-      row.dataset.skill = values.skill || '';
-      row.dataset.billableMins = String(Number(values.billableMins || 0));
-      row.dataset.description = values.description || '';
-
-      row.querySelector('[data-col="source"]').innerHTML = '<span class="badge badge-' + escapeHtml(row.dataset.source) + '">' + escapeHtml(row.dataset.source) + '</span>';
-      row.querySelector('[data-col="date"]').innerHTML = '<span class="js-fmt-date" data-iso="' + escapeHtml(row.dataset.date) + '">' + escapeHtml(row.dataset.date) + '</span>';
-      row.querySelector('[data-col="start"]').innerHTML = '<span class="js-fmt-time" data-hhmm="' + escapeHtml(row.dataset.start) + '">' + escapeHtml(row.dataset.start) + '</span>';
-      row.querySelector('[data-col="end"]').innerHTML = '<span class="js-fmt-time" data-hhmm="' + escapeHtml(row.dataset.end) + '">' + escapeHtml(row.dataset.end) + '</span>';
-      row.querySelector('[data-col="duration"]').innerHTML = '<span class="js-fmt-hours" data-mins="' + escapeHtml(row.dataset.durationMins) + '">' + escapeHtml(row.dataset.durationMins) + '</span>';
-      row.querySelector('[data-col="project"]').textContent = row.dataset.project;
-      row.querySelector('[data-col="activity"]').textContent = row.dataset.activity;
-      row.querySelector('[data-col="skill"]').textContent = row.dataset.skill;
-      row.querySelector('[data-col="billable"]').innerHTML = '<span class="js-fmt-hours" data-mins="' + escapeHtml(row.dataset.billableMins) + '">' + escapeHtml(row.dataset.billableMins) + '</span>';
-      row.querySelector('[data-col="description"]').textContent = row.dataset.description;
-
-      const actions = row.querySelector('[data-col="actions"]');
-      if (row.dataset.source !== 'remote') {
-        actions.innerHTML = '<button type="button" onclick="editRow(this)">Edit</button> <button type="button" class="btn-danger" onclick="deleteRow(this)">Delete</button>';
-      } else {
-        actions.innerHTML = '<span class="muted">-</span>';
-      }
-      applyLocaleFormatting(row);
-    }
-
-    async function editRow(button) {
-      const row = button.closest('tr');
-      if (!row || row.dataset.source === 'remote') return;
-      const values = parseDayRow(row);
-      await openEditDialog({
-        mode: 'edit',
-        row: row,
-        values: values
-      });
-    }
-
-    function selectedName(select, fallback) {
-      if (!select || !select.options.length) return fallback || '';
-      const selected = select.options[select.selectedIndex];
-      return selected.dataset.name || selected.textContent || fallback || '';
-    }
-
-    function collectEditablePayload(form, source) {
-      const startInput = form.querySelector('[name=start]');
-      const endInput = form.querySelector('[name=end]');
-      const descInput = form.querySelector('[name=description]');
-      const billableHoursInput = form.querySelector('[name=billableHours]');
-      const projectSelect = form.querySelector('[name=project]');
-      const activitySelect = form.querySelector('[name=activity]');
-      const skillSelect = form.querySelector('[name=skill]');
-
-      let billableMins = source && Number.isFinite(source.billableMins) ? source.billableMins : 0;
-      if (billableHoursInput) {
-        const hours = Number.parseFloat(billableHoursInput.value);
-        if (Number.isFinite(hours) && hours >= 0) {
-          billableMins = Math.round(hours * 60);
-        }
-      }
-
-      return {
-        date: source.date,
-        start: startInput ? startInput.value : source.start,
-        end: endInput ? endInput.value : source.end,
-        project: selectedName(projectSelect, source.project),
-        activity: selectedName(activitySelect, source.activity),
-        skill: selectedName(skillSelect, source.skill),
-        billable: billableMins,
-        description: descInput ? descInput.value.trim() : source.description
-      };
-    }
-
-    function closeEditDialog() {
-      const dialog = document.getElementById('edit-dialog');
-      if (dialog && dialog.open) {
-        dialog.close();
-      }
-      _editState = { mode: '', row: null, date: '' };
-    }
-
-    function replaceDialogSelect(existingID, select) {
-      const existing = document.getElementById(existingID);
-      if (!existing || !existing.parentNode) return;
-      select.id = existingID;
-      select.required = true;
-      existing.parentNode.replaceChild(select, existing);
-    }
-
-    function updateDialogDuration(form) {
-      const startInput = form.querySelector('[name=start]');
-      const endInput = form.querySelector('[name=end]');
-      const durationNode = document.getElementById('edit-duration');
-      if (!startInput || !endInput || !durationNode) return;
-
-      const startMins = toMins(startInput.value);
-      const endMins = toMins(endInput.value);
-      const diff = endMins - startMins;
-      if (!Number.isFinite(diff) || diff < 0) {
-        durationNode.textContent = fmtHours(0) + ' h';
-        durationNode.dataset.mins = '0';
-        return;
-      }
-      durationNode.textContent = fmtHours(diff) + ' h';
-      durationNode.dataset.mins = String(diff);
-    }
-
-    async function openEditDialog(options) {
-      const dialog = document.getElementById('edit-dialog');
-      const form = document.getElementById('edit-form');
-      if (!dialog || !form) return;
-
-      const values = options.values || {};
-      _editState = {
-        mode: options.mode || 'edit',
-        row: options.row || null,
-        date: values.date || ''
-      };
-
-      const modePrefix = _editState.mode === 'create' ? 'Add entry' : 'Edit entry';
-      document.getElementById('edit-dialog-title').textContent = modePrefix + ' \u2014 ' + fmtDate(_editState.date);
-
-      form.querySelector('[name=start]').value = values.start || '';
-      form.querySelector('[name=end]').value = values.end || '';
-      if (values.billableMins === undefined || values.billableMins === null) {
-        form.querySelector('[name=billableHours]').value = '';
-      } else {
-        form.querySelector('[name=billableHours]').value = (Number(values.billableMins) / 60).toFixed(2);
-      }
-      form.querySelector('[name=description]').value = values.description || '';
-
-      let selects;
-      try {
-        selects = await buildLookupSelects(values.project || '', values.activity || '', values.skill || '');
-      } catch (err) {
-        showToast(String(err.message || err), true);
-        closeEditDialog();
-        return;
-      }
-      replaceDialogSelect('edit-project', selects.projectSelect);
-      replaceDialogSelect('edit-activity', selects.activitySelect);
-      replaceDialogSelect('edit-skill', selects.skillSelect);
-
-      const startInput = form.querySelector('[name=start]');
-      const endInput = form.querySelector('[name=end]');
-      startInput.onchange = () => { recalcBillable(form); updateDialogDuration(form); };
-      endInput.onchange = () => { recalcBillable(form); updateDialogDuration(form); };
-      startInput.oninput = startInput.onchange;
-      endInput.oninput = endInput.onchange;
-
-      updateDialogDuration(form);
-      dialog.showModal();
-    }
-
-    async function saveEditDialog() {
-      const form = document.getElementById('edit-form');
-      if (!form || !_editState.mode) return;
-      const sourceValues = _editState.row ? parseDayRow(_editState.row) : {
-        date: _editState.date,
-        start: '',
-        end: '',
-        project: '',
-        activity: '',
-        skill: '',
-        billableMins: 0,
-        description: ''
-      };
-      const payload = collectEditablePayload(form, sourceValues);
-      const durationMins = toMins(payload.end) - toMins(payload.start);
-      if (!Number.isFinite(durationMins) || durationMins < 0) {
-        showToast('Invalid time range.', true);
-        return;
-      }
-
-      try {
-        await persistEditDialogPayload(payload, durationMins, false);
-        closeEditDialog();
-      } catch (err) {
-        if (err && err.status === 409 && err.payload && err.payload.type === 'duplicate') {
-          showToast('Entry already exists (duplicate).', true);
-          return;
-        }
-        if (err && err.status === 409 && err.payload && err.payload.type === 'overlap') {
-          const existingId = err.payload.existingId ? String(err.payload.existingId) : '?';
-          openConfirmDialog(
-            'Overlapping entry',
-            'This entry overlaps with local entry #' + existingId + '. Save anyway?',
-            async function() {
-              try {
-                await persistEditDialogPayload(payload, durationMins, true);
-                closeEditDialog();
-              } catch (retryErr) {
-                showToast(String(retryErr.message || retryErr), true);
-              }
-            },
-            'Save anyway'
-          );
-          return;
-        }
-        showToast(String(err.message || err), true);
-      }
-    }
-
-    async function persistEditDialogPayload(payload, durationMins, forceOverlap) {
-      const headers = forceOverlap ? { 'X-Force-Overlap': '1' } : null;
-      if (_editState.mode === 'edit' && _editState.row) {
-        await apiFetch('PATCH', '/api/worklog/' + _editState.row.dataset.id, payload, { headers: headers });
-        renderDayRowCells(_editState.row, {
-          id: Number(_editState.row.dataset.id),
-          source: _editState.row.dataset.source,
-          date: payload.date,
-          start: payload.start,
-          end: payload.end,
-          durationMins: durationMins,
-          project: payload.project,
-          activity: payload.activity,
-          skill: payload.skill,
-          billableMins: payload.billable,
-          description: payload.description
-        });
-        showToast('Entry updated.', false);
-        return;
-      }
-
-      const result = await apiFetch('POST', '/api/worklog', payload, { headers: headers });
-      appendDayEntryRow({
-        id: Number(result.id),
-        source: 'local',
-        start: payload.start,
-        end: payload.end,
-        durationMins: durationMins,
-        project: payload.project,
-        activity: payload.activity,
-        skill: payload.skill,
-        billableMins: payload.billable,
-        description: payload.description
-      }, payload.date);
-      showToast('Entry created.', false);
-    }
-
-    async function deleteRowConfirmed(row) {
-      if (!row) return;
-      try {
-        await apiFetch('DELETE', '/api/worklog/' + row.dataset.id);
-        row.remove();
-        showToast('Entry deleted.', false);
-      } catch (err) {
-        showToast(String(err.message || err), true);
-      }
-    }
-
-    function deleteRow(button) {
-      const row = button.closest('tr');
-      if (!row) return;
-      openConfirmDialog('Delete entry', 'Delete this local entry?', function() {
-        deleteRowConfirmed(row);
-      }, 'Delete');
-    }
-
-    async function addEntryRow(day) {
-      await openEditDialog({
-        mode: 'create',
-        values: {
-          date: day,
-          start: '',
-          end: '',
-          project: '',
-          activity: '',
-          skill: '',
-          billableMins: null,
-          description: ''
-        }
-      });
-    }
-
-    async function reloadDayTable(day, refresh) {
-      const url = '/api/day/' + encodeURIComponent(day) + (refresh ? '?refresh=1' : '');
-      const payload = await apiFetch('GET', url);
-      const payloadDay = String(payload.date || payload.Date || day);
-      const entries = payload.entries || payload.Entries || [];
-      const tbody = document.getElementById('day-entries');
-      if (!tbody) return;
-      tbody.innerHTML = '';
-      for (const entry of entries) {
-        appendDayEntryRow(entry, payloadDay);
-      }
-
-      const localHours = Number(payload.localHours !== undefined ? payload.localHours : payload.LocalHours || 0);
-      const remoteHours = Number(payload.remoteHours !== undefined ? payload.remoteHours : payload.RemoteHours || 0);
-      const localWorked = Number(payload.localWorkedHours !== undefined ? payload.localWorkedHours : payload.LocalWorkedHours || 0);
-      const remoteWorked = Number(payload.remoteWorkedHours !== undefined ? payload.remoteWorkedHours : payload.RemoteWorkedHours || 0);
-      const localNode = document.getElementById('day-local-hours');
-      const remoteNode = document.getElementById('day-remote-hours');
-      const localWorkedNode = document.getElementById('day-local-worked');
-      const remoteWorkedNode = document.getElementById('day-remote-worked');
-      if (localNode) {
-        localNode.dataset.mins = String(Math.round(localHours * 60));
-      }
-      if (remoteNode) {
-        remoteNode.dataset.mins = String(Math.round(remoteHours * 60));
-      }
-      if (localWorkedNode) {
-        localWorkedNode.dataset.mins = String(Math.round(localWorked * 60));
-      }
-      if (remoteWorkedNode) {
-        remoteWorkedNode.dataset.mins = String(Math.round(remoteWorked * 60));
-      }
-      const refreshedNode = document.getElementById('day-remote-refreshed-at');
-      const refreshedAt = String(payload.remoteRefreshedAt || payload.RemoteRefreshedAt || '');
-      if (refreshedNode) {
-        refreshedNode.dataset.iso = refreshedAt;
-      }
-      applyLocaleFormatting(document);
-    }
-
-    async function refreshDayRemote(day) {
-      try {
-        await reloadDayTable(day, true);
-        showToast('Remote day data refreshed.', false);
-      } catch (err) {
-        showToast(String(err.message || err), true);
-      }
-    }
-
-    function deltaClass(value) {
-      return Math.abs(Number(value || 0)) < 0.0001 ? 'inline-delta-ok' : 'inline-delta-warn';
-    }
-
-    function applyDeltaClass(node, value) {
-      if (!node) return;
-      node.classList.remove('inline-delta-ok', 'inline-delta-warn');
-      node.classList.add(deltaClass(value));
-    }
-
-    function renderMonthRows(rows) {
-      const tbody = document.getElementById('month-rows');
-      if (!tbody) return;
-      tbody.innerHTML = '';
-      for (const row of rows) {
-        const date = String(row.date || row.Date || '');
-        const localWorked = Number(row.localWorked !== undefined ? row.localWorked : row.LocalWorked || 0);
-        const localHours = Number(row.localHours !== undefined ? row.localHours : row.LocalHours || 0);
-        const remoteWorked = Number(row.remoteWorked !== undefined ? row.remoteWorked : row.RemoteWorked || 0);
-        const remoteHours = Number(row.remoteHours !== undefined ? row.remoteHours : row.RemoteHours || 0);
-        const workedDelta = Number(row.workedDeltaHours !== undefined ? row.workedDeltaHours : row.WorkedDeltaHours || 0);
-        const billableDelta = Number(row.billableDeltaHours !== undefined ? row.billableDeltaHours : row.BillableDeltaHours || 0);
-        const dayLink = String(row.dayLink || row.DayLink || ('/day/' + date));
-        const isToday = Boolean(row.isToday !== undefined ? row.isToday : row.IsToday);
-        const isWeekend = Boolean(row.isWeekend !== undefined ? row.isWeekend : row.IsWeekend);
-
-        const tr = document.createElement('tr');
-        tr.dataset.date = date;
-        if (isToday) {
-          tr.className = 'today';
-        } else if (isWeekend) {
-          tr.className = 'weekend';
-        }
-        tr.innerHTML = '' +
-          '<td><span class="js-fmt-date" data-iso="' + escapeHtml(date) + '">' + escapeHtml(date) + '</span></td>' +
-          '<td class="num"><span class="js-fmt-hours" data-mins="' + String(Math.round(localWorked * 60)) + '">' + String(Math.round(localWorked * 60)) + '</span></td>' +
-          '<td class="num"><span class="js-fmt-hours" data-mins="' + String(Math.round(localHours * 60)) + '">' + String(Math.round(localHours * 60)) + '</span></td>' +
-          '<td class="num">' +
-            '<span class="js-fmt-hours" data-mins="' + String(Math.round(remoteWorked * 60)) + '">' + String(Math.round(remoteWorked * 60)) + '</span>' +
-            '<span class="inline-delta ' + deltaClass(workedDelta) + '">(<span class="js-fmt-delta" data-hours="' + workedDelta + '">' + workedDelta + '</span>)</span>' +
-          '</td>' +
-          '<td class="num">' +
-            '<span class="js-fmt-hours" data-mins="' + String(Math.round(remoteHours * 60)) + '">' + String(Math.round(remoteHours * 60)) + '</span>' +
-            '<span class="inline-delta ' + deltaClass(billableDelta) + '">(<span class="js-fmt-delta" data-hours="' + billableDelta + '">' + billableDelta + '</span>)</span>' +
-          '</td>' +
-          '<td><a href="' + escapeHtml(dayLink) + '">Open</a></td>';
-        tbody.appendChild(tr);
-      }
-    }
-
-    async function reloadMonthTable(month, refresh) {
-      const url = '/api/month/' + encodeURIComponent(month) + (refresh ? '?refresh=1' : '');
-      const payload = await apiFetch('GET', url);
-      renderMonthRows(payload.rows || payload.Rows || []);
-
-      const totalLocalWorked = Number(payload.totalLocalWorked !== undefined ? payload.totalLocalWorked : payload.TotalLocalWorked || 0);
-      const totalLocal = Number(payload.totalLocal !== undefined ? payload.totalLocal : payload.TotalLocal || 0);
-      const totalRemoteWorked = Number(payload.totalRemoteWorked !== undefined ? payload.totalRemoteWorked : payload.TotalRemoteWorked || 0);
-      const totalRemote = Number(payload.totalRemote !== undefined ? payload.totalRemote : payload.TotalRemote || 0);
-      const totalWorkedDelta = Number(payload.totalWorkedDelta !== undefined ? payload.totalWorkedDelta : payload.TotalWorkedDelta || 0);
-      const totalBillableDelta = Number(payload.totalBillableDelta !== undefined ? payload.totalBillableDelta : payload.TotalBillableDelta || 0);
-
-      const localWorkedNode = document.getElementById('month-total-local-worked');
-      const localNode = document.getElementById('month-total-local');
-      const remoteWorkedNode = document.getElementById('month-total-remote-worked');
-      const remoteNode = document.getElementById('month-total-remote');
-      const workedDeltaNode = document.getElementById('month-total-worked-delta');
-      const billableDeltaNode = document.getElementById('month-total-billable-delta');
-      const workedWrap = document.getElementById('month-total-worked-delta-wrap');
-      const billableWrap = document.getElementById('month-total-billable-delta-wrap');
-      const refreshedNode = document.getElementById('month-remote-refreshed-at');
-      const authErrorNode = document.getElementById('month-auth-error');
-      const authErrorMsg = String(payload.authErrorMsg || payload.AuthErrorMsg || '');
-
-      if (localWorkedNode) localWorkedNode.dataset.mins = String(Math.round(totalLocalWorked * 60));
-      if (localNode) localNode.dataset.mins = String(Math.round(totalLocal * 60));
-      if (remoteWorkedNode) remoteWorkedNode.dataset.mins = String(Math.round(totalRemoteWorked * 60));
-      if (remoteNode) remoteNode.dataset.mins = String(Math.round(totalRemote * 60));
-      if (workedDeltaNode) workedDeltaNode.dataset.hours = String(totalWorkedDelta);
-      if (billableDeltaNode) billableDeltaNode.dataset.hours = String(totalBillableDelta);
-      applyDeltaClass(workedWrap, totalWorkedDelta);
-      applyDeltaClass(billableWrap, totalBillableDelta);
-      if (refreshedNode) {
-        refreshedNode.dataset.iso = String(payload.remoteRefreshedAt || payload.RemoteRefreshedAt || '');
-      }
-      if (authErrorNode) {
-        authErrorNode.textContent = authErrorMsg;
-        authErrorNode.hidden = authErrorMsg === '';
-      }
-
-      applyLocaleFormatting(document);
-    }
-
-    async function refreshMonthRemote(month) {
-      try {
-        await reloadMonthTable(month, true);
-        showToast('Remote month data refreshed.', false);
-      } catch (err) {
-        showToast(String(err.message || err), true);
-      }
-    }
-
-    function appendDayEntryRow(entry, day) {
-      const tbody = document.getElementById('day-entries');
-      if (!tbody) return;
-      const row = document.createElement('tr');
-      row.innerHTML = '' +
-        '<td data-col="source"></td>' +
-        '<td data-col="date"></td>' +
-        '<td data-col="start" class="time"></td>' +
-        '<td data-col="end" class="time"></td>' +
-        '<td data-col="duration" class="num"></td>' +
-        '<td data-col="project"></td>' +
-        '<td data-col="activity"></td>' +
-        '<td data-col="skill"></td>' +
-        '<td data-col="billable" class="num"></td>' +
-        '<td data-col="description"></td>' +
-        '<td data-col="actions" class="actions"></td>';
-
-      renderDayRowCells(row, {
-        id: Number(entry.ID || entry.id || 0),
-        source: String(entry.Source || entry.source || ''),
-        date: day,
-        start: String(entry.Start || entry.start || ''),
-        end: String(entry.End || entry.end || ''),
-        durationMins: Number(entry.DurationMins !== undefined ? entry.DurationMins : entry.durationMins || 0),
-        project: String(entry.Project || entry.project || ''),
-        activity: String(entry.Activity || entry.activity || ''),
-        skill: String(entry.Skill || entry.skill || ''),
-        billableMins: Number(entry.BillableMins !== undefined ? entry.BillableMins : entry.billableMins || 0),
-        description: String(entry.Description || entry.description || '')
-      });
-      tbody.appendChild(row);
-    }
-
-    function openConfirmDialog(title, body, onConfirm, confirmLabel, alternative) {
-      const dialog = document.getElementById('confirm-dialog');
-      document.getElementById('confirm-title').textContent = title;
-      document.getElementById('confirm-body').textContent = body;
-      document.getElementById('confirm-ok').textContent = confirmLabel || 'Submit';
-      const altButton = document.getElementById('confirm-alt');
-      _confirmCallback = onConfirm;
-      if (altButton) {
-        if (alternative && alternative.label && alternative.onConfirm) {
-          altButton.hidden = false;
-          altButton.textContent = alternative.label;
-          altButton.onclick = function() {
-            const callback = alternative.onConfirm;
-            closeConfirmDialog();
-            if (callback) callback();
-          };
-        } else {
-          altButton.hidden = true;
-          altButton.textContent = '';
-          altButton.onclick = null;
-        }
-      }
-      document.getElementById('confirm-ok').onclick = function() {
-        const callback = _confirmCallback;
-        closeConfirmDialog();
-        if (callback) callback();
-      };
-      dialog.showModal();
-    }
-
-    function closeConfirmDialog() {
-      const dialog = document.getElementById('confirm-dialog');
-      if (dialog && dialog.open) dialog.close();
-      const altButton = document.getElementById('confirm-alt');
-      if (altButton) {
-        altButton.hidden = true;
-        altButton.textContent = '';
-        altButton.onclick = null;
-      }
-      _confirmCallback = null;
-    }
-
-    function openSubmitDialog(title, htmlContent) {
-      const dialog = document.getElementById('submit-dialog');
-      const titleNode = document.getElementById('submit-dialog-title');
-      const bodyNode = document.getElementById('submit-dialog-result');
-      const dryRunToggle = document.getElementById('submit-dry-run');
-      if (!dialog || !titleNode || !bodyNode || !dryRunToggle) return;
-      titleNode.textContent = title;
-      bodyNode.innerHTML = htmlContent;
-      applyLocaleFormatting(bodyNode);
-      if (!dialog.open) {
-        dialog.showModal();
-      }
-    }
-
-    function setSubmitDialogMode(mode) {
-      const optionsWrap = document.getElementById('submit-options');
-      const runButton = document.getElementById('submit-dialog-run');
-      const dryRunToggle = document.getElementById('submit-dry-run');
-      if (!optionsWrap || !runButton || !dryRunToggle) return;
-
-      if (mode === 'status') {
-        optionsWrap.hidden = true;
-        runButton.hidden = true;
-        runButton.disabled = true;
-        dryRunToggle.checked = false;
-        _submitState = { scope: '', value: '' };
-        return;
-      }
-
-      optionsWrap.hidden = false;
-      runButton.hidden = false;
-      runButton.disabled = false;
-      runButton.textContent = 'Run submit';
-    }
-
-    function openStatusDialog(title, htmlContent) {
-      setSubmitDialogMode('status');
-      openSubmitDialog(title, htmlContent);
-    }
-
-    function closeSubmitDialog() {
-      const dialog = document.getElementById('submit-dialog');
-      if (dialog && dialog.open) dialog.close();
-      setSubmitDialogMode('submit');
-    }
-
-    function openSubmitAction(scope, value) {
-      setSubmitDialogMode('submit');
-      _submitState = { scope: scope, value: value };
-      const dryRunToggle = document.getElementById('submit-dry-run');
-      const runButton = document.getElementById('submit-dialog-run');
-      if (dryRunToggle) {
-        dryRunToggle.checked = false;
-      }
-      if (runButton) {
-        runButton.textContent = 'Run submit';
-        runButton.disabled = false;
-      }
-      openSubmitDialog('Submit ' + value, '<div class="result-box">Choose options, then run submit.</div>');
-    }
-
-    async function runSubmitAction() {
-      if (!_submitState.scope || !_submitState.value) return;
-      const action = { scope: _submitState.scope, value: _submitState.value };
-      const runToken = ++_submitRunToken;
-      const dryRunToggle = document.getElementById('submit-dry-run');
-      const runButton = document.getElementById('submit-dialog-run');
-      const dryRun = Boolean(dryRunToggle && dryRunToggle.checked);
-
-      let url = '';
-      if (action.scope === 'day') {
-        url = '/api/submit/day/' + encodeURIComponent(action.value);
-      } else if (action.scope === 'month') {
-        url = '/api/submit/month/' + encodeURIComponent(action.value);
-      } else {
-        return;
-      }
-      if (dryRun) {
-        url += '?dry_run=1';
-      }
-
-      if (runButton) {
-        runButton.disabled = true;
-      }
-      openSubmitDialog('Submit ' + action.value, '<div class="result-box">Submitting...</div>');
-      try {
-        const result = await apiFetch('POST', url);
-        if (!dryRun) {
-          if (action.scope === 'day') {
-            await reloadDayTable(action.value, false);
-          } else if (action.scope === 'month') {
-            await reloadMonthTable(action.value, false);
-          }
-        }
-        if (runToken !== _submitRunToken) {
-          return;
-        }
-        const html = action.scope === 'day'
-          ? renderDaySubmitResult(result)
-          : renderMonthSubmitResult(result);
-        openSubmitDialog('Submit ' + action.value, html);
-        showToast(dryRun ? 'Dry-run finished.' : 'Submit finished.', false);
-      } catch (err) {
-        if (runToken !== _submitRunToken) {
-          return;
-        }
-        openSubmitDialog(
-          'Submit ' + action.value,
-          '<div class="result-box">' + escapeHtml(String(err.message || err)) + '</div>'
-        );
-        showToast(String(err.message || err), true);
-      } finally {
-        if (runButton && runToken === _submitRunToken) {
-          runButton.disabled = false;
-        }
-      }
-    }
-
-    async function deleteMonthEntries(month) {
-      try {
-        await apiFetch('DELETE', '/api/month/' + encodeURIComponent(month) + '/worklogs');
-        window.location.href = '/month/' + encodeURIComponent(month);
-      } catch (err) {
-        showToast(String(err.message || err), true);
-      }
-    }
-
-    async function copyMonthRemote(month) {
-      try {
-        const result = await apiFetch('POST', '/api/month/' + encodeURIComponent(month) + '/copy-from-remote');
-        await reloadMonthTable(month, false);
-        showToast('Copied ' + result.copied + ' of ' + result.total + ' remote entries.', false);
-      } catch (err) {
-        showToast(String(err.message || err), true);
-      }
-    }
-
-    // Backward-compatible alias for older naming.
-    async function syncMonthRemote(month) {
-      await copyMonthRemote(month);
-    }
-
-    async function deleteMonthRemoteEntries(month) {
-      setSubmitDialogMode('status');
-      openSubmitDialog(
-        'Delete remote ' + month,
-        '<div class="result-box">Deleting remote entries...</div>'
-      );
-      try {
-        const result = await apiFetch('DELETE', '/api/month/' + encodeURIComponent(month) + '/remote-worklogs');
-        let html = '<div class="result-box">Deleted: ' + result.deleted + ' | Locked days skipped: ' + result.skippedLocked + '</div>';
-        if (Array.isArray(result.lockedDays) && result.lockedDays.length > 0) {
-          html += '<div class="result-box">Locked days: ';
-          for (let i = 0; i < result.lockedDays.length; i++) {
-            const day = String(result.lockedDays[i]);
-            if (i > 0) html += ', ';
-            html += '<span class="js-fmt-date" data-iso="' + escapeHtml(day) + '">' + escapeHtml(day) + '</span>';
-          }
-          html += '</div>';
-        }
-        try {
-          await reloadMonthTable(month, false);
-        } catch (reloadErr) {
-          html += '<div class="result-box">Delete completed, but month refresh failed: ' + escapeHtml(String(reloadErr.message || reloadErr)) + '</div>';
-        }
-        openSubmitDialog('Delete remote ' + month, html);
-        let msg = 'Deleted ' + result.deleted + ' remote entries.';
-        if (result.skippedLocked > 0) {
-          msg += ' ' + result.skippedLocked + ' locked days skipped.';
-        }
-        showToast(msg, false);
-      } catch (err) {
-        openSubmitDialog(
-          'Delete remote ' + month,
-          '<div class="result-box">' + escapeHtml(String(err.message || err)) + '</div>'
-        );
-        showToast(String(err.message || err), true);
-      }
-    }
-
-    function renderDaySubmitResult(result) {
-      const day = (result.days && result.days.length > 0) ? result.days[0] : { added: 0, duplicates: 0, overlaps: 0, locked: false };
-      const addedLabel = result.dryRun ? 'Would add' : 'Added';
-      let html = '';
-      if (result.dryRun) {
-        html += '<div class="result-box">Preview only - nothing submitted.</div>';
-      }
-      html += '<div class="result-box">' + addedLabel + ': ' + day.added +
-        ' | Duplicates: ' + day.duplicates +
-        ' | Overlaps: ' + day.overlaps +
-        ' | Locked: ' + (day.locked ? 'yes' : 'no') + '</div>';
-      return html;
-    }
-
-    function renderMonthSubmitResult(result) {
-      const addedLabel = result.dryRun ? 'Would add' : 'Added';
-      let addedTotal = result.submitted || 0;
-      if (result.dryRun) {
-        addedTotal = 0;
-        for (const day of (result.days || [])) {
-          addedTotal += Number(day.added || 0);
-        }
-      }
-
-      let html = '';
-      if (result.dryRun) {
-        html += '<div class="result-box">Preview only - nothing submitted.</div>';
-      }
-      html += '<div class="result-box">' + addedLabel + ': ' + addedTotal + ' | Duplicates: ' + result.duplicates + ' | Overlaps: ' + result.overlaps + ' | Locked days: ' + result.lockedDays.length + '</div>';
-      html += '<table><thead><tr><th>Date</th><th>' + addedLabel + '</th><th>Duplicates</th><th>Overlaps</th><th>Locked</th></tr></thead><tbody>';
-      for (const day of (result.days || [])) {
-        html += '<tr><td><span class="js-fmt-date" data-iso="' + escapeHtml(day.date) + '">' + escapeHtml(day.date) + '</span></td><td>' + day.added + '</td><td>' + day.duplicates + '</td><td>' + day.overlaps + '</td><td>' + (day.locked ? 'yes' : 'no') + '</td></tr>';
-      }
-      html += '</tbody></table>';
-      return html;
-    }
-
-    document.addEventListener('DOMContentLoaded', () => {
-      applyLocaleFormatting(document);
-      const dialog = document.getElementById('edit-dialog');
-      if (dialog) {
-        dialog.addEventListener('close', () => {
-          _editState = { mode: '', row: null, date: '' };
-        });
-      }
-      const submitDialog = document.getElementById('submit-dialog');
-      if (submitDialog) {
-        submitDialog.addEventListener('close', () => {
-          _submitState = { scope: '', value: '' };
-          _submitRunToken++;
-        });
-      }
-    });
-  </script>
-  <dialog id="confirm-dialog">
+      $refs.confirmDialog.addEventListener('close', () => { $store.confirm.open = false; });
+    ">
     <div class="dialog-header">
-      <h2 id="confirm-title"></h2>
+      <h2 id="confirm-title" x-text="$store.confirm.title"></h2>
     </div>
     <div class="dialog-body">
-      <p id="confirm-body" style="margin:0;color:var(--muted);font-size:0.83rem;line-height:1.55;"></p>
+      <p id="confirm-body" x-text="$store.confirm.body" style="margin:0;color:var(--muted);font-size:0.83rem;line-height:1.55;"></p>
     </div>
     <div class="dialog-footer">
-      <button type="button" onclick="closeConfirmDialog()">Cancel</button>
-      <button type="button" id="confirm-alt" hidden></button>
-      <button type="button" class="btn-primary" id="confirm-ok">Submit</button>
+      <button type="button" @click="$store.confirm.close()">Cancel</button>
+      <button type="button" id="confirm-alt" x-show="$store.confirm.altLabel" x-text="$store.confirm.altLabel" @click="$store.confirm.alt()"></button>
+      <button type="button" class="btn-primary" id="confirm-ok" x-text="$store.confirm.okLabel" @click="$store.confirm.confirm()">Submit</button>
     </div>
   </dialog>
-  <dialog id="submit-dialog">
-    <div class="dialog-header">
-      <h2 id="submit-dialog-title">Submit</h2>
-    </div>
-    <div class="dialog-body">
-      <label id="submit-options" style="display:inline-flex;align-items:center;gap:0.35rem;margin-bottom:0.55rem;">
-        <input id="submit-dry-run" type="checkbox">
-        Dry run (preview only, no remote changes)
-      </label>
-      <div id="submit-dialog-result"></div>
-    </div>
-    <div class="dialog-footer">
-      <button type="button" onclick="closeSubmitDialog()">Close</button>
-      <button type="button" class="btn-primary" id="submit-dialog-run" onclick="runSubmitAction()">Run submit</button>
-    </div>
+
+  <!-- Submit dialog -->
+  <dialog id="submit-dialog"
+    x-data
+    x-ref="submitDialog"
+    x-init="
+      $watch('$store.submit.open', value => {
+        if (value) {
+          if (!$refs.submitDialog.open) $refs.submitDialog.showModal();
+        } else if ($refs.submitDialog.open) {
+          $refs.submitDialog.close();
+        }
+      });
+      $refs.submitDialog.addEventListener('close', () => { $store.submit.open = false; });
+    ">
+    <form id="submit-form"
+      x-bind:hx-post="$store.submit.endpoint()"
+      x-bind:hx-vals='JSON.stringify({ dry_run: $store.submit.dryRun })'
+      hx-target="#submit-dialog-result"
+      hx-swap="innerHTML"
+      @htmx:before-request="handleSubmitBeforeRequest($event)"
+      @htmx:after-request="handleSubmitAfterRequest($event)"
+      @htmx:response-error="handleSubmitResponseError($event)">
+      <div class="dialog-header">
+        <h2 id="submit-dialog-title" x-text="$store.submit.title">Submit</h2>
+      </div>
+      <div class="dialog-body">
+        <label id="submit-options" x-show="!$store.submit.statusOnly" style="display:inline-flex;align-items:center;gap:0.35rem;margin-bottom:0.55rem;">
+          <input id="submit-dry-run" type="checkbox" x-model="$store.submit.dryRun">
+          Dry run (preview only, no remote changes)
+        </label>
+        <div id="submit-dialog-result" x-html="$store.submit.initialHtml"></div>
+      </div>
+      <div class="dialog-footer">
+        <button type="button" @click="closeSubmitDialog()">Close</button>
+        <button type="submit" class="btn-primary" id="submit-dialog-run" x-show="!$store.submit.statusOnly" :disabled="$store.submit.running">
+          <span class="btn-spinner" x-show="$store.submit.running"></span>
+          <span x-text="$store.submit.running ? 'Running...' : 'Run submit'"></span>
+        </button>
+      </div>
+    </form>
   </dialog>
-  <dialog id="import-preview-dialog" style="min-width: min(90vw, 900px);">
+
+  <!-- Import preview dialog -->
+  <dialog id="import-preview-dialog" class="dialog-wide" x-data>
     <div class="dialog-header">
-      <h2>Import preview - <span id="preview-filename"></span></h2>
+      <h2>Import preview — <span id="preview-filename"></span></h2>
     </div>
     <div class="dialog-body">
       <p id="preview-summary"></p>
@@ -1936,6 +160,80 @@
       <button id="preview-import-btn" type="button" class="btn-primary" onclick="confirmImportPreview()">Import selected (0)</button>
     </div>
   </dialog>
+
+  <!-- Edit / create entry dialog -->
+  <dialog id="edit-dialog"
+    x-data
+    x-ref="editDialog"
+    x-init="
+      $watch('$store.edit.open', value => {
+        if (value) {
+          if (!$refs.editDialog.open) $refs.editDialog.showModal();
+        } else if ($refs.editDialog.open) {
+          $refs.editDialog.close();
+        }
+      });
+      $refs.editDialog.addEventListener('close', () => { $store.edit.open = false; });
+    ">
+    <form id="edit-form"
+      x-bind:hx-post="$store.edit.endpoint"
+      hx-target="#day-entries"
+      hx-swap="innerHTML"
+      @htmx:before-request="$store.edit.error = ''"
+      @htmx:after-request="handleEditAfterRequest($event)"
+      @htmx:response-error="handleEditResponseError($event)">
+      <div class="dialog-header">
+        <h2 id="edit-dialog-title" x-text="$store.edit.title">Edit entry</h2>
+      </div>
+      <div class="dialog-body">
+        <input type="hidden" name="date" x-model="$store.edit.date">
+        <input type="hidden" name="force_overlap" x-model="$store.edit.forceOverlap">
+        <div id="edit-dialog-error" class="dialog-error" x-show="$store.edit.error" x-text="$store.edit.error"></div>
+        <div class="dialog-row">
+          <div class="dialog-field">
+            <label for="edit-start">Start</label>
+            <input id="edit-start" type="time" name="start" required x-model="$store.edit.start" @input="updateDialogDuration(document.getElementById('edit-form'))">
+          </div>
+          <div class="dialog-field">
+            <label for="edit-end">End</label>
+            <input id="edit-end" type="time" name="end" required x-model="$store.edit.end" @input="updateDialogDuration(document.getElementById('edit-form'))">
+          </div>
+        </div>
+        <div class="dialog-field">
+          <label for="edit-project">Project</label>
+          <select id="edit-project" name="project" required></select>
+        </div>
+        <div class="dialog-field">
+          <label for="edit-activity">Activity</label>
+          <select id="edit-activity" name="activity" required></select>
+        </div>
+        <div class="dialog-field">
+          <label for="edit-skill">Skill</label>
+          <select id="edit-skill" name="skill" required></select>
+        </div>
+        <div class="dialog-row">
+          <div class="dialog-field">
+            <label>Duration</label>
+            <span id="edit-duration" class="dialog-readonly">0.00 h</span>
+          </div>
+          <div class="dialog-field">
+            <label for="edit-billable-hours">Billable (h)</label>
+            <input id="edit-billable-hours" type="number" name="billableHours" min="0" step="0.25" required x-model="$store.edit.billableHours">
+          </div>
+        </div>
+        <div class="dialog-field">
+          <label for="edit-description">Description</label>
+          <textarea id="edit-description" name="description" rows="3" x-model="$store.edit.description"></textarea>
+        </div>
+      </div>
+      <div class="dialog-footer">
+        <button type="button" @click="closeEditDialog()">Cancel</button>
+        <button type="submit" class="btn-primary">Save</button>
+      </div>
+    </form>
+  </dialog>
+
+  <script src="/static/js/app.js"></script>
 </body>
 </html>
 {{ end }}

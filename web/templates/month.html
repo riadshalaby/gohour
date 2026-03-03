@@ -1,13 +1,33 @@
 {{ define "page" }}
-<h1>Month overview: {{ .CurrentMonth }}</h1>
+<div class="month-page month-table-mobile-cards"
+  x-data="{ monthRemoteRefreshedAt: '{{ .RemoteRefreshedAt }}' }">
 <div class="page-nav">
-  <a href="/month/{{ .PreviousMonth }}">Previous</a>
-  <a href="/month/{{ .NextMonth }}">Next</a>
+  <!-- Month navigation (Phase 3.3, 4.4 arrows) -->
+  <div class="month-nav">
+    <a class="nav-arrow" href="/month/{{ .PreviousMonth }}" title="Previous month (←)">&#8592;</a>
+    <span class="nav-current">{{ .CurrentMonth }}</span>
+    <a class="nav-arrow" href="/month/{{ .NextMonth }}" title="Next month (→)">&#8594;</a>
+  </div>
+
+  <!-- Primary actions -->
   <button type="button" class="btn-primary" onclick="openSubmitAction('month', '{{ .CurrentMonth }}')">Submit month</button>
-  <details class="actions-menu">
-    <summary>Actions</summary>
-    <div class="actions-menu-items">
-      <button type="button" onclick="refreshMonthRemote('{{ .CurrentMonth }}')">Refresh remote</button>
+
+  <!-- Actions dropdown (Alpine.js x-data, Phase 2.5) -->
+  <div x-data="{ open: false }" class="actions-menu" @click.outside="open = false" @keydown.escape="open = false">
+    <button type="button" class="actions-menu-trigger" @click="open = !open" :aria-expanded="open">
+      Actions <span class="chevron">▾</span>
+    </button>
+    <div class="actions-menu-items" x-show="open" x-cloak @click="open = false">
+      <span class="menu-section-label">Remote</span>
+      <button type="button"
+        hx-get="/partials/month/{{ .CurrentMonth }}?refresh=1"
+        hx-target="#month-rows"
+        hx-swap="innerHTML"
+        hx-indicator="#month-refresh-head"
+        @htmx:after-settle="monthRemoteRefreshedAt = document.getElementById('month-remote-refreshed-at')?.dataset.iso || monthRemoteRefreshedAt; showToast('Remote month data refreshed.', false)"
+        @htmx:response-error="showToast('Failed to refresh remote data.', true)">
+        Refresh remote
+      </button>
       <button type="button"
         onclick="openConfirmDialog(
           'Copy remote entries',
@@ -15,6 +35,8 @@
           function() { copyMonthRemote('{{ .CurrentMonth }}'); },
           'Copy'
         )">Copy from remote</button>
+      <div class="menu-separator"></div>
+      <span class="menu-section-label">Danger zone</span>
       <button type="button" class="btn-danger"
         onclick="openConfirmDialog(
           'Delete remote entries',
@@ -29,16 +51,147 @@
           function() { deleteMonthEntries('{{ .CurrentMonth }}'); },
           'Delete'
         )">Delete all local</button>
+      <div class="menu-separator"></div>
       <button type="button" onclick="openImportDialog('month-import-dialog', 'month-import-form')">Import file</button>
     </div>
-  </details>
+  </div>
+
+  <span id="month-refresh-head" class="htmx-indicator month-refresh-head" aria-live="polite">
+    <span class="spinner" aria-hidden="true"></span>
+    Refreshing remote...
+  </span>
 </div>
+
+<!-- Auth error (updated via OOB swap on HTMX refresh) -->
 <div id="month-auth-error" class="auth-banner"{{ if not .AuthErrorMsg }} hidden{{ end }}>{{ .AuthErrorMsg }}</div>
-<p class="muted" style="margin-top:0;">
-  Remote last refresh:
-  <span id="month-remote-refreshed-at" class="js-fmt-datetime" data-iso="{{ .RemoteRefreshedAt }}">{{ .RemoteRefreshedAt }}</span>
-</p>
-<dialog id="month-import-dialog">
+
+<!-- Stat cards (Phase 3.1) — wrapped in a div so OOB swap can replace the whole block -->
+<div id="month-stats">
+  <div class="stat-cards">
+    <div class="stat-card">
+      <div class="stat-label">Local Worked</div>
+      <div class="stat-value" id="month-total-local-worked">
+        <span class="js-fmt-hours" data-mins="{{ toMins .TotalLocalWorked }}">{{ toMins .TotalLocalWorked }}</span>
+      </div>
+      <div class="stat-sublabel">hours</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-label">Local Billable</div>
+      <div class="stat-value" id="month-total-local">
+        <span class="js-fmt-hours" data-mins="{{ toMins .TotalLocal }}">{{ toMins .TotalLocal }}</span>
+      </div>
+      <div class="stat-sublabel">hours</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-label">Remote Worked</div>
+      <div class="stat-value" id="month-total-remote-worked">
+        <span class="js-fmt-hours" data-mins="{{ toMins .TotalRemoteWorked }}">{{ toMins .TotalRemoteWorked }}</span>
+      </div>
+      <div class="stat-sublabel">hours</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-label">Remote Billable</div>
+      <div class="stat-value" id="month-total-remote">
+        <span class="js-fmt-hours" data-mins="{{ toMins .TotalRemote }}">{{ toMins .TotalRemote }}</span>
+      </div>
+      <div class="stat-sublabel">hours</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-label">Worked Δ</div>
+      <div class="stat-value {{ if isZeroDelta .TotalWorkedDelta }}ok{{ else }}warn{{ end }}" id="month-stat-worked-delta">
+        <span class="js-fmt-delta" data-hours="{{ .TotalWorkedDelta }}">{{ fmtDelta .TotalWorkedDelta }}</span>
+      </div>
+      <div class="stat-sublabel">hours</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-label">Billable Δ</div>
+      <div class="stat-value {{ if isZeroDelta .TotalBillableDelta }}ok{{ else }}warn{{ end }}" id="month-stat-billable-delta">
+        <span class="js-fmt-delta" data-hours="{{ .TotalBillableDelta }}">{{ fmtDelta .TotalBillableDelta }}</span>
+      </div>
+      <div class="stat-sublabel">hours</div>
+    </div>
+  </div>
+</div>
+
+<!-- Remote refresh status (Phase 3.4) -->
+<div class="refresh-status">
+  <span class="muted">Remote last refresh:</span>
+  <span id="month-remote-refreshed-at" class="js-fmt-datetime refresh-timestamp" data-iso="{{ .RemoteRefreshedAt }}">{{ .RemoteRefreshedAt }}</span>
+</div>
+
+<!-- Month table (Phase 3.2) -->
+<div class="table-wrap">
+  <table>
+    <thead>
+      <tr>
+        <th>Date</th>
+        <th>Lcl Worked</th>
+        <th>Lcl Billable</th>
+        <th>Rmt Worked</th>
+        <th>Rmt Billable</th>
+        <th>Day</th>
+      </tr>
+    </thead>
+    <tbody id="month-rows">
+      {{ range .Rows }}
+      <tr data-date="{{ .Date }}" data-href="{{ .DayLink }}"{{ if .IsToday }} class="today"{{ else if .IsWeekend }} class="weekend"{{ end }} onclick="if(window.innerWidth < 768){ window.location.href='{{ .DayLink }}'; }">
+        <td data-label="Date">
+          <span class="js-fmt-date" data-iso="{{ .Date }}">{{ .Date }}</span>
+          {{ if .HasLockedRemote }}<span class="locked-indicator" title="Remote day has locked entries">🔒</span>{{ end }}
+        </td>
+        <td data-label="Local Worked" class="num"><span class="js-fmt-hours" data-mins="{{ toMins .LocalWorked }}">{{ toMins .LocalWorked }}</span></td>
+        <td data-label="Local Billable" class="num"><span class="js-fmt-hours" data-mins="{{ toMins .LocalHours }}">{{ toMins .LocalHours }}</span></td>
+        <td data-label="Remote Worked" class="num">
+          <span class="js-fmt-hours" data-mins="{{ toMins .RemoteWorked }}">{{ toMins .RemoteWorked }}</span>
+          {{ if not (isZeroDelta .WorkedDeltaHours) }}
+          <span class="delta-pill delta-pill-warn">&nbsp;<span class="js-fmt-delta" data-hours="{{ .WorkedDeltaHours }}">{{ fmtDelta .WorkedDeltaHours }}</span></span>
+          {{ else }}
+          <span class="delta-pill delta-pill-ok"><span class="js-fmt-delta" data-hours="{{ .WorkedDeltaHours }}">{{ fmtDelta .WorkedDeltaHours }}</span></span>
+          {{ end }}
+        </td>
+        <td data-label="Remote Billable" class="num">
+          <span class="js-fmt-hours" data-mins="{{ toMins .RemoteHours }}">{{ toMins .RemoteHours }}</span>
+          {{ if not (isZeroDelta .BillableDeltaHours) }}
+          <span class="delta-pill delta-pill-warn"><span class="js-fmt-delta" data-hours="{{ .BillableDeltaHours }}">{{ fmtDelta .BillableDeltaHours }}</span></span>
+          {{ else }}
+          <span class="delta-pill delta-pill-ok"><span class="js-fmt-delta" data-hours="{{ .BillableDeltaHours }}">{{ fmtDelta .BillableDeltaHours }}</span></span>
+          {{ end }}
+        </td>
+        <td data-label="Open"><a href="{{ .DayLink }}">Open</a></td>
+      </tr>
+      {{ end }}
+    </tbody>
+    <tfoot>
+      <tr>
+        <th>Total</th>
+        <td class="num"><span class="js-fmt-hours" data-mins="{{ toMins .TotalLocalWorked }}">{{ toMins .TotalLocalWorked }}</span></td>
+        <td class="num"><span class="js-fmt-hours" data-mins="{{ toMins .TotalLocal }}">{{ toMins .TotalLocal }}</span></td>
+        <td class="num">
+          <span class="js-fmt-hours" data-mins="{{ toMins .TotalRemoteWorked }}">{{ toMins .TotalRemoteWorked }}</span>
+          <span id="month-total-worked-delta-wrap" class="inline-delta {{ if isZeroDelta .TotalWorkedDelta }}inline-delta-ok{{ else }}inline-delta-warn{{ end }}">(
+            <span id="month-total-worked-delta" class="js-fmt-delta" data-hours="{{ .TotalWorkedDelta }}">{{ fmtDelta .TotalWorkedDelta }}</span>
+          )</span>
+        </td>
+        <td class="num">
+          <span class="js-fmt-hours" data-mins="{{ toMins .TotalRemote }}">{{ toMins .TotalRemote }}</span>
+          <span id="month-total-billable-delta-wrap" class="inline-delta {{ if isZeroDelta .TotalBillableDelta }}inline-delta-ok{{ else }}inline-delta-warn{{ end }}">(
+            <span id="month-total-billable-delta" class="js-fmt-delta" data-hours="{{ .TotalBillableDelta }}">{{ fmtDelta .TotalBillableDelta }}</span>
+          )</span>
+        </td>
+        <td></td>
+      </tr>
+    </tfoot>
+  </table>
+</div>
+
+<div class="footer">
+  <span class="badge badge-local">local</span> not submitted &nbsp;
+  <span class="badge badge-synced">synced</span> exists on OnePoint &nbsp;
+  Use month or day actions to import, edit, and submit.
+</div>
+
+<!-- Import file dialog -->
+<dialog id="month-import-dialog" x-data>
   <form id="month-import-form" onsubmit="handleImportSubmit(event, { refreshURL: '/month/{{ .CurrentMonth }}', dialogID: 'month-import-dialog' })">
     <div class="dialog-header">
       <h2>Import file</h2>
@@ -82,61 +235,10 @@
     </div>
   </form>
 </dialog>
-<div class="table-wrap">
-  <table>
-    <thead>
-      <tr>
-        <th>Date</th>
-        <th>Lcl Worked</th>
-        <th>Lcl Billable</th>
-        <th>Rmt Worked</th>
-        <th>Rmt Billable</th>
-        <th>Day</th>
-      </tr>
-    </thead>
-    <tbody id="month-rows">
-      {{ range .Rows }}
-      <tr data-date="{{ .Date }}"{{ if .IsToday }} class="today"{{ else if .IsWeekend }} class="weekend"{{ end }}>
-        <td><span class="js-fmt-date" data-iso="{{ .Date }}">{{ .Date }}</span></td>
-        <td class="num"><span class="js-fmt-hours" data-mins="{{ toMins .LocalWorked }}">{{ toMins .LocalWorked }}</span></td>
-        <td class="num"><span class="js-fmt-hours" data-mins="{{ toMins .LocalHours }}">{{ toMins .LocalHours }}</span></td>
-        <td class="num">
-          <span class="js-fmt-hours" data-mins="{{ toMins .RemoteWorked }}">{{ toMins .RemoteWorked }}</span>
-          <span class="inline-delta {{ if isZeroDelta .WorkedDeltaHours }}inline-delta-ok{{ else }}inline-delta-warn{{ end }}">(
-            <span class="js-fmt-delta" data-hours="{{ .WorkedDeltaHours }}">{{ fmtDelta .WorkedDeltaHours }}</span>
-          )</span>
-        </td>
-        <td class="num">
-          <span class="js-fmt-hours" data-mins="{{ toMins .RemoteHours }}">{{ toMins .RemoteHours }}</span>
-          <span class="inline-delta {{ if isZeroDelta .BillableDeltaHours }}inline-delta-ok{{ else }}inline-delta-warn{{ end }}">(
-            <span class="js-fmt-delta" data-hours="{{ .BillableDeltaHours }}">{{ fmtDelta .BillableDeltaHours }}</span>
-          )</span>
-        </td>
-        <td><a href="{{ .DayLink }}">Open</a></td>
-      </tr>
-      {{ end }}
-    </tbody>
-    <tfoot>
-      <tr>
-        <th>Total</th>
-        <td class="num"><span id="month-total-local-worked" class="js-fmt-hours" data-mins="{{ toMins .TotalLocalWorked }}">{{ toMins .TotalLocalWorked }}</span></td>
-        <td class="num"><span id="month-total-local" class="js-fmt-hours" data-mins="{{ toMins .TotalLocal }}">{{ toMins .TotalLocal }}</span></td>
-        <td class="num">
-          <span id="month-total-remote-worked" class="js-fmt-hours" data-mins="{{ toMins .TotalRemoteWorked }}">{{ toMins .TotalRemoteWorked }}</span>
-          <span id="month-total-worked-delta-wrap" class="inline-delta {{ if isZeroDelta .TotalWorkedDelta }}inline-delta-ok{{ else }}inline-delta-warn{{ end }}">(
-            <span id="month-total-worked-delta" class="js-fmt-delta" data-hours="{{ .TotalWorkedDelta }}">{{ fmtDelta .TotalWorkedDelta }}</span>
-          )</span>
-        </td>
-        <td class="num">
-          <span id="month-total-remote" class="js-fmt-hours" data-mins="{{ toMins .TotalRemote }}">{{ toMins .TotalRemote }}</span>
-          <span id="month-total-billable-delta-wrap" class="inline-delta {{ if isZeroDelta .TotalBillableDelta }}inline-delta-ok{{ else }}inline-delta-warn{{ end }}">(
-            <span id="month-total-billable-delta" class="js-fmt-delta" data-hours="{{ .TotalBillableDelta }}">{{ fmtDelta .TotalBillableDelta }}</span>
-          )</span>
-        </td>
-        <td></td>
-      </tr>
-    </tfoot>
-  </table>
 </div>
-<div class="footer">Use month or day actions to import, edit, and submit.</div>
+
+<div class="sticky-bar">
+  <button type="button" class="btn-primary" onclick="openSubmitAction('month', '{{ .CurrentMonth }}')">Submit month</button>
+  <button type="button" onclick="openImportDialog('month-import-dialog', 'month-import-form')">Import file</button>
+</div>
 {{ end }}

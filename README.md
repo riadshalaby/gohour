@@ -230,11 +230,21 @@ Day view includes:
 - local add/edit/delete with overlap warning + "save anyway" flow
 - status badges: `local`, `synced`, `conflict`, `remote`
 - visible `Remote last refresh` timestamp
+- keyboard navigation: `←` / `→` to move to previous/next day
+- icon action buttons for local entry edit/delete
 
 Submit dialog behavior:
 - one dialog for day/month submit
 - optional `Dry run` toggle (sends `dry_run=1`, no remote writes)
-- same result renderer for dry-run and real submit
+- same result renderer for dry-run and real submit (server-rendered HTMX fragment)
+
+Mobile behavior:
+- month/day tables collapse into card layouts on narrow screens
+- sticky bottom action bar shows primary actions (submit/add/import)
+
+Remote auth degradation behavior:
+- non-refresh day/month partial updates (for example after local add/edit/delete/import) degrade to local-only rendering if OnePoint is temporarily unavailable
+- explicit `Refresh remote` keeps fail-closed behavior and surfaces an error toast/banner
 
 Important OnePoint UI note:
 - If a OnePoint browser tab/window was already open while gohour changed worklogs (for example import/delete/submit), the OnePoint UI can show stale totals or stale day values.

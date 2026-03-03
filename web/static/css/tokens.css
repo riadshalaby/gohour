@@ -1,0 +1,135 @@
+/* Design tokens for gohour UI — all CSS custom properties live here. */
+:root {
+  /* ── Colors: backgrounds ── */
+  --bg: #f5f4f1;
+  --surface: #ffffff;
+  --surface-2: #f0efeb;
+  --surface-3: #e8e7e3;
+
+  /* ── Colors: header ── */
+  --hdr-bg: #0f1117;
+  --hdr-text: #e8e8e5;
+  --hdr-muted: #5c6070;
+  --hdr-border: rgba(255, 255, 255, 0.07);
+
+  /* ── Colors: text ── */
+  --text: #111318;
+  --text-secondary: #374151;
+  --muted: #6b7280;
+  --muted-light: #9ca3af;
+
+  /* ── Colors: borders ── */
+  --border: #e3e2de;
+  --border-strong: #c8c7c2;
+
+  /* ── Colors: source status ── */
+  --c-local: #16a34a;
+  --c-synced: #2563eb;
+  --c-conflict: #d97706;
+  --c-remote: #7c3aed;
+
+  --bg-local: #dcfce7;
+  --bg-synced: #dbeafe;
+  --bg-conflict: #fef3c7;
+  --bg-remote: #ede9fe;
+
+  --txt-local: #15803d;
+  --txt-synced: #1d4ed8;
+  --txt-conflict: #92400e;
+  --txt-remote: #5b21b6;
+
+  --bdr-local: #bbf7d0;
+  --bdr-synced: #bfdbfe;
+  --bdr-conflict: #fde68a;
+  --bdr-remote: #ddd6fe;
+
+  /* ── Colors: day row states ── */
+  --weekend-bg: #fdf5ea;
+  --weekend-line: #f59e0b;
+  --today-bg: #eff6ff;
+  --today-line: #2563eb;
+  --row-hover: rgba(0, 0, 0, 0.025);
+
+  /* ── Colors: delta values ── */
+  --pos: #15803d;
+  --neg: #dc2626;
+  --delta-ok: #15803d;
+  --delta-warn: #c2410c;
+
+  /* ── Colors: brand / accent ── */
+  --accent: #0f1117;
+  --accent-hover: #1f2937;
+
+  /* ── Colors: danger ── */
+  --danger: #dc2626;
+  --danger-lt: #fee2e2;
+  --danger-bdr: #fca5a5;
+  --danger-hover: #b91c1c;
+
+  /* ── Colors: auth warning ── */
+  --auth-bg: #fffbeb;
+  --auth-bdr: #f59e0b;
+  --auth-txt: #78350f;
+
+  /* ── Colors: semantic ── */
+  --success: #16a34a;
+  --success-lt: #dcfce7;
+  --warning: #d97706;
+  --warning-lt: #fef3c7;
+  --error: #dc2626;
+  --error-lt: #fee2e2;
+  --info: #2563eb;
+  --info-lt: #dbeafe;
+
+  /* ── Typography ── */
+  --font-sans: system-ui, -apple-system, "Segoe UI", "Helvetica Neue", sans-serif;
+  --font-mono: ui-monospace, "SF Mono", "Cascadia Mono", monospace;
+
+  --text-xs: 0.65rem;
+  --text-sm: 0.72rem;
+  --text-base: 0.85rem;
+  --text-md: 0.9rem;
+  --text-lg: 1rem;
+  --text-xl: 1.15rem;
+  --text-2xl: 1.5rem;
+
+  --font-normal: 400;
+  --font-medium: 500;
+  --font-semibold: 600;
+  --font-bold: 700;
+
+  --leading-tight: 1.25;
+  --leading-normal: 1.5;
+  --leading-relaxed: 1.65;
+
+  /* ── Spacing (4px base scale) ── */
+  --sp-0: 0;
+  --sp-1: 0.25rem;   /* 4px */
+  --sp-2: 0.5rem;    /* 8px */
+  --sp-3: 0.75rem;   /* 12px */
+  --sp-4: 1rem;      /* 16px */
+  --sp-5: 1.25rem;   /* 20px */
+  --sp-6: 1.5rem;    /* 24px */
+  --sp-8: 2rem;      /* 32px */
+  --sp-10: 2.5rem;   /* 40px */
+  --sp-12: 3rem;     /* 48px */
+
+  /* ── Borders ── */
+  --radius-sm: 4px;
+  --radius-md: 6px;
+  --radius-lg: 10px;
+  --radius-full: 9999px;
+  --border-width: 1px;
+
+  /* ── Shadows ── */
+  --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.05), 0 1px 2px rgba(0, 0, 0, 0.04);
+  --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.08), 0 2px 4px rgba(0, 0, 0, 0.04);
+  --shadow-lg: 0 8px 40px rgba(0, 0, 0, 0.16), 0 2px 8px rgba(0, 0, 0, 0.06);
+  --shadow-wrap: 0 2px 12px rgba(0, 0, 0, 0.07), 0 1px 3px rgba(0, 0, 0, 0.05);
+  --shadow-dropdown: 0 8px 24px rgba(0, 0, 0, 0.12), 0 2px 8px rgba(0, 0, 0, 0.06);
+
+  /* ── Transitions ── */
+  --transition-fast: 100ms ease;
+  --transition-base: 150ms ease;
+  --transition-slow: 250ms ease;
+}

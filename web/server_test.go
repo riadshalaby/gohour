@@ -79,7 +79,7 @@ func TestServer_MonthPageRendersMonthDays(t *testing.T) {
 	if strings.Contains(text, `id="month-submit-result"`) {
 		t.Fatalf("month page still contains inline month submit result placeholder")
 	}
-	if !strings.Contains(text, `<dialog id="submit-dialog">`) {
+	if !strings.Contains(text, `id="submit-dialog"`) {
 		t.Fatalf("month page missing shared submit dialog: %s", text)
 	}
 	if strings.Contains(text, "Preview submit") {
@@ -94,20 +94,13 @@ func TestServer_MonthPageRendersMonthDays(t *testing.T) {
 	if !strings.Contains(text, `id="month-auth-error"`) {
 		t.Fatalf("month page missing dynamic auth error surface for in-place reloads")
 	}
-	if !strings.Contains(text, `<details class="actions-menu">`) {
+	// Actions menu is now an Alpine.js dropdown (x-data) instead of <details>
+	if !strings.Contains(text, `class="actions-menu"`) {
 		t.Fatalf("month page missing actions menu")
 	}
-	if !strings.Contains(text, `window.location.href = '/month/' + encodeURIComponent(month);`) {
-		t.Fatalf("month page JS should reload month route after local delete")
-	}
-	if !strings.Contains(text, `setSubmitDialogMode('status');`) {
-		t.Fatalf("month page missing status-mode dialog handling for remote delete")
-	}
-	if !strings.Contains(text, `Delete remote ' + month`) {
-		t.Fatalf("month page missing remote delete status dialog title")
-	}
-	if !strings.Contains(text, `Locked days:`) {
-		t.Fatalf("month page missing locked-day summary in remote delete status content")
+	// JS is now external; verify the app.js script tag is present
+	if !strings.Contains(text, `src="/static/js/app.js"`) {
+		t.Fatalf("month page missing external app.js script tag")
 	}
 	for _, action := range []string{"Refresh remote", "Copy from remote", "Delete all local", "Delete all remote", "Import file"} {
 		if !strings.Contains(text, action) {
@@ -418,39 +411,37 @@ func TestServer_DayPageIncludesResponsiveTableAndEditDialog(t *testing.T) {
 	body, _ := io.ReadAll(resp.Body)
 	text := string(body)
 	for _, needle := range []string{
+		// HTML structure still in templates
 		`<div class="table-wrap">`,
-		`<dialog id="edit-dialog">`,
-		`<dialog id="day-import-dialog">`,
-		`<dialog id="confirm-dialog">`,
-		`<dialog id="submit-dialog">`,
+		`id="edit-dialog"`,
+		`id="confirm-dialog"`,
+		`id="submit-dialog"`,
 		`id="submit-dry-run"`,
 		`class="dialog-row"`,
-		`<textarea id="edit-description" name="description" rows="3"></textarea>`,
+		`<textarea id="edit-description" name="description" rows="3"`,
 		`class="dialog-readonly"`,
-		`function formatCreateConflictMessage(err)`,
-		`function openImportDialog(dialogID, formID)`,
-		`function setImportFormStatus(form, message, isError)`,
-		`function setImportPreviewStatus(message, isError)`,
-		`function openConfirmDialog(title, body, onConfirm, confirmLabel, alternative)`,
-		`function openSubmitDialog(title, htmlContent)`,
-		`function openStatusDialog(title, htmlContent)`,
-		`function setSubmitDialogMode(mode)`,
-		`const action = { scope: _submitState.scope, value: _submitState.value };`,
-		`if (runToken !== _submitRunToken) {`,
-		`[hidden] { display: none !important; }`,
-		`Delete this local entry?`,
-		`option.value = String(getName(item));`,
-		`option.dataset.id = String(getID(item));`,
-		`delete form.dataset.lookupLoaded;`,
 		`class="dialog-footer"`,
-		`onclick="saveEditDialog()"`,
-		`onclick="document.getElementById('edit-dialog').close()"`,
-		`'<div class="result-box">' + escapeHtml(String(err.message || err)) + '</div>'`,
+		`id="edit-dialog-error"`,
+		`x-bind:hx-post="$store.edit.endpoint"`,
+		`@htmx:before-request="handleSubmitBeforeRequest($event)"`,
+		`id="day-refresh-head"`,
 		`id="preview-status"`,
+		// JS and CSS are now external — verify the asset tags are present
+		`src="/static/js/app.js"`,
+		`href="/static/css/tokens.css"`,
 	} {
 		if !strings.Contains(text, needle) {
 			t.Fatalf("day page missing %q", needle)
 		}
+	}
+	if strings.Contains(text, "Import file") {
+		t.Fatalf("day page should not expose import action")
+	}
+	if strings.Contains(text, `id="day-refresh-spinner"`) {
+		t.Fatalf("day page should not render inline refresh spinner in button")
+	}
+	if strings.Contains(text, `id="day-import-dialog"`) {
+		t.Fatalf("day page should not include day import dialog")
 	}
 	if strings.Contains(text, `id="edit-date"`) {
 		t.Fatalf("day page still contains separate dialog date field")
@@ -551,6 +542,476 @@ func TestServer_APIDay_RefreshForcesRemoteReload(t *testing.T) {
 	}
 	if client.filteredCalls != 2 {
 		t.Fatalf("expected forced refresh to refetch remote data, got %d calls", client.filteredCalls)
+	}
+}
+
+// ── HTMX partial route tests ──────────────────────────────────────────────────
+
+func TestServer_PartialMonth_ReturnsRows(t *testing.T) {
+	t.Parallel()
+
+	store := openTestStore(t)
+	insertWorklogs(t, store, []worklog.Entry{
+		newLocalEntry(time.Date(2026, 3, 1, 9, 0, 0, 0, time.Local)),
+	})
+
+	ts := httptest.NewServer(NewServer(store, &fakeClient{}, testConfig(nil)))
+	defer ts.Close()
+
+	resp, err := http.Get(ts.URL + "/partials/month/2026-03")
+	if err != nil {
+		t.Fatalf("request partial month: %v", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		t.Fatalf("expected 200, got %d body=%s", resp.StatusCode, string(body))
+	}
+
+	body, _ := io.ReadAll(resp.Body)
+	text := string(body)
+	if !strings.Contains(text, `data-date="2026-03-01"`) {
+		t.Fatalf("partial month missing first day row: %s", text)
+	}
+	if !strings.Contains(text, `data-date="2026-03-31"`) {
+		t.Fatalf("partial month missing last day row: %s", text)
+	}
+	// OOB stat card block should be present
+	if !strings.Contains(text, `id="month-stats"`) {
+		t.Fatalf("partial month missing OOB month-stats block: %s", text)
+	}
+}
+
+func TestServer_PartialMonth_RefreshForcesRemoteReload(t *testing.T) {
+	t.Parallel()
+
+	store := openTestStore(t)
+	insertWorklogs(t, store, []worklog.Entry{
+		newLocalEntry(time.Date(2026, 3, 1, 9, 0, 0, 0, time.Local)),
+	})
+	client := &fakeClient{
+		worklogs: []onepoint.DayWorklog{
+			{
+				WorklogDate: onepoint.FormatDay(time.Date(2026, 3, 1, 0, 0, 0, 0, time.Local)),
+				StartTime:   9 * 60,
+				FinishTime:  10 * 60,
+				Billable:    60,
+			},
+		},
+	}
+	ts := httptest.NewServer(NewServer(store, client, testConfig(nil)))
+	defer ts.Close()
+
+	// First request: primes the cache.
+	resp1, err := http.Get(ts.URL + "/partials/month/2026-03")
+	if err != nil {
+		t.Fatalf("first request: %v", err)
+	}
+	io.ReadAll(resp1.Body)
+	resp1.Body.Close()
+	if resp1.StatusCode != http.StatusOK {
+		t.Fatalf("expected 200 on first request, got %d", resp1.StatusCode)
+	}
+	callsAfterFirst := client.filteredCalls
+
+	// Change remote data.
+	client.worklogs = []onepoint.DayWorklog{
+		{
+			WorklogDate: onepoint.FormatDay(time.Date(2026, 3, 1, 0, 0, 0, 0, time.Local)),
+			StartTime:   9 * 60,
+			FinishTime:  11 * 60,
+			Billable:    120,
+		},
+	}
+
+	// Cached request: should not re-fetch remote.
+	resp2, err := http.Get(ts.URL + "/partials/month/2026-03")
+	if err != nil {
+		t.Fatalf("cached request: %v", err)
+	}
+	io.ReadAll(resp2.Body)
+	resp2.Body.Close()
+	if client.filteredCalls != callsAfterFirst {
+		t.Fatalf("expected cached request to skip remote fetch, got %d total calls", client.filteredCalls)
+	}
+
+	// Refresh request: must force a new remote fetch.
+	resp3, err := http.Get(ts.URL + "/partials/month/2026-03?refresh=1")
+	if err != nil {
+		t.Fatalf("refresh request: %v", err)
+	}
+	defer resp3.Body.Close()
+	if resp3.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp3.Body)
+		t.Fatalf("expected 200 on refresh, got %d body=%s", resp3.StatusCode, string(body))
+	}
+	if client.filteredCalls <= callsAfterFirst {
+		t.Fatalf("expected forced refresh to re-fetch remote, got %d total calls", client.filteredCalls)
+	}
+}
+
+func TestServer_PartialMonth_AuthError_Returns502OnRefresh(t *testing.T) {
+	t.Parallel()
+
+	store := openTestStore(t)
+	insertWorklogs(t, store, []worklog.Entry{
+		newLocalEntry(time.Date(2026, 3, 1, 9, 0, 0, 0, time.Local)),
+	})
+	client := &fakeClient{filteredErr: errors.New("session expired")}
+	ts := httptest.NewServer(NewServer(store, client, testConfig(nil)))
+	defer ts.Close()
+
+	// Without ?refresh=1: graceful degradation (200).
+	resp, err := http.Get(ts.URL + "/partials/month/2026-03")
+	if err != nil {
+		t.Fatalf("request partial month without refresh: %v", err)
+	}
+	io.ReadAll(resp.Body)
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("expected 200 without refresh, got %d", resp.StatusCode)
+	}
+
+	// With ?refresh=1: must return 502.
+	resp2, err := http.Get(ts.URL + "/partials/month/2026-03?refresh=1")
+	if err != nil {
+		t.Fatalf("request partial month with refresh: %v", err)
+	}
+	defer resp2.Body.Close()
+	if resp2.StatusCode != http.StatusBadGateway {
+		body, _ := io.ReadAll(resp2.Body)
+		t.Fatalf("expected 502 with refresh on auth error, got %d body=%s", resp2.StatusCode, string(body))
+	}
+}
+
+func TestServer_PartialDay_ReturnsEntries(t *testing.T) {
+	t.Parallel()
+
+	store := openTestStore(t)
+	insertWorklogs(t, store, []worklog.Entry{
+		newLocalEntry(time.Date(2026, 3, 1, 9, 0, 0, 0, time.Local)),
+	})
+
+	ts := httptest.NewServer(NewServer(store, &fakeClient{}, testConfig(nil)))
+	defer ts.Close()
+
+	resp, err := http.Get(ts.URL + "/partials/day/2026-03-01")
+	if err != nil {
+		t.Fatalf("request partial day: %v", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		t.Fatalf("expected 200, got %d body=%s", resp.StatusCode, string(body))
+	}
+
+	body, _ := io.ReadAll(resp.Body)
+	text := string(body)
+	// Local entry row with data-source attribute should be present.
+	if !strings.Contains(text, `data-source="local"`) {
+		t.Fatalf("partial day missing local entry row: %s", text)
+	}
+	// OOB stat card for day should be present.
+	if !strings.Contains(text, `id="day-local-worked"`) {
+		t.Fatalf("partial day missing OOB day-local-worked element: %s", text)
+	}
+}
+
+func TestServer_PartialDay_AuthError_GracefulWithoutRefreshAnd502WithRefresh(t *testing.T) {
+	t.Parallel()
+
+	store := openTestStore(t)
+	insertWorklogs(t, store, []worklog.Entry{
+		newLocalEntry(time.Date(2026, 3, 1, 9, 0, 0, 0, time.Local)),
+	})
+	client := &fakeClient{filteredErr: errors.New("session expired")}
+	ts := httptest.NewServer(NewServer(store, client, testConfig(nil)))
+	defer ts.Close()
+
+	// Without refresh, day partial should degrade gracefully to local-only data.
+	resp, err := http.Get(ts.URL + "/partials/day/2026-03-01")
+	if err != nil {
+		t.Fatalf("request partial day without refresh: %v", err)
+	}
+	body, _ := io.ReadAll(resp.Body)
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("expected 200 without refresh, got %d body=%s", resp.StatusCode, string(body))
+	}
+	if !strings.Contains(string(body), `data-source="local"`) {
+		t.Fatalf("expected local row in graceful partial response, got %s", string(body))
+	}
+
+	// Refresh should fail closed.
+	resp, err = http.Get(ts.URL + "/partials/day/2026-03-01?refresh=1")
+	if err != nil {
+		t.Fatalf("request partial day with refresh: %v", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusBadGateway {
+		body, _ := io.ReadAll(resp.Body)
+		t.Fatalf("expected 502 on auth error with refresh, got %d body=%s", resp.StatusCode, string(body))
+	}
+}
+
+func TestServer_PartialWorklogCreate_ReturnsUpdatedDayPartial(t *testing.T) {
+	t.Parallel()
+
+	store := openTestStore(t)
+	ts := httptest.NewServer(NewServer(store, &fakeClient{}, testConfig(nil)))
+	defer ts.Close()
+
+	form := "date=2026-03-01&start=09:00&end=10:00&project=P&activity=A&skill=S&billableHours=1&description=partial-create"
+	req, _ := http.NewRequest(
+		http.MethodPost,
+		ts.URL+"/partials/day/2026-03-01/worklog",
+		strings.NewReader(form),
+	)
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatalf("partial create request: %v", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		t.Fatalf("expected 200, got %d body=%s", resp.StatusCode, string(body))
+	}
+
+	body, _ := io.ReadAll(resp.Body)
+	text := string(body)
+	if !strings.Contains(text, `data-source="local"`) {
+		t.Fatalf("expected updated day rows in partial response, got %s", text)
+	}
+	if !strings.Contains(text, `id="day-local-worked"`) {
+		t.Fatalf("expected OOB day stat updates in partial response, got %s", text)
+	}
+
+	entries, err := store.ListWorklogs()
+	if err != nil {
+		t.Fatalf("list worklogs: %v", err)
+	}
+	if len(entries) != 1 {
+		t.Fatalf("expected one inserted worklog, got %d", len(entries))
+	}
+}
+
+func TestServer_PartialWorklogUpdate_ReturnsUpdatedDayPartial(t *testing.T) {
+	t.Parallel()
+
+	store := openTestStore(t)
+	insertWorklogs(t, store, []worklog.Entry{
+		newLocalEntry(time.Date(2026, 3, 1, 9, 0, 0, 0, time.Local)),
+	})
+	entries, err := store.ListWorklogs()
+	if err != nil {
+		t.Fatalf("list worklogs: %v", err)
+	}
+	id := entries[0].ID
+
+	ts := httptest.NewServer(NewServer(store, &fakeClient{}, testConfig(nil)))
+	defer ts.Close()
+
+	form := "date=2026-03-01&start=10:00&end=11:30&project=P2&activity=A2&skill=S2&billableHours=1.5&description=partial-update"
+	req, _ := http.NewRequest(
+		http.MethodPost,
+		ts.URL+"/partials/day/2026-03-01/worklog/"+strconvI64(id),
+		strings.NewReader(form),
+	)
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatalf("partial update request: %v", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		t.Fatalf("expected 200, got %d body=%s", resp.StatusCode, string(body))
+	}
+	body, _ := io.ReadAll(resp.Body)
+	text := string(body)
+	if !strings.Contains(text, `data-id="`+strconvI64(id)+`"`) {
+		t.Fatalf("expected updated row id in partial response, got %s", text)
+	}
+	if !strings.Contains(text, "partial-update") {
+		t.Fatalf("expected updated description in partial response, got %s", text)
+	}
+
+	updated, found, err := store.GetWorklogByID(id)
+	if err != nil {
+		t.Fatalf("get updated worklog: %v", err)
+	}
+	if !found {
+		t.Fatalf("updated worklog missing")
+	}
+	if updated.Description != "partial-update" {
+		t.Fatalf("expected description to be updated, got %q", updated.Description)
+	}
+}
+
+func TestServer_PartialWorklogDelete_ReturnsUpdatedDayPartial(t *testing.T) {
+	t.Parallel()
+
+	store := openTestStore(t)
+	insertWorklogs(t, store, []worklog.Entry{
+		newLocalEntry(time.Date(2026, 3, 1, 9, 0, 0, 0, time.Local)),
+	})
+	entries, err := store.ListWorklogs()
+	if err != nil {
+		t.Fatalf("list worklogs: %v", err)
+	}
+	id := entries[0].ID
+
+	ts := httptest.NewServer(NewServer(store, &fakeClient{}, testConfig(nil)))
+	defer ts.Close()
+
+	req, _ := http.NewRequest(
+		http.MethodPost,
+		ts.URL+"/partials/day/2026-03-01/worklog/"+strconvI64(id)+"/delete",
+		strings.NewReader(""),
+	)
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatalf("partial delete request: %v", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		t.Fatalf("expected 200, got %d body=%s", resp.StatusCode, string(body))
+	}
+	body, _ := io.ReadAll(resp.Body)
+	if strings.Contains(string(body), `data-id="`+strconvI64(id)+`"`) {
+		t.Fatalf("deleted row id still present in partial response: %s", string(body))
+	}
+
+	remaining, err := store.ListWorklogs()
+	if err != nil {
+		t.Fatalf("list worklogs: %v", err)
+	}
+	if len(remaining) != 0 {
+		t.Fatalf("expected no remaining worklogs, got %d", len(remaining))
+	}
+}
+
+func TestServer_PartialSubmitDay_DryRunAndSubmit(t *testing.T) {
+	t.Parallel()
+
+	day := time.Date(2026, 3, 1, 9, 0, 0, 0, time.Local)
+	store := openTestStore(t)
+	insertWorklogs(t, store, []worklog.Entry{newLocalEntry(day)})
+	client := &fakeClient{dayWorklogs: map[string][]onepoint.DayWorklog{}}
+
+	ts := httptest.NewServer(NewServer(store, client, testConfig([]config.Rule{ruleForLocal()})))
+	defer ts.Close()
+
+	dryRunReq, _ := http.NewRequest(
+		http.MethodPost,
+		ts.URL+"/partials/submit/day/2026-03-01",
+		strings.NewReader("dry_run=true"),
+	)
+	dryRunReq.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	dryRunResp, err := http.DefaultClient.Do(dryRunReq)
+	if err != nil {
+		t.Fatalf("partial dry-run submit request: %v", err)
+	}
+	defer dryRunResp.Body.Close()
+
+	if dryRunResp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(dryRunResp.Body)
+		t.Fatalf("expected 200, got %d body=%s", dryRunResp.StatusCode, string(body))
+	}
+	if dryRunResp.Header.Get("HX-Trigger") != "" {
+		t.Fatalf("expected no HX-Trigger on dry-run, got %q", dryRunResp.Header.Get("HX-Trigger"))
+	}
+	dryRunBody, _ := io.ReadAll(dryRunResp.Body)
+	if !strings.Contains(string(dryRunBody), "Preview only") {
+		t.Fatalf("expected dry-run preview message, got %s", string(dryRunBody))
+	}
+
+	submitResp, err := http.Post(
+		ts.URL+"/partials/submit/day/2026-03-01",
+		"application/x-www-form-urlencoded",
+		strings.NewReader(""),
+	)
+	if err != nil {
+		t.Fatalf("partial submit request: %v", err)
+	}
+	defer submitResp.Body.Close()
+
+	if submitResp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(submitResp.Body)
+		t.Fatalf("expected 200, got %d body=%s", submitResp.StatusCode, string(body))
+	}
+	if !strings.Contains(submitResp.Header.Get("HX-Trigger"), "refresh-day") {
+		t.Fatalf("expected refresh-day HX-Trigger header, got %q", submitResp.Header.Get("HX-Trigger"))
+	}
+	submitBody, _ := io.ReadAll(submitResp.Body)
+	if !strings.Contains(string(submitBody), "Added") {
+		t.Fatalf("expected submit result fragment, got %s", string(submitBody))
+	}
+}
+
+func TestServer_PartialSubmitMonth_DryRunAndSubmit(t *testing.T) {
+	t.Parallel()
+
+	day := time.Date(2026, 3, 1, 9, 0, 0, 0, time.Local)
+	store := openTestStore(t)
+	insertWorklogs(t, store, []worklog.Entry{newLocalEntry(day)})
+	client := &fakeClient{dayWorklogs: map[string][]onepoint.DayWorklog{}}
+
+	ts := httptest.NewServer(NewServer(store, client, testConfig([]config.Rule{ruleForLocal()})))
+	defer ts.Close()
+
+	dryRunReq, _ := http.NewRequest(
+		http.MethodPost,
+		ts.URL+"/partials/submit/month/2026-03",
+		strings.NewReader("dry_run=true"),
+	)
+	dryRunReq.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	dryRunResp, err := http.DefaultClient.Do(dryRunReq)
+	if err != nil {
+		t.Fatalf("partial month dry-run submit request: %v", err)
+	}
+	defer dryRunResp.Body.Close()
+
+	if dryRunResp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(dryRunResp.Body)
+		t.Fatalf("expected 200, got %d body=%s", dryRunResp.StatusCode, string(body))
+	}
+	if dryRunResp.Header.Get("HX-Trigger") != "" {
+		t.Fatalf("expected no HX-Trigger on dry-run, got %q", dryRunResp.Header.Get("HX-Trigger"))
+	}
+	dryRunBody, _ := io.ReadAll(dryRunResp.Body)
+	if !strings.Contains(string(dryRunBody), "Preview only") {
+		t.Fatalf("expected dry-run preview message, got %s", string(dryRunBody))
+	}
+
+	submitResp, err := http.Post(
+		ts.URL+"/partials/submit/month/2026-03",
+		"application/x-www-form-urlencoded",
+		strings.NewReader(""),
+	)
+	if err != nil {
+		t.Fatalf("partial month submit request: %v", err)
+	}
+	defer submitResp.Body.Close()
+
+	if submitResp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(submitResp.Body)
+		t.Fatalf("expected 200, got %d body=%s", submitResp.StatusCode, string(body))
+	}
+	if !strings.Contains(submitResp.Header.Get("HX-Trigger"), "refresh-month") {
+		t.Fatalf("expected refresh-month HX-Trigger header, got %q", submitResp.Header.Get("HX-Trigger"))
+	}
+	submitBody, _ := io.ReadAll(submitResp.Body)
+	if !strings.Contains(string(submitBody), "Locked days") {
+		t.Fatalf("expected month submit result fragment, got %s", string(submitBody))
 	}
 }
 
