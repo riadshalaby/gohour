@@ -294,6 +294,81 @@ func TestDeleteWorklog_NotFound(t *testing.T) {
 	}
 }
 
+func TestDeleteWorklogsByMonth(t *testing.T) {
+	t.Parallel()
+
+	dbPath := filepath.Join(t.TempDir(), "gohour_test.db")
+	store, err := OpenSQLite(dbPath)
+	if err != nil {
+		t.Fatalf("open sqlite: %v", err)
+	}
+	defer store.Close()
+
+	inserted, err := store.InsertWorklogs([]worklog.Entry{
+		{
+			StartDateTime: mustParseRFC3339(t, "2026-03-05T08:00:00+01:00"),
+			EndDateTime:   mustParseRFC3339(t, "2026-03-05T09:00:00+01:00"),
+			Billable:      60,
+			Description:   "march-1",
+			Project:       "p",
+			Activity:      "a",
+			Skill:         "s",
+			SourceFormat:  "csv",
+			SourceMapper:  "generic",
+			SourceFile:    "a.csv",
+		},
+		{
+			StartDateTime: mustParseRFC3339(t, "2026-03-20T10:00:00+01:00"),
+			EndDateTime:   mustParseRFC3339(t, "2026-03-20T11:00:00+01:00"),
+			Billable:      60,
+			Description:   "march-2",
+			Project:       "p",
+			Activity:      "a",
+			Skill:         "s",
+			SourceFormat:  "csv",
+			SourceMapper:  "generic",
+			SourceFile:    "b.csv",
+		},
+		{
+			StartDateTime: mustParseRFC3339(t, "2026-04-01T08:00:00+01:00"),
+			EndDateTime:   mustParseRFC3339(t, "2026-04-01T09:00:00+01:00"),
+			Billable:      60,
+			Description:   "april-1",
+			Project:       "p",
+			Activity:      "a",
+			Skill:         "s",
+			SourceFormat:  "csv",
+			SourceMapper:  "generic",
+			SourceFile:    "c.csv",
+		},
+	})
+	if err != nil {
+		t.Fatalf("insert worklogs: %v", err)
+	}
+	if inserted != 3 {
+		t.Fatalf("expected 3 inserted, got %d", inserted)
+	}
+
+	deleted, err := store.DeleteWorklogsByMonth("2026-03")
+	if err != nil {
+		t.Fatalf("delete by month: %v", err)
+	}
+	if deleted != 2 {
+		t.Fatalf("expected 2 deleted rows, got %d", deleted)
+	}
+
+	listed, err := store.ListWorklogs()
+	if err != nil {
+		t.Fatalf("list worklogs: %v", err)
+	}
+	if len(listed) != 1 {
+		t.Fatalf("expected 1 row left, got %d", len(listed))
+	}
+	if got := listed[0].StartDateTime.Format("2006-01"); got != "2026-04" {
+		t.Fatalf("expected only april row to remain, got %s", got)
+	}
+}
+
 func TestInsertWorklog_ReturnsID(t *testing.T) {
 	t.Parallel()
 

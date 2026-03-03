@@ -11,10 +11,12 @@ import (
 )
 
 type DayRow struct {
-	Date        time.Time
-	LocalHours  float64
-	RemoteHours float64
-	Entries     []EntryRow
+	Date              time.Time
+	LocalHours        float64
+	RemoteHours       float64
+	LocalWorkedHours  float64
+	RemoteWorkedHours float64
+	Entries           []EntryRow
 }
 
 type EntryRow struct {
@@ -31,17 +33,21 @@ type EntryRow struct {
 }
 
 type MonthDayRow struct {
-	Date        time.Time
-	LocalHours  float64
-	RemoteHours float64
-	DeltaHours  float64
+	Date              time.Time
+	LocalHours        float64
+	RemoteHours       float64
+	DeltaHours        float64
+	LocalWorkedHours  float64
+	RemoteWorkedHours float64
 }
 
 type MonthSummary struct {
-	Days             []MonthDayRow
-	TotalLocalHours  float64
-	TotalRemoteHours float64
-	TotalDeltaHours  float64
+	Days                   []MonthDayRow
+	TotalLocalHours        float64
+	TotalRemoteHours       float64
+	TotalDeltaHours        float64
+	TotalLocalWorkedHours  float64
+	TotalRemoteWorkedHours float64
 }
 
 func BuildDailyView(local []worklog.Entry, remote []onepoint.DayWorklog) []DayRow {
@@ -97,6 +103,7 @@ func BuildDailyView(local []worklog.Entry, remote []onepoint.DayWorklog) []DayRo
 		rows := make([]EntryRow, 0, len(localEntries)+len(remoteEntries))
 
 		localHours := 0.0
+		localWorkedHours := 0.0
 		for _, entry := range localEntries {
 			payload := localEntryToPersistWorklog(entry)
 			localPayload = append(localPayload, payload)
@@ -114,11 +121,14 @@ func BuildDailyView(local []worklog.Entry, remote []onepoint.DayWorklog) []DayRo
 				Description:  entry.Description,
 			})
 			localHours += hoursFromMinutes(entry.Billable)
+			localWorkedHours += entry.EndDateTime.Sub(entry.StartDateTime).Hours()
 		}
 
 		remoteHours := 0.0
+		remoteWorkedHours := 0.0
 		for _, item := range remoteEntries {
 			remoteHours += hoursFromMinutes(item.Billable)
+			remoteWorkedHours += hoursFromMinutes(max(0, item.FinishTime-item.StartTime))
 		}
 
 		for _, item := range remoteEntries {
@@ -147,10 +157,12 @@ func BuildDailyView(local []worklog.Entry, remote []onepoint.DayWorklog) []DayRo
 		})
 
 		out = append(out, DayRow{
-			Date:        days[key],
-			LocalHours:  localHours,
-			RemoteHours: remoteHours,
-			Entries:     rows,
+			Date:              days[key],
+			LocalHours:        localHours,
+			RemoteHours:       remoteHours,
+			LocalWorkedHours:  localWorkedHours,
+			RemoteWorkedHours: remoteWorkedHours,
+			Entries:           rows,
 		})
 	}
 
@@ -169,14 +181,18 @@ func BuildMonthlyView(days []DayRow) MonthSummary {
 	for _, day := range sorted {
 		delta := day.LocalHours - day.RemoteHours
 		summary.Days = append(summary.Days, MonthDayRow{
-			Date:        timeutil.StartOfDay(day.Date),
-			LocalHours:  day.LocalHours,
-			RemoteHours: day.RemoteHours,
-			DeltaHours:  delta,
+			Date:              timeutil.StartOfDay(day.Date),
+			LocalHours:        day.LocalHours,
+			RemoteHours:       day.RemoteHours,
+			DeltaHours:        delta,
+			LocalWorkedHours:  day.LocalWorkedHours,
+			RemoteWorkedHours: day.RemoteWorkedHours,
 		})
 		summary.TotalLocalHours += day.LocalHours
 		summary.TotalRemoteHours += day.RemoteHours
 		summary.TotalDeltaHours += delta
+		summary.TotalLocalWorkedHours += day.LocalWorkedHours
+		summary.TotalRemoteWorkedHours += day.RemoteWorkedHours
 	}
 	return summary
 }
@@ -186,15 +202,15 @@ func classifyLocalEntry(candidate onepoint.PersistWorklog, remote []onepoint.Per
 	// Canonical duplicate detection for submit uses submitter.ClassifyWorklogs.
 	for _, item := range remote {
 		if hasSameTimeRange(candidate, item) {
-			return "duplicate"
+			return "synced"
 		}
 	}
 	for _, item := range remote {
 		if onepoint.WorklogTimeOverlaps(candidate, item) {
-			return "overlap"
+			return "conflict"
 		}
 	}
-	return "new"
+	return "local"
 }
 
 func hasEquivalentLocal(local []onepoint.PersistWorklog, candidate onepoint.PersistWorklog) bool {

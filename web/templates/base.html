@@ -18,17 +18,17 @@
       --muted: #6b7280;
       --border: #e3e2de;
       --border-strong: #c8c7c2;
-      --c-new: #16a34a;
-      --c-dup: #2563eb;
-      --c-overlap: #d97706;
+      --c-local: #16a34a;
+      --c-synced: #2563eb;
+      --c-conflict: #d97706;
       --c-remote: #7c3aed;
-      --bg-new: #dcfce7;
-      --bg-dup: #dbeafe;
-      --bg-overlap: #fef3c7;
+      --bg-local: #dcfce7;
+      --bg-synced: #dbeafe;
+      --bg-conflict: #fef3c7;
       --bg-remote: #ede9fe;
-      --txt-new: #15803d;
-      --txt-dup: #1d4ed8;
-      --txt-overlap: #92400e;
+      --txt-local: #15803d;
+      --txt-synced: #1d4ed8;
+      --txt-conflict: #92400e;
       --txt-remote: #5b21b6;
       --weekend-bg: #fdf5ea;
       --weekend-line: #f59e0b;
@@ -279,9 +279,9 @@
       font-variant-numeric: tabular-nums;
       font-weight: 600;
     }
-    tbody tr[data-source="new"] td:first-child { border-left: 3px solid var(--c-new); padding-left: calc(0.6rem - 3px); }
-    tbody tr[data-source="duplicate"] td:first-child { border-left: 3px solid var(--c-dup); padding-left: calc(0.6rem - 3px); }
-    tbody tr[data-source="overlap"] td:first-child { border-left: 3px solid var(--c-overlap); padding-left: calc(0.6rem - 3px); }
+    tbody tr[data-source="local"] td:first-child { border-left: 3px solid var(--c-local); padding-left: calc(0.6rem - 3px); }
+    tbody tr[data-source="synced"] td:first-child { border-left: 3px solid var(--c-synced); padding-left: calc(0.6rem - 3px); }
+    tbody tr[data-source="conflict"] td:first-child { border-left: 3px solid var(--c-conflict); padding-left: calc(0.6rem - 3px); }
     tbody tr[data-source="remote"] td:first-child { border-left: 3px solid var(--c-remote); padding-left: calc(0.6rem - 3px); }
     .badge {
       display: inline-block;
@@ -295,9 +295,9 @@
       border: 1px solid transparent;
       white-space: nowrap;
     }
-    .badge-new { background: var(--bg-new); color: var(--txt-new); border-color: #bbf7d0; }
-    .badge-duplicate { background: var(--bg-dup); color: var(--txt-dup); border-color: #bfdbfe; }
-    .badge-overlap { background: var(--bg-overlap); color: var(--txt-overlap); border-color: #fde68a; }
+    .badge-local { background: var(--bg-local); color: var(--txt-local); border-color: #bbf7d0; }
+    .badge-synced { background: var(--bg-synced); color: var(--txt-synced); border-color: #bfdbfe; }
+    .badge-conflict { background: var(--bg-conflict); color: var(--txt-conflict); border-color: #fde68a; }
     .badge-remote { background: var(--bg-remote); color: var(--txt-remote); border-color: #ddd6fe; }
     .auth-banner {
       display: flex;
@@ -440,6 +440,7 @@
     let _lookup = null;
     let _editState = { mode: '', row: null, date: '' };
     let _confirmCallback = null;
+    let _importPreviewState = { form: null, options: null, entries: [] };
 
     async function apiFetch(method, url, body, options) {
       const fetchOptions = { method: method, headers: {}, body: undefined };
@@ -448,6 +449,11 @@
       } else if (body !== undefined && body !== null) {
         fetchOptions.headers['Content-Type'] = 'application/json';
         fetchOptions.body = JSON.stringify(body);
+      }
+      if (options && options.headers && typeof options.headers === 'object') {
+        for (const [key, value] of Object.entries(options.headers)) {
+          fetchOptions.headers[key] = value;
+        }
       }
       const response = await fetch(url, fetchOptions);
       const contentType = response.headers.get('content-type') || '';
@@ -690,13 +696,147 @@
       return preview.join('; ') + remainder;
     }
 
-    async function submitImportForm(form, options, modeFlag) {
+    async function submitImportForm(form, options) {
       const formData = new FormData(form);
+      const preview = await apiFetch('POST', '/api/import-preview', null, { formData: formData });
+      openImportPreviewDialog(preview, form, options || {});
+    }
+
+    function openImportPreviewDialog(previewData, form, options) {
+      const dialog = document.getElementById('import-preview-dialog');
+      const body = document.getElementById('preview-body');
+      const summary = document.getElementById('preview-summary');
+      const filenameNode = document.getElementById('preview-filename');
+      if (!dialog || !body || !summary || !filenameNode) return;
+
+      _importPreviewState.form = form;
+      _importPreviewState.options = options || {};
+      _importPreviewState.entries = Array.isArray(previewData.entries) ? previewData.entries : [];
+
+      const fileInput = form ? form.querySelector('input[name=file]') : null;
+      const fileName = fileInput && fileInput.files && fileInput.files[0] ? fileInput.files[0].name : '';
+      filenameNode.textContent = fileName;
+
+      body.innerHTML = '';
+      let cleanCount = 0;
+      let overlapCount = 0;
+      let duplicateCount = 0;
+
+      for (const entry of _importPreviewState.entries) {
+        const status = String(entry.status || '');
+        if (status === 'clean') cleanCount++;
+        if (status === 'overlap') overlapCount++;
+        if (status === 'duplicate') duplicateCount++;
+
+        const row = document.createElement('tr');
+        row.dataset.index = String(Number(entry.index || 0));
+        row.dataset.status = status;
+
+        let checkboxHTML = '<span class="muted">-</span>';
+        if (status === 'clean') {
+          checkboxHTML = '<input type="checkbox" class="preview-select" checked onchange="updatePreviewCount()">';
+        } else if (status === 'overlap') {
+          checkboxHTML = '<input type="checkbox" class="preview-select" onchange="updatePreviewCount()">';
+        }
+
+        let conflictText = '';
+        if (status === 'overlap' && entry.conflictId) {
+          conflictText = ' \u26A0 conflicts #' + String(entry.conflictId);
+        } else if (status === 'duplicate' && entry.conflictId) {
+          conflictText = ' already exists #' + String(entry.conflictId);
+        }
+
+        let badgeClass = 'badge-local';
+        let badgeLabel = 'clean';
+        if (status === 'overlap') {
+          badgeClass = 'badge-conflict';
+          badgeLabel = 'overlap';
+        } else if (status === 'duplicate') {
+          badgeClass = 'badge-synced';
+          badgeLabel = 'already exists';
+        }
+
+        row.innerHTML = '' +
+          '<td>' + checkboxHTML + '</td>' +
+          '<td><span class="js-fmt-date" data-iso="' + escapeHtml(String(entry.date || '')) + '">' + escapeHtml(String(entry.date || '')) + '</span></td>' +
+          '<td><span class="js-fmt-time" data-hhmm="' + escapeHtml(String(entry.start || '')) + '">' + escapeHtml(String(entry.start || '')) + '</span></td>' +
+          '<td><span class="js-fmt-time" data-hhmm="' + escapeHtml(String(entry.end || '')) + '">' + escapeHtml(String(entry.end || '')) + '</span></td>' +
+          '<td>' + escapeHtml(String(entry.project || '')) + '</td>' +
+          '<td>' + escapeHtml(String(entry.activity || '')) + '</td>' +
+          '<td>' + escapeHtml(String(entry.skill || '')) + '</td>' +
+          '<td class="num"><span class="js-fmt-hours" data-mins="' + escapeHtml(String(Number(entry.durationMins || 0))) + '">' + escapeHtml(String(Number(entry.durationMins || 0))) + '</span></td>' +
+          '<td class="num"><span class="js-fmt-hours" data-mins="' + escapeHtml(String(Number(entry.billableMins || 0))) + '">' + escapeHtml(String(Number(entry.billableMins || 0))) + '</span></td>' +
+          '<td>' + escapeHtml(String(entry.description || '')) + '</td>' +
+          '<td><span class="badge ' + badgeClass + '">' + badgeLabel + '</span>' + escapeHtml(conflictText) + '</td>';
+        body.appendChild(row);
+      }
+
+      summary.textContent = _importPreviewState.entries.length + ' entries: ' +
+        cleanCount + ' clean, ' + overlapCount + ' overlapping, ' + duplicateCount + ' duplicate';
+      updatePreviewCount();
+      applyLocaleFormatting(dialog);
+      dialog.showModal();
+    }
+
+    function updatePreviewCount() {
+      const body = document.getElementById('preview-body');
+      const button = document.getElementById('preview-import-btn');
+      if (!body || !button) return;
+
+      let count = 0;
+      for (const row of Array.from(body.querySelectorAll('tr'))) {
+        const status = row.dataset.status || '';
+        const checkbox = row.querySelector('input.preview-select');
+        if ((status === 'clean' || status === 'overlap') && checkbox && checkbox.checked) {
+          count++;
+        }
+      }
+      button.textContent = 'Import selected (' + count + ')';
+    }
+
+    function cancelImportPreview() {
+      const dialog = document.getElementById('import-preview-dialog');
+      if (dialog && dialog.open) {
+        dialog.close();
+      }
+      _importPreviewState = { form: null, options: null, entries: [] };
+    }
+
+    async function confirmImportPreview(modeFlag) {
+      const form = _importPreviewState.form;
+      if (!form) return;
+
+      const body = document.getElementById('preview-body');
+      const skipIndices = [];
+      if (body) {
+        for (const row of Array.from(body.querySelectorAll('tr'))) {
+          const index = Number(row.dataset.index || '-1');
+          const status = row.dataset.status || '';
+          if (!Number.isInteger(index) || index < 0) continue;
+
+          if (status === 'duplicate') {
+            skipIndices.push(index);
+            continue;
+          }
+
+          const checkbox = row.querySelector('input.preview-select');
+          const checked = checkbox ? checkbox.checked : false;
+          if ((status === 'clean' || status === 'overlap') && !checked) {
+            skipIndices.push(index);
+          }
+        }
+      }
+
+      const formData = new FormData(form);
+      formData.append('skipIndices', skipIndices.join(','));
       if (modeFlag) {
         formData.append(modeFlag, 'true');
       }
+
       try {
         const result = await apiFetch('POST', '/api/import', null, { formData: formData });
+        const options = _importPreviewState.options || {};
+        cancelImportPreview();
         if (options && options.dialogID) {
           closeImportDialog(options.dialogID);
         }
@@ -723,11 +863,11 @@
           openConfirmDialog(
             'Overlapping entries found',
             'Some imported entries overlap existing local entries: ' + summarizeImportOverlaps(overlaps),
-            function() { submitImportForm(form, options, 'forceOverlapping'); },
+            function() { confirmImportPreview('forceOverlapping'); },
             'Import anyway',
             {
               label: 'Skip overlapping',
-              onConfirm: function() { submitImportForm(form, options, 'skipOverlapping'); },
+              onConfirm: function() { confirmImportPreview('skipOverlapping'); },
             },
           );
           return;
@@ -739,7 +879,11 @@
     async function handleImportSubmit(event, options) {
       event.preventDefault();
       const form = event.target;
-      await submitImportForm(form, options || {}, '');
+      try {
+        await submitImportForm(form, options || {});
+      } catch (err) {
+        showToast(String(err.message || err), true);
+      }
     }
 
     function normalizeName(value) {
@@ -1025,46 +1169,69 @@
       }
 
       try {
-        if (_editState.mode === 'edit' && _editState.row) {
-          await apiFetch('PATCH', '/api/worklog/' + _editState.row.dataset.id, payload);
-          renderDayRowCells(_editState.row, {
-            id: Number(_editState.row.dataset.id),
-            source: _editState.row.dataset.source,
-            date: payload.date,
-            start: payload.start,
-            end: payload.end,
-            durationMins: durationMins,
-            project: payload.project,
-            activity: payload.activity,
-            skill: payload.skill,
-            billableMins: payload.billable,
-            description: payload.description
-          });
-          showToast('Entry updated.', false);
-        } else {
-          const result = await apiFetch('POST', '/api/worklog', payload);
-          appendDayEntryRow({
-            id: Number(result.id),
-            source: 'new',
-            start: payload.start,
-            end: payload.end,
-            durationMins: durationMins,
-            project: payload.project,
-            activity: payload.activity,
-            skill: payload.skill,
-            billableMins: payload.billable,
-            description: payload.description
-          }, payload.date);
-          showToast('Entry created.', false);
-        }
+        await persistEditDialogPayload(payload, durationMins, false);
         closeEditDialog();
       } catch (err) {
-        if (_editState.mode !== 'edit' && err && err.status === 409) {
-          showToast(formatCreateConflictMessage(err), true);
+        if (err && err.status === 409 && err.payload && err.payload.type === 'duplicate') {
+          showToast('Entry already exists (duplicate).', true);
+          return;
+        }
+        if (err && err.status === 409 && err.payload && err.payload.type === 'overlap') {
+          const existingId = err.payload.existingId ? String(err.payload.existingId) : '?';
+          openConfirmDialog(
+            'Overlapping entry',
+            'This entry overlaps with local entry #' + existingId + '. Save anyway?',
+            async function() {
+              try {
+                await persistEditDialogPayload(payload, durationMins, true);
+                closeEditDialog();
+              } catch (retryErr) {
+                showToast(String(retryErr.message || retryErr), true);
+              }
+            },
+            'Save anyway'
+          );
           return;
         }
         showToast(String(err.message || err), true);
       }
+    }
+
+    async function persistEditDialogPayload(payload, durationMins, forceOverlap) {
+      const headers = forceOverlap ? { 'X-Force-Overlap': '1' } : null;
+      if (_editState.mode === 'edit' && _editState.row) {
+        await apiFetch('PATCH', '/api/worklog/' + _editState.row.dataset.id, payload, { headers: headers });
+        renderDayRowCells(_editState.row, {
+          id: Number(_editState.row.dataset.id),
+          source: _editState.row.dataset.source,
+          date: payload.date,
+          start: payload.start,
+          end: payload.end,
+          durationMins: durationMins,
+          project: payload.project,
+          activity: payload.activity,
+          skill: payload.skill,
+          billableMins: payload.billable,
+          description: payload.description
+        });
+        showToast('Entry updated.', false);
+        return;
+      }
+
+      const result = await apiFetch('POST', '/api/worklog', payload, { headers: headers });
+      appendDayEntryRow({
+        id: Number(result.id),
+        source: 'local',
+        start: payload.start,
+        end: payload.end,
+        durationMins: durationMins,
+        project: payload.project,
+        activity: payload.activity,
+        skill: payload.skill,
+        billableMins: payload.billable,
+        description: payload.description
+      }, payload.date);
+      showToast('Entry created.', false);
     }
 
     async function deleteRowConfirmed(row) {
@@ -1114,13 +1281,23 @@
 
       const localHours = Number(payload.localHours !== undefined ? payload.localHours : payload.LocalHours || 0);
       const remoteHours = Number(payload.remoteHours !== undefined ? payload.remoteHours : payload.RemoteHours || 0);
+      const localWorked = Number(payload.localWorkedHours !== undefined ? payload.localWorkedHours : payload.LocalWorkedHours || 0);
+      const remoteWorked = Number(payload.remoteWorkedHours !== undefined ? payload.remoteWorkedHours : payload.RemoteWorkedHours || 0);
       const localNode = document.getElementById('day-local-hours');
       const remoteNode = document.getElementById('day-remote-hours');
+      const localWorkedNode = document.getElementById('day-local-worked');
+      const remoteWorkedNode = document.getElementById('day-remote-worked');
       if (localNode) {
         localNode.dataset.mins = String(Math.round(localHours * 60));
       }
       if (remoteNode) {
         remoteNode.dataset.mins = String(Math.round(remoteHours * 60));
+      }
+      if (localWorkedNode) {
+        localWorkedNode.dataset.mins = String(Math.round(localWorked * 60));
+      }
+      if (remoteWorkedNode) {
+        remoteWorkedNode.dataset.mins = String(Math.round(remoteWorked * 60));
       }
       applyLocaleFormatting(document);
     }
@@ -1225,18 +1402,31 @@
       );
       try {
         const result = await apiFetch('POST', '/api/submit/day/' + encodeURIComponent(date));
-        await reloadDayTable(date);
-        openSubmitDialog(
-          'Submit ' + date,
-          '<div class="result-box">Added: ' + result.submitted +
-            ' | Duplicates: ' + result.duplicates +
-            ' | Overlaps: ' + result.overlaps +
-            ' | Locked days: ' + result.lockedDays.length + '</div>'
-        );
+        if (!result.dryRun) {
+          await reloadDayTable(date);
+        }
+        openSubmitDialog('Submit ' + date, renderDaySubmitResult(result));
         showToast('Day submission finished.', false);
       } catch (err) {
         openSubmitDialog(
           'Submit ' + date,
+          '<div class="result-box">' + escapeHtml(String(err.message || err)) + '</div>'
+        );
+        showToast(String(err.message || err), true);
+      }
+    }
+
+    async function previewSubmitDay(date) {
+      openSubmitDialog(
+        'Preview submit ' + date,
+        '<div class="result-box">Loading preview...</div>'
+      );
+      try {
+        const result = await apiFetch('POST', '/api/submit/day/' + encodeURIComponent(date) + '?dry_run=1');
+        openSubmitDialog('Preview submit ' + date, renderDaySubmitResult(result));
+      } catch (err) {
+        openSubmitDialog(
+          'Preview submit ' + date,
           '<div class="result-box">' + escapeHtml(String(err.message || err)) + '</div>'
         );
         showToast(String(err.message || err), true);
@@ -1261,9 +1451,92 @@
       }
     }
 
+    async function previewSubmitMonth(month) {
+      openSubmitDialog(
+        'Preview submit ' + month,
+        '<div class="result-box">Loading preview...</div>'
+      );
+      try {
+        const result = await apiFetch('POST', '/api/submit/month/' + encodeURIComponent(month) + '?dry_run=1');
+        openSubmitDialog('Preview submit ' + month, renderMonthSubmitResult(result));
+      } catch (err) {
+        openSubmitDialog(
+          'Preview submit ' + month,
+          '<div class="result-box">' + escapeHtml(String(err.message || err)) + '</div>'
+        );
+        showToast(String(err.message || err), true);
+      }
+    }
+
+    async function deleteMonthEntries(month) {
+      try {
+        await apiFetch('DELETE', '/api/month/' + encodeURIComponent(month) + '/worklogs');
+        showToast('Local entries deleted.', false);
+        window.location.reload();
+      } catch (err) {
+        showToast(String(err.message || err), true);
+      }
+    }
+
+    async function copyMonthRemote(month) {
+      try {
+        const result = await apiFetch('POST', '/api/month/' + encodeURIComponent(month) + '/copy-from-remote');
+        showToast('Copied ' + result.copied + ' of ' + result.total + ' remote entries.', false);
+        window.location.reload();
+      } catch (err) {
+        showToast(String(err.message || err), true);
+      }
+    }
+
+    // Backward-compatible alias for older naming.
+    async function syncMonthRemote(month) {
+      await copyMonthRemote(month);
+    }
+
+    async function deleteMonthRemoteEntries(month) {
+      try {
+        const result = await apiFetch('DELETE', '/api/month/' + encodeURIComponent(month) + '/remote-worklogs');
+        let msg = 'Deleted ' + result.deleted + ' remote entries.';
+        if (result.skippedLocked > 0) {
+          msg += ' ' + result.skippedLocked + ' locked days skipped.';
+        }
+        showToast(msg, false);
+        window.location.reload();
+      } catch (err) {
+        showToast(String(err.message || err), true);
+      }
+    }
+
+    function renderDaySubmitResult(result) {
+      const day = (result.days && result.days.length > 0) ? result.days[0] : { added: 0, duplicates: 0, overlaps: 0, locked: false };
+      const addedLabel = result.dryRun ? 'Would add' : 'Added';
+      let html = '';
+      if (result.dryRun) {
+        html += '<div class="result-box">Preview only - nothing submitted.</div>';
+      }
+      html += '<div class="result-box">' + addedLabel + ': ' + day.added +
+        ' | Duplicates: ' + day.duplicates +
+        ' | Overlaps: ' + day.overlaps +
+        ' | Locked: ' + (day.locked ? 'yes' : 'no') + '</div>';
+      return html;
+    }
+
     function renderMonthSubmitResult(result) {
-      let html = '<div class="result-box">Added: ' + result.submitted + ' | Duplicates: ' + result.duplicates + ' | Overlaps: ' + result.overlaps + ' | Locked days: ' + result.lockedDays.length + '</div>';
-      html += '<table><thead><tr><th>Date</th><th>Added</th><th>Duplicates</th><th>Overlaps</th><th>Locked</th></tr></thead><tbody>';
+      const addedLabel = result.dryRun ? 'Would add' : 'Added';
+      let addedTotal = result.submitted || 0;
+      if (result.dryRun) {
+        addedTotal = 0;
+        for (const day of (result.days || [])) {
+          addedTotal += Number(day.added || 0);
+        }
+      }
+
+      let html = '';
+      if (result.dryRun) {
+        html += '<div class="result-box">Preview only - nothing submitted.</div>';
+      }
+      html += '<div class="result-box">' + addedLabel + ': ' + addedTotal + ' | Duplicates: ' + result.duplicates + ' | Overlaps: ' + result.overlaps + ' | Locked days: ' + result.lockedDays.length + '</div>';
+      html += '<table><thead><tr><th>Date</th><th>' + addedLabel + '</th><th>Duplicates</th><th>Overlaps</th><th>Locked</th></tr></thead><tbody>';
       for (const day of (result.days || [])) {
         html += '<tr><td><span class="js-fmt-date" data-iso="' + escapeHtml(day.date) + '">' + escapeHtml(day.date) + '</span></td><td>' + day.added + '</td><td>' + day.duplicates + '</td><td>' + day.overlaps + '</td><td>' + (day.locked ? 'yes' : 'no') + '</td></tr>';
       }
@@ -1301,6 +1574,38 @@
     <div class="dialog-body" id="submit-dialog-body"></div>
     <div class="dialog-footer">
       <button type="button" onclick="closeSubmitDialog()">Close</button>
+    </div>
+  </dialog>
+  <dialog id="import-preview-dialog" style="min-width: min(90vw, 900px);">
+    <div class="dialog-header">
+      <h2>Import preview - <span id="preview-filename"></span></h2>
+    </div>
+    <div class="dialog-body">
+      <p id="preview-summary"></p>
+      <div class="table-wrap" style="max-height:400px;overflow-y:auto;overflow-x:auto;">
+        <table id="preview-table">
+          <thead>
+            <tr>
+              <th>Import</th>
+              <th>Date</th>
+              <th>Start</th>
+              <th>End</th>
+              <th>Project</th>
+              <th>Activity</th>
+              <th>Skill</th>
+              <th>Duration</th>
+              <th>Billable</th>
+              <th>Description</th>
+              <th>Status</th>
+            </tr>
+          </thead>
+          <tbody id="preview-body"></tbody>
+        </table>
+      </div>
+    </div>
+    <div class="dialog-footer">
+      <button type="button" onclick="cancelImportPreview()">Cancel</button>
+      <button id="preview-import-btn" type="button" class="btn-primary" onclick="confirmImportPreview()">Import selected (0)</button>
     </div>
   </dialog>
 </body>
