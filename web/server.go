@@ -778,38 +778,17 @@ func (s *Server) handleAPIDeleteMonthRemoteWorklogs(w http.ResponseWriter, r *ht
 		return
 	}
 	monthEnd := endOfMonth(monthStart)
-
-	remoteEntries, err := s.loadRemoteRange(r.Context(), monthStart, monthEnd)
-	if err != nil {
-		http.Error(w, fmt.Sprintf("load remote worklogs: %v", err), http.StatusBadGateway)
-		return
-	}
-
-	dayCounts := make(map[string]int)
-	dayByKey := make(map[string]time.Time)
-	for _, item := range remoteEntries {
-		day, err := onepoint.ParseDay(item.WorklogDate)
-		if err != nil {
-			continue
-		}
-		day = timeutil.StartOfDay(day)
-		key := day.Format("2006-01-02")
-		dayCounts[key]++
-		dayByKey[key] = day
-	}
-
-	dayKeys := make([]string, 0, len(dayCounts))
-	for key := range dayCounts {
-		dayKeys = append(dayKeys, key)
-	}
-	sort.Strings(dayKeys)
+	// Clear every calendar day in the month, not only days returned by
+	// getFilteredWorklogs, because OnePoint can retain stale month totals for
+	// days that no longer expose timerecord entries.
+	days := rangeDays(monthStart, monthEnd)
 
 	client := upstreamErrorClient{base: s.client}
 	deleted := 0
 	lockedDays := make([]string, 0)
 	clearedDays := make([]time.Time, 0)
-	for _, dayKey := range dayKeys {
-		day := dayByKey[dayKey]
+	for _, day := range days {
+		dayKey := day.Format("2006-01-02")
 		existing, err := client.GetDayWorklogs(r.Context(), day)
 		if err != nil {
 			http.Error(w, fmt.Sprintf("load existing day %s failed: %v", dayKey, err), http.StatusBadGateway)
