@@ -175,6 +175,102 @@ func TestRun_PersistsAdjustedEPMRows(t *testing.T) {
 	assertTime(t, mustParse(t, "2026-03-11T11:00:00+01:00"), epmEntry.EndDateTime, "persisted epm end")
 }
 
+func TestRunForEligibleIDs_UpdatesOnlyEligibleRows(t *testing.T) {
+	dbPath := filepath.Join(t.TempDir(), "reconcile-subset.db")
+	store, err := storage.OpenSQLite(dbPath)
+	if err != nil {
+		t.Fatalf("open sqlite: %v", err)
+	}
+	defer store.Close()
+
+	entries := []worklog.Entry{
+		{
+			StartDateTime: mustParse(t, "2026-03-12T09:00:00+01:00"),
+			EndDateTime:   mustParse(t, "2026-03-12T10:00:00+01:00"),
+			Billable:      60,
+			Description:   "generic-fixed",
+			Project:       "p",
+			Activity:      "a",
+			Skill:         "s",
+			SourceFormat:  "csv",
+			SourceMapper:  "generic",
+			SourceFile:    "generic.csv",
+		},
+		{
+			StartDateTime: mustParse(t, "2026-03-12T10:00:00+01:00"),
+			EndDateTime:   mustParse(t, "2026-03-12T11:00:00+01:00"),
+			Billable:      60,
+			Description:   "epm-immutable",
+			Project:       "p",
+			Activity:      "a",
+			Skill:         "s",
+			SourceFormat:  "excel",
+			SourceMapper:  "epm",
+			SourceFile:    "EPMExportRZ202601.xlsx",
+		},
+		{
+			StartDateTime: mustParse(t, "2026-03-12T09:30:00+01:00"),
+			EndDateTime:   mustParse(t, "2026-03-12T10:30:00+01:00"),
+			Billable:      60,
+			Description:   "epm-eligible",
+			Project:       "p",
+			Activity:      "a",
+			Skill:         "s",
+			SourceFormat:  "excel",
+			SourceMapper:  "epm",
+			SourceFile:    "EPMExportRZ202601.xlsx",
+		},
+	}
+	if _, err := store.InsertWorklogs(entries); err != nil {
+		t.Fatalf("insert worklogs: %v", err)
+	}
+
+	listed, err := store.ListWorklogs()
+	if err != nil {
+		t.Fatalf("list worklogs: %v", err)
+	}
+	var eligibleID int64
+	for _, item := range listed {
+		if item.Description == "epm-eligible" {
+			eligibleID = item.ID
+			break
+		}
+	}
+	if eligibleID == 0 {
+		t.Fatalf("expected eligible epm row id")
+	}
+
+	result, err := RunForEligibleIDs(store, map[int64]struct{}{eligibleID: {}})
+	if err != nil {
+		t.Fatalf("run subset reconcile: %v", err)
+	}
+	if result.RowsUpdated != 1 || result.EPMEntriesAdjusted != 1 {
+		t.Fatalf("unexpected subset result: %+v", result)
+	}
+
+	after, err := store.ListWorklogs()
+	if err != nil {
+		t.Fatalf("list reconciled worklogs: %v", err)
+	}
+	var (
+		immutable worklog.Entry
+		eligible  worklog.Entry
+	)
+	for _, item := range after {
+		if item.Description == "epm-immutable" {
+			immutable = item
+		}
+		if item.Description == "epm-eligible" {
+			eligible = item
+		}
+	}
+
+	assertTime(t, mustParse(t, "2026-03-12T10:00:00+01:00"), immutable.StartDateTime, "immutable epm start")
+	assertTime(t, mustParse(t, "2026-03-12T11:00:00+01:00"), immutable.EndDateTime, "immutable epm end")
+	assertTime(t, mustParse(t, "2026-03-12T11:00:00+01:00"), eligible.StartDateTime, "eligible epm start")
+	assertTime(t, mustParse(t, "2026-03-12T12:00:00+01:00"), eligible.EndDateTime, "eligible epm end")
+}
+
 func mustParse(t *testing.T, value string) time.Time {
 	t.Helper()
 	parsed, err := time.Parse(time.RFC3339, value)

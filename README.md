@@ -28,6 +28,18 @@
 go build -o gohour .
 ```
 
+Multi-platform artifacts + checksums:
+
+```bash
+./scripts/build-all.sh dist v0.2.3
+```
+
+Release helper (tag + assets upload via `gh release create`):
+
+```bash
+./scripts/release.sh v0.2.3 dist
+```
+
 ## Quick Start (3 Steps)
 
 If you just want to get started, do this:
@@ -203,19 +215,34 @@ Run the local web UI for month/day review, edits, import, and submit actions:
 If no valid OnePoint session is available, `serve` opens a browser login flow automatically before starting.
 
 Month view includes:
-- `Preview submit` (dry-run classification before submit)
 - `Submit month`
-- `Copy from remote` (imports only remote rows that do not already exist locally)
-- `Delete all local` and `Delete all remote` (with confirmation)
+- direct `Previous` / `Next` navigation
+- `Actions` menu with `Refresh remote`, `Import file`, `Copy from remote`, `Delete all local`, and `Delete all remote`
+- inline delta indicators next to remote worked/billable totals:
+  - green when local and remote match
+  - orange when a delta exists
+- visible `Remote last refresh` timestamp
+- `Delete all remote` shows deleted/locked-day status in the modal status surface
 
 Day view includes:
-- `Preview submit` and `Submit day`
+- `Submit day` using the same submit dialog as month submit
+- `Refresh remote` without full-page reload
 - local add/edit/delete with overlap warning + "save anyway" flow
 - status badges: `local`, `synced`, `conflict`, `remote`
+- visible `Remote last refresh` timestamp
+
+Submit dialog behavior:
+- one dialog for day/month submit
+- optional `Dry run` toggle (sends `dry_run=1`, no remote writes)
+- same result renderer for dry-run and real submit
 
 Important OnePoint UI note:
 - If a OnePoint browser tab/window was already open while gohour changed worklogs (for example import/delete/submit), the OnePoint UI can show stale totals or stale day values.
 - If that happens, close the open OnePoint window/tab and open/login again to refresh the displayed values.
+
+Audit log:
+- Remote-write operations from the web UI append JSON lines to `./gohour-audit.log`
+- Logged operations include day/month submit and month remote delete (attempts, outcomes, counts, and locked-day info)
 
 Main flags:
 

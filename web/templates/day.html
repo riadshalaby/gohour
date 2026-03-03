@@ -2,15 +2,14 @@
 <h1>Day detail: <span class="js-fmt-date" data-iso="{{ .Day }}">{{ .Day }}</span></h1>
 <div class="page-nav">
   <a href="/month/{{ .CurrentMonth }}">Back to month</a>
-  <button type="button" class="btn-primary"
-    onclick="openConfirmDialog(
-      'Submit {{ .Day }}',
-      'Push all local entries for this day to OnePoint. This cannot be undone.',
-      function() { submitDay('{{ .Day }}'); }
-    )">Submit day</button>
-  <button type="button" onclick="previewSubmitDay('{{ .Day }}')">Preview submit</button>
+  <button type="button" class="btn-primary" onclick="openSubmitAction('day', '{{ .Day }}')">Submit day</button>
+  <button type="button" onclick="refreshDayRemote('{{ .Day }}')">Refresh remote</button>
   <button type="button" onclick="openImportDialog('day-import-dialog', 'day-import-form')">Import file</button>
 </div>
+<p class="muted" style="margin-top:0;">
+  Remote last refresh:
+  <span id="day-remote-refreshed-at" class="js-fmt-datetime" data-iso="{{ .RemoteRefreshedAt }}">{{ .RemoteRefreshedAt }}</span>
+</p>
 <dialog id="day-import-dialog">
   <form id="day-import-form" onsubmit="handleImportSubmit(event, { day: '{{ .Day }}', dialogID: 'day-import-dialog' })">
     <div class="dialog-header">

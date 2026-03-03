@@ -37,6 +37,8 @@
       --row-hover: rgba(0, 0, 0, 0.025);
       --pos: #15803d;
       --neg: #dc2626;
+      --delta-ok: #15803d;
+      --delta-warn: #c2410c;
       --accent: #0f1117;
       --accent-hover: #1f2937;
       --danger: #dc2626;
@@ -202,6 +204,52 @@
       flex-wrap: wrap;
       margin-bottom: 0.75rem;
     }
+    .actions-menu {
+      position: relative;
+    }
+    .actions-menu > summary {
+      list-style: none;
+      display: inline-flex;
+      align-items: center;
+      border: 1px solid var(--border);
+      border-radius: 5px;
+      background: var(--surface);
+      color: var(--text);
+      padding: 0.28rem 0.6rem;
+      font-size: 0.8rem;
+      cursor: pointer;
+      user-select: none;
+    }
+    .actions-menu > summary::-webkit-details-marker {
+      display: none;
+    }
+    .actions-menu > summary::after {
+      content: " ▾";
+      font-size: 0.72rem;
+      color: var(--muted);
+    }
+    .actions-menu[open] > summary {
+      background: var(--surface-2);
+    }
+    .actions-menu-items {
+      position: absolute;
+      top: calc(100% + 0.35rem);
+      right: 0;
+      z-index: 30;
+      min-width: 210px;
+      display: flex;
+      flex-direction: column;
+      gap: 0.3rem;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 0.45rem;
+      background: var(--surface);
+      box-shadow: 0 8px 24px rgba(0, 0, 0, 0.12);
+    }
+    .actions-menu-items button {
+      width: 100%;
+      justify-content: flex-start;
+    }
     .import-fields {
       display: grid;
       grid-template-columns: 1fr;
@@ -278,6 +326,18 @@
       font-size: 0.8rem;
       font-variant-numeric: tabular-nums;
       font-weight: 600;
+    }
+    .inline-delta {
+      font-family: ui-monospace, "SF Mono", "Cascadia Mono", monospace;
+      font-size: 0.72rem;
+      margin-left: 0.2rem;
+      white-space: nowrap;
+    }
+    .inline-delta-ok {
+      color: var(--delta-ok);
+    }
+    .inline-delta-warn {
+      color: var(--delta-warn);
     }
     tbody tr[data-source="local"] td:first-child { border-left: 3px solid var(--c-local); padding-left: calc(0.6rem - 3px); }
     tbody tr[data-source="synced"] td:first-child { border-left: 3px solid var(--c-synced); padding-left: calc(0.6rem - 3px); }
@@ -441,6 +501,8 @@
     let _editState = { mode: '', row: null, date: '' };
     let _confirmCallback = null;
     let _importPreviewState = { form: null, options: null, entries: [] };
+    let _submitState = { scope: '', value: '' };
+    let _submitRunToken = 0;
 
     async function apiFetch(method, url, body, options) {
       const fetchOptions = { method: method, headers: {}, body: undefined };
@@ -539,6 +601,15 @@
       return new Intl.DateTimeFormat(navigator.language, { dateStyle: 'medium' }).format(d);
     }
 
+    function fmtDateTime(iso) {
+      const d = new Date(String(iso || ''));
+      if (Number.isNaN(d.getTime())) return String(iso || 'Not loaded yet');
+      return new Intl.DateTimeFormat(navigator.language, {
+        dateStyle: 'medium',
+        timeStyle: 'short',
+      }).format(d);
+    }
+
     function toMins(hhmm) {
       const parts = String(hhmm || '').split(':');
       if (parts.length !== 2) return NaN;
@@ -585,6 +656,10 @@
       });
       target.querySelectorAll('.js-fmt-date').forEach((el) => {
         el.textContent = fmtDate(el.dataset.iso || el.textContent);
+      });
+      target.querySelectorAll('.js-fmt-datetime').forEach((el) => {
+        const raw = el.dataset.iso || el.textContent;
+        el.textContent = fmtDateTime(raw);
       });
       target.querySelectorAll('.js-fmt-delta').forEach((el) => {
         const value = Number(el.dataset.hours || '0');
@@ -667,12 +742,14 @@
       const dialog = document.getElementById(dialogID);
       const form = document.getElementById(formID);
       if (!dialog || !form) return;
+      clearImportFormStatus(form);
       if (!form.dataset.lookupLoaded) {
         try {
           await populateImportSelects(form);
           form.dataset.lookupLoaded = '1';
         } catch (err) {
           delete form.dataset.lookupLoaded;
+          setImportFormStatus(form, String(err.message || err), true);
           showToast(String(err.message || err), true);
           return;
         }
@@ -684,6 +761,33 @@
       const dialog = document.getElementById(dialogID);
       if (dialog && dialog.open) {
         dialog.close();
+      }
+    }
+
+    function setImportFormStatus(form, message, isError) {
+      if (!form) return;
+      let statusNode = form.querySelector('.import-form-status');
+      if (!statusNode) {
+        statusNode = document.createElement('p');
+        statusNode.className = 'import-form-status muted';
+        statusNode.style.marginTop = '0';
+        statusNode.style.marginBottom = '0.55rem';
+        const bodyNode = form.querySelector('.dialog-body');
+        if (bodyNode) {
+          bodyNode.prepend(statusNode);
+        } else {
+          form.prepend(statusNode);
+        }
+      }
+      statusNode.textContent = String(message || '');
+      statusNode.style.color = isError ? 'var(--danger)' : 'var(--muted)';
+    }
+
+    function clearImportFormStatus(form) {
+      if (!form) return;
+      const statusNode = form.querySelector('.import-form-status');
+      if (statusNode) {
+        statusNode.textContent = '';
       }
     }
 
@@ -712,6 +816,7 @@
       _importPreviewState.form = form;
       _importPreviewState.options = options || {};
       _importPreviewState.entries = Array.isArray(previewData.entries) ? previewData.entries : [];
+      setImportPreviewStatus('', false);
 
       const fileInput = form ? form.querySelector('input[name=file]') : null;
       const fileName = fileInput && fileInput.files && fileInput.files[0] ? fileInput.files[0].name : '';
@@ -794,17 +899,30 @@
       button.textContent = 'Import selected (' + count + ')';
     }
 
+    function setImportPreviewStatus(message, isError) {
+      const statusNode = document.getElementById('preview-status');
+      if (!statusNode) return;
+      statusNode.textContent = String(message || '');
+      statusNode.style.color = isError ? 'var(--danger)' : 'var(--muted)';
+    }
+
     function cancelImportPreview() {
       const dialog = document.getElementById('import-preview-dialog');
       if (dialog && dialog.open) {
         dialog.close();
       }
+      setImportPreviewStatus('', false);
       _importPreviewState = { form: null, options: null, entries: [] };
     }
 
     async function confirmImportPreview(modeFlag) {
       const form = _importPreviewState.form;
       if (!form) return;
+      const importButton = document.getElementById('preview-import-btn');
+      if (importButton) {
+        importButton.disabled = true;
+      }
+      setImportPreviewStatus('Importing selected rows...', false);
 
       const body = document.getElementById('preview-body');
       const skipIndices = [];
@@ -836,19 +954,26 @@
       try {
         const result = await apiFetch('POST', '/api/import', null, { formData: formData });
         const options = _importPreviewState.options || {};
-        cancelImportPreview();
-        if (options && options.dialogID) {
-          closeImportDialog(options.dialogID);
-        }
         let message = 'Imported ' + result.rowsPersisted + ' row(s).';
         if (result.overlapsSkipped) {
           message += ' Skipped ' + result.overlapsSkipped + ' overlapping row(s).';
+        }
+        if (result.reconcileWarning) {
+          message += ' Reconcile warning: ' + String(result.reconcileWarning);
+        }
+        setImportPreviewStatus(message, false);
+        openStatusDialog('Import result', '<div class="result-box">' + escapeHtml(message) + '</div>');
+        cancelImportPreview();
+        if (options && options.dialogID) {
+          closeImportDialog(options.dialogID);
         }
         showToast(message, false);
         if (options && options.day) {
           await reloadDayTable(options.day);
         } else if (options && options.refreshURL) {
           window.location.href = options.refreshURL;
+        } else if (options && options.refreshMonth) {
+          await reloadMonthTable(options.refreshMonth, true);
         }
       } catch (err) {
         if (
@@ -870,19 +995,39 @@
               onConfirm: function() { confirmImportPreview('skipOverlapping'); },
             },
           );
+          if (importButton) {
+            importButton.disabled = false;
+          }
           return;
         }
-        showToast(String(err.message || err), true);
+        const errMsg = String(err.message || err);
+        setImportPreviewStatus(errMsg, true);
+        openStatusDialog(
+          'Import failed',
+          '<div class="result-box">' + escapeHtml(errMsg) + '</div>'
+        );
+        showToast(errMsg, true);
+      } finally {
+        if (importButton) {
+          importButton.disabled = false;
+        }
       }
     }
 
     async function handleImportSubmit(event, options) {
       event.preventDefault();
       const form = event.target;
+      clearImportFormStatus(form);
       try {
         await submitImportForm(form, options || {});
       } catch (err) {
-        showToast(String(err.message || err), true);
+        const errMsg = String(err.message || err);
+        setImportFormStatus(form, errMsg, true);
+        openStatusDialog(
+          'Import failed',
+          '<div class="result-box">' + escapeHtml(errMsg) + '</div>'
+        );
+        showToast(errMsg, true);
       }
     }
 
@@ -1269,14 +1414,16 @@
       });
     }
 
-    async function reloadDayTable(day) {
-      const payload = await apiFetch('GET', '/api/day/' + encodeURIComponent(day));
+    async function reloadDayTable(day, refresh) {
+      const url = '/api/day/' + encodeURIComponent(day) + (refresh ? '?refresh=1' : '');
+      const payload = await apiFetch('GET', url);
+      const payloadDay = String(payload.date || payload.Date || day);
       const entries = payload.entries || payload.Entries || [];
       const tbody = document.getElementById('day-entries');
       if (!tbody) return;
       tbody.innerHTML = '';
       for (const entry of entries) {
-        appendDayEntryRow(entry, day);
+        appendDayEntryRow(entry, payloadDay);
       }
 
       const localHours = Number(payload.localHours !== undefined ? payload.localHours : payload.LocalHours || 0);
@@ -1299,7 +1446,123 @@
       if (remoteWorkedNode) {
         remoteWorkedNode.dataset.mins = String(Math.round(remoteWorked * 60));
       }
+      const refreshedNode = document.getElementById('day-remote-refreshed-at');
+      const refreshedAt = String(payload.remoteRefreshedAt || payload.RemoteRefreshedAt || '');
+      if (refreshedNode) {
+        refreshedNode.dataset.iso = refreshedAt;
+      }
       applyLocaleFormatting(document);
+    }
+
+    async function refreshDayRemote(day) {
+      try {
+        await reloadDayTable(day, true);
+        showToast('Remote day data refreshed.', false);
+      } catch (err) {
+        showToast(String(err.message || err), true);
+      }
+    }
+
+    function deltaClass(value) {
+      return Math.abs(Number(value || 0)) < 0.0001 ? 'inline-delta-ok' : 'inline-delta-warn';
+    }
+
+    function applyDeltaClass(node, value) {
+      if (!node) return;
+      node.classList.remove('inline-delta-ok', 'inline-delta-warn');
+      node.classList.add(deltaClass(value));
+    }
+
+    function renderMonthRows(rows) {
+      const tbody = document.getElementById('month-rows');
+      if (!tbody) return;
+      tbody.innerHTML = '';
+      for (const row of rows) {
+        const date = String(row.date || row.Date || '');
+        const localWorked = Number(row.localWorked !== undefined ? row.localWorked : row.LocalWorked || 0);
+        const localHours = Number(row.localHours !== undefined ? row.localHours : row.LocalHours || 0);
+        const remoteWorked = Number(row.remoteWorked !== undefined ? row.remoteWorked : row.RemoteWorked || 0);
+        const remoteHours = Number(row.remoteHours !== undefined ? row.remoteHours : row.RemoteHours || 0);
+        const workedDelta = Number(row.workedDeltaHours !== undefined ? row.workedDeltaHours : row.WorkedDeltaHours || 0);
+        const billableDelta = Number(row.billableDeltaHours !== undefined ? row.billableDeltaHours : row.BillableDeltaHours || 0);
+        const dayLink = String(row.dayLink || row.DayLink || ('/day/' + date));
+        const isToday = Boolean(row.isToday !== undefined ? row.isToday : row.IsToday);
+        const isWeekend = Boolean(row.isWeekend !== undefined ? row.isWeekend : row.IsWeekend);
+
+        const tr = document.createElement('tr');
+        tr.dataset.date = date;
+        if (isToday) {
+          tr.className = 'today';
+        } else if (isWeekend) {
+          tr.className = 'weekend';
+        }
+        tr.innerHTML = '' +
+          '<td><span class="js-fmt-date" data-iso="' + escapeHtml(date) + '">' + escapeHtml(date) + '</span></td>' +
+          '<td class="num"><span class="js-fmt-hours" data-mins="' + String(Math.round(localWorked * 60)) + '">' + String(Math.round(localWorked * 60)) + '</span></td>' +
+          '<td class="num"><span class="js-fmt-hours" data-mins="' + String(Math.round(localHours * 60)) + '">' + String(Math.round(localHours * 60)) + '</span></td>' +
+          '<td class="num">' +
+            '<span class="js-fmt-hours" data-mins="' + String(Math.round(remoteWorked * 60)) + '">' + String(Math.round(remoteWorked * 60)) + '</span>' +
+            '<span class="inline-delta ' + deltaClass(workedDelta) + '">(<span class="js-fmt-delta" data-hours="' + workedDelta + '">' + workedDelta + '</span>)</span>' +
+          '</td>' +
+          '<td class="num">' +
+            '<span class="js-fmt-hours" data-mins="' + String(Math.round(remoteHours * 60)) + '">' + String(Math.round(remoteHours * 60)) + '</span>' +
+            '<span class="inline-delta ' + deltaClass(billableDelta) + '">(<span class="js-fmt-delta" data-hours="' + billableDelta + '">' + billableDelta + '</span>)</span>' +
+          '</td>' +
+          '<td><a href="' + escapeHtml(dayLink) + '">Open</a></td>';
+        tbody.appendChild(tr);
+      }
+    }
+
+    async function reloadMonthTable(month, refresh) {
+      const url = '/api/month/' + encodeURIComponent(month) + (refresh ? '?refresh=1' : '');
+      const payload = await apiFetch('GET', url);
+      renderMonthRows(payload.rows || payload.Rows || []);
+
+      const totalLocalWorked = Number(payload.totalLocalWorked !== undefined ? payload.totalLocalWorked : payload.TotalLocalWorked || 0);
+      const totalLocal = Number(payload.totalLocal !== undefined ? payload.totalLocal : payload.TotalLocal || 0);
+      const totalRemoteWorked = Number(payload.totalRemoteWorked !== undefined ? payload.totalRemoteWorked : payload.TotalRemoteWorked || 0);
+      const totalRemote = Number(payload.totalRemote !== undefined ? payload.totalRemote : payload.TotalRemote || 0);
+      const totalWorkedDelta = Number(payload.totalWorkedDelta !== undefined ? payload.totalWorkedDelta : payload.TotalWorkedDelta || 0);
+      const totalBillableDelta = Number(payload.totalBillableDelta !== undefined ? payload.totalBillableDelta : payload.TotalBillableDelta || 0);
+
+      const localWorkedNode = document.getElementById('month-total-local-worked');
+      const localNode = document.getElementById('month-total-local');
+      const remoteWorkedNode = document.getElementById('month-total-remote-worked');
+      const remoteNode = document.getElementById('month-total-remote');
+      const workedDeltaNode = document.getElementById('month-total-worked-delta');
+      const billableDeltaNode = document.getElementById('month-total-billable-delta');
+      const workedWrap = document.getElementById('month-total-worked-delta-wrap');
+      const billableWrap = document.getElementById('month-total-billable-delta-wrap');
+      const refreshedNode = document.getElementById('month-remote-refreshed-at');
+      const authErrorNode = document.getElementById('month-auth-error');
+      const authErrorMsg = String(payload.authErrorMsg || payload.AuthErrorMsg || '');
+
+      if (localWorkedNode) localWorkedNode.dataset.mins = String(Math.round(totalLocalWorked * 60));
+      if (localNode) localNode.dataset.mins = String(Math.round(totalLocal * 60));
+      if (remoteWorkedNode) remoteWorkedNode.dataset.mins = String(Math.round(totalRemoteWorked * 60));
+      if (remoteNode) remoteNode.dataset.mins = String(Math.round(totalRemote * 60));
+      if (workedDeltaNode) workedDeltaNode.dataset.hours = String(totalWorkedDelta);
+      if (billableDeltaNode) billableDeltaNode.dataset.hours = String(totalBillableDelta);
+      applyDeltaClass(workedWrap, totalWorkedDelta);
+      applyDeltaClass(billableWrap, totalBillableDelta);
+      if (refreshedNode) {
+        refreshedNode.dataset.iso = String(payload.remoteRefreshedAt || payload.RemoteRefreshedAt || '');
+      }
+      if (authErrorNode) {
+        authErrorNode.textContent = authErrorMsg;
+        authErrorNode.hidden = authErrorMsg === '';
+      }
+
+      applyLocaleFormatting(document);
+    }
+
+    async function refreshMonthRemote(month) {
+      try {
+        await reloadMonthTable(month, true);
+        showToast('Remote month data refreshed.', false);
+      } catch (err) {
+        showToast(String(err.message || err), true);
+      }
     }
 
     function appendDayEntryRow(entry, day) {
@@ -1380,8 +1643,9 @@
     function openSubmitDialog(title, htmlContent) {
       const dialog = document.getElementById('submit-dialog');
       const titleNode = document.getElementById('submit-dialog-title');
-      const bodyNode = document.getElementById('submit-dialog-body');
-      if (!dialog || !titleNode || !bodyNode) return;
+      const bodyNode = document.getElementById('submit-dialog-result');
+      const dryRunToggle = document.getElementById('submit-dry-run');
+      if (!dialog || !titleNode || !bodyNode || !dryRunToggle) return;
       titleNode.textContent = title;
       bodyNode.innerHTML = htmlContent;
       applyLocaleFormatting(bodyNode);
@@ -1390,89 +1654,114 @@
       }
     }
 
+    function setSubmitDialogMode(mode) {
+      const optionsWrap = document.getElementById('submit-options');
+      const runButton = document.getElementById('submit-dialog-run');
+      const dryRunToggle = document.getElementById('submit-dry-run');
+      if (!optionsWrap || !runButton || !dryRunToggle) return;
+
+      if (mode === 'status') {
+        optionsWrap.hidden = true;
+        runButton.hidden = true;
+        runButton.disabled = true;
+        dryRunToggle.checked = false;
+        _submitState = { scope: '', value: '' };
+        return;
+      }
+
+      optionsWrap.hidden = false;
+      runButton.hidden = false;
+      runButton.disabled = false;
+      runButton.textContent = 'Run submit';
+    }
+
+    function openStatusDialog(title, htmlContent) {
+      setSubmitDialogMode('status');
+      openSubmitDialog(title, htmlContent);
+    }
+
     function closeSubmitDialog() {
       const dialog = document.getElementById('submit-dialog');
       if (dialog && dialog.open) dialog.close();
+      setSubmitDialogMode('submit');
     }
 
-    async function submitDay(date) {
-      openSubmitDialog(
-        'Submit ' + date,
-        '<div class="result-box">Submitting day...</div>'
-      );
+    function openSubmitAction(scope, value) {
+      setSubmitDialogMode('submit');
+      _submitState = { scope: scope, value: value };
+      const dryRunToggle = document.getElementById('submit-dry-run');
+      const runButton = document.getElementById('submit-dialog-run');
+      if (dryRunToggle) {
+        dryRunToggle.checked = false;
+      }
+      if (runButton) {
+        runButton.textContent = 'Run submit';
+        runButton.disabled = false;
+      }
+      openSubmitDialog('Submit ' + value, '<div class="result-box">Choose options, then run submit.</div>');
+    }
+
+    async function runSubmitAction() {
+      if (!_submitState.scope || !_submitState.value) return;
+      const action = { scope: _submitState.scope, value: _submitState.value };
+      const runToken = ++_submitRunToken;
+      const dryRunToggle = document.getElementById('submit-dry-run');
+      const runButton = document.getElementById('submit-dialog-run');
+      const dryRun = Boolean(dryRunToggle && dryRunToggle.checked);
+
+      let url = '';
+      if (action.scope === 'day') {
+        url = '/api/submit/day/' + encodeURIComponent(action.value);
+      } else if (action.scope === 'month') {
+        url = '/api/submit/month/' + encodeURIComponent(action.value);
+      } else {
+        return;
+      }
+      if (dryRun) {
+        url += '?dry_run=1';
+      }
+
+      if (runButton) {
+        runButton.disabled = true;
+      }
+      openSubmitDialog('Submit ' + action.value, '<div class="result-box">Submitting...</div>');
       try {
-        const result = await apiFetch('POST', '/api/submit/day/' + encodeURIComponent(date));
-        if (!result.dryRun) {
-          await reloadDayTable(date);
+        const result = await apiFetch('POST', url);
+        if (!dryRun) {
+          if (action.scope === 'day') {
+            await reloadDayTable(action.value, false);
+          } else if (action.scope === 'month') {
+            await reloadMonthTable(action.value, false);
+          }
         }
-        openSubmitDialog('Submit ' + date, renderDaySubmitResult(result));
-        showToast('Day submission finished.', false);
+        if (runToken !== _submitRunToken) {
+          return;
+        }
+        const html = action.scope === 'day'
+          ? renderDaySubmitResult(result)
+          : renderMonthSubmitResult(result);
+        openSubmitDialog('Submit ' + action.value, html);
+        showToast(dryRun ? 'Dry-run finished.' : 'Submit finished.', false);
       } catch (err) {
+        if (runToken !== _submitRunToken) {
+          return;
+        }
         openSubmitDialog(
-          'Submit ' + date,
+          'Submit ' + action.value,
           '<div class="result-box">' + escapeHtml(String(err.message || err)) + '</div>'
         );
         showToast(String(err.message || err), true);
-      }
-    }
-
-    async function previewSubmitDay(date) {
-      openSubmitDialog(
-        'Preview submit ' + date,
-        '<div class="result-box">Loading preview...</div>'
-      );
-      try {
-        const result = await apiFetch('POST', '/api/submit/day/' + encodeURIComponent(date) + '?dry_run=1');
-        openSubmitDialog('Preview submit ' + date, renderDaySubmitResult(result));
-      } catch (err) {
-        openSubmitDialog(
-          'Preview submit ' + date,
-          '<div class="result-box">' + escapeHtml(String(err.message || err)) + '</div>'
-        );
-        showToast(String(err.message || err), true);
-      }
-    }
-
-    async function submitMonth(month) {
-      openSubmitDialog(
-        'Submit ' + month,
-        '<div class="result-box">Submitting month...</div>'
-      );
-      try {
-        const result = await apiFetch('POST', '/api/submit/month/' + encodeURIComponent(month));
-        openSubmitDialog('Submit ' + month, renderMonthSubmitResult(result));
-        showToast('Month submission finished.', false);
-      } catch (err) {
-        openSubmitDialog(
-          'Submit ' + month,
-          '<div class="result-box">' + escapeHtml(String(err.message || err)) + '</div>'
-        );
-        showToast(String(err.message || err), true);
-      }
-    }
-
-    async function previewSubmitMonth(month) {
-      openSubmitDialog(
-        'Preview submit ' + month,
-        '<div class="result-box">Loading preview...</div>'
-      );
-      try {
-        const result = await apiFetch('POST', '/api/submit/month/' + encodeURIComponent(month) + '?dry_run=1');
-        openSubmitDialog('Preview submit ' + month, renderMonthSubmitResult(result));
-      } catch (err) {
-        openSubmitDialog(
-          'Preview submit ' + month,
-          '<div class="result-box">' + escapeHtml(String(err.message || err)) + '</div>'
-        );
-        showToast(String(err.message || err), true);
+      } finally {
+        if (runButton && runToken === _submitRunToken) {
+          runButton.disabled = false;
+        }
       }
     }
 
     async function deleteMonthEntries(month) {
       try {
         await apiFetch('DELETE', '/api/month/' + encodeURIComponent(month) + '/worklogs');
-        showToast('Local entries deleted.', false);
-        window.location.reload();
+        window.location.href = '/month/' + encodeURIComponent(month);
       } catch (err) {
         showToast(String(err.message || err), true);
       }
@@ -1481,8 +1770,8 @@
     async function copyMonthRemote(month) {
       try {
         const result = await apiFetch('POST', '/api/month/' + encodeURIComponent(month) + '/copy-from-remote');
+        await reloadMonthTable(month, false);
         showToast('Copied ' + result.copied + ' of ' + result.total + ' remote entries.', false);
-        window.location.reload();
       } catch (err) {
         showToast(String(err.message || err), true);
       }
@@ -1494,15 +1783,39 @@
     }
 
     async function deleteMonthRemoteEntries(month) {
+      setSubmitDialogMode('status');
+      openSubmitDialog(
+        'Delete remote ' + month,
+        '<div class="result-box">Deleting remote entries...</div>'
+      );
       try {
         const result = await apiFetch('DELETE', '/api/month/' + encodeURIComponent(month) + '/remote-worklogs');
+        let html = '<div class="result-box">Deleted: ' + result.deleted + ' | Locked days skipped: ' + result.skippedLocked + '</div>';
+        if (Array.isArray(result.lockedDays) && result.lockedDays.length > 0) {
+          html += '<div class="result-box">Locked days: ';
+          for (let i = 0; i < result.lockedDays.length; i++) {
+            const day = String(result.lockedDays[i]);
+            if (i > 0) html += ', ';
+            html += '<span class="js-fmt-date" data-iso="' + escapeHtml(day) + '">' + escapeHtml(day) + '</span>';
+          }
+          html += '</div>';
+        }
+        try {
+          await reloadMonthTable(month, false);
+        } catch (reloadErr) {
+          html += '<div class="result-box">Delete completed, but month refresh failed: ' + escapeHtml(String(reloadErr.message || reloadErr)) + '</div>';
+        }
+        openSubmitDialog('Delete remote ' + month, html);
         let msg = 'Deleted ' + result.deleted + ' remote entries.';
         if (result.skippedLocked > 0) {
           msg += ' ' + result.skippedLocked + ' locked days skipped.';
         }
         showToast(msg, false);
-        window.location.reload();
       } catch (err) {
+        openSubmitDialog(
+          'Delete remote ' + month,
+          '<div class="result-box">' + escapeHtml(String(err.message || err)) + '</div>'
+        );
         showToast(String(err.message || err), true);
       }
     }
@@ -1552,6 +1865,13 @@
           _editState = { mode: '', row: null, date: '' };
         });
       }
+      const submitDialog = document.getElementById('submit-dialog');
+      if (submitDialog) {
+        submitDialog.addEventListener('close', () => {
+          _submitState = { scope: '', value: '' };
+          _submitRunToken++;
+        });
+      }
     });
   </script>
   <dialog id="confirm-dialog">
@@ -1571,9 +1891,16 @@
     <div class="dialog-header">
       <h2 id="submit-dialog-title">Submit</h2>
     </div>
-    <div class="dialog-body" id="submit-dialog-body"></div>
+    <div class="dialog-body">
+      <label id="submit-options" style="display:inline-flex;align-items:center;gap:0.35rem;margin-bottom:0.55rem;">
+        <input id="submit-dry-run" type="checkbox">
+        Dry run (preview only, no remote changes)
+      </label>
+      <div id="submit-dialog-result"></div>
+    </div>
     <div class="dialog-footer">
       <button type="button" onclick="closeSubmitDialog()">Close</button>
+      <button type="button" class="btn-primary" id="submit-dialog-run" onclick="runSubmitAction()">Run submit</button>
     </div>
   </dialog>
   <dialog id="import-preview-dialog" style="min-width: min(90vw, 900px);">
@@ -1582,6 +1909,7 @@
     </div>
     <div class="dialog-body">
       <p id="preview-summary"></p>
+      <p id="preview-status" class="muted" style="margin-top:0;"></p>
       <div class="table-wrap" style="max-height:400px;overflow-y:auto;overflow-x:auto;">
         <table id="preview-table">
           <thead>

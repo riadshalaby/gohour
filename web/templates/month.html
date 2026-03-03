@@ -3,36 +3,41 @@
 <div class="page-nav">
   <a href="/month/{{ .PreviousMonth }}">Previous</a>
   <a href="/month/{{ .NextMonth }}">Next</a>
-  <button type="button" class="btn-primary"
-    onclick="openConfirmDialog(
-      'Submit {{ .CurrentMonth }}',
-      'Push all local entries for this month to OnePoint. This cannot be undone.',
-      function() { submitMonth('{{ .CurrentMonth }}'); }
-    )">Submit month</button>
-  <button type="button" onclick="previewSubmitMonth('{{ .CurrentMonth }}')">Preview submit</button>
-  <button type="button"
-    onclick="openConfirmDialog(
-      'Copy remote entries',
-      'Import all remote entries for {{ .CurrentMonth }} into local database?',
-      function() { copyMonthRemote('{{ .CurrentMonth }}'); },
-      'Copy'
-    )">Copy from remote</button>
-  <button type="button" class="btn-danger"
-    onclick="openConfirmDialog(
-      'Delete remote entries',
-      'Delete ALL remote OnePoint entries for {{ .CurrentMonth }}? Locked days will be skipped. This cannot be undone.',
-      function() { deleteMonthRemoteEntries('{{ .CurrentMonth }}'); },
-      'Delete'
-    )">Delete all remote</button>
-  <button type="button" class="btn-danger"
-    onclick="openConfirmDialog(
-      'Delete local entries',
-      'Delete ALL local entries for {{ .CurrentMonth }}? This cannot be undone.',
-      function() { deleteMonthEntries('{{ .CurrentMonth }}'); },
-      'Delete'
-    )">Delete all local</button>
-  <button type="button" onclick="openImportDialog('month-import-dialog', 'month-import-form')">Import file</button>
+  <button type="button" class="btn-primary" onclick="openSubmitAction('month', '{{ .CurrentMonth }}')">Submit month</button>
+  <details class="actions-menu">
+    <summary>Actions</summary>
+    <div class="actions-menu-items">
+      <button type="button" onclick="refreshMonthRemote('{{ .CurrentMonth }}')">Refresh remote</button>
+      <button type="button"
+        onclick="openConfirmDialog(
+          'Copy remote entries',
+          'Import all remote entries for {{ .CurrentMonth }} into local database?',
+          function() { copyMonthRemote('{{ .CurrentMonth }}'); },
+          'Copy'
+        )">Copy from remote</button>
+      <button type="button" class="btn-danger"
+        onclick="openConfirmDialog(
+          'Delete remote entries',
+          'Delete ALL remote OnePoint entries for {{ .CurrentMonth }}? Locked days will be skipped. This cannot be undone.',
+          function() { deleteMonthRemoteEntries('{{ .CurrentMonth }}'); },
+          'Delete'
+        )">Delete all remote</button>
+      <button type="button" class="btn-danger"
+        onclick="openConfirmDialog(
+          'Delete local entries',
+          'Delete ALL local entries for {{ .CurrentMonth }}? This cannot be undone.',
+          function() { deleteMonthEntries('{{ .CurrentMonth }}'); },
+          'Delete'
+        )">Delete all local</button>
+      <button type="button" onclick="openImportDialog('month-import-dialog', 'month-import-form')">Import file</button>
+    </div>
+  </details>
 </div>
+<div id="month-auth-error" class="auth-banner"{{ if not .AuthErrorMsg }} hidden{{ end }}>{{ .AuthErrorMsg }}</div>
+<p class="muted" style="margin-top:0;">
+  Remote last refresh:
+  <span id="month-remote-refreshed-at" class="js-fmt-datetime" data-iso="{{ .RemoteRefreshedAt }}">{{ .RemoteRefreshedAt }}</span>
+</p>
 <dialog id="month-import-dialog">
   <form id="month-import-form" onsubmit="handleImportSubmit(event, { refreshURL: '/month/{{ .CurrentMonth }}', dialogID: 'month-import-dialog' })">
     <div class="dialog-header">
@@ -86,24 +91,26 @@
         <th>Lcl Billable</th>
         <th>Rmt Worked</th>
         <th>Rmt Billable</th>
-        <th>Delta</th>
         <th>Day</th>
       </tr>
     </thead>
-    <tbody>
+    <tbody id="month-rows">
       {{ range .Rows }}
-      <tr{{ if .IsToday }} class="today"{{ else if .IsWeekend }} class="weekend"{{ end }}>
+      <tr data-date="{{ .Date }}"{{ if .IsToday }} class="today"{{ else if .IsWeekend }} class="weekend"{{ end }}>
         <td><span class="js-fmt-date" data-iso="{{ .Date }}">{{ .Date }}</span></td>
         <td class="num"><span class="js-fmt-hours" data-mins="{{ toMins .LocalWorked }}">{{ toMins .LocalWorked }}</span></td>
         <td class="num"><span class="js-fmt-hours" data-mins="{{ toMins .LocalHours }}">{{ toMins .LocalHours }}</span></td>
-        <td class="num"><span class="js-fmt-hours" data-mins="{{ toMins .RemoteWorked }}">{{ toMins .RemoteWorked }}</span></td>
-        <td class="num"><span class="js-fmt-hours" data-mins="{{ toMins .RemoteHours }}">{{ toMins .RemoteHours }}</span></td>
         <td class="num">
-          {{ if ge .DeltaHours 0.0 }}
-          <span class="delta-pos js-fmt-delta" data-hours="{{ .DeltaHours }}">{{ fmtDelta .DeltaHours }}</span>
-          {{ else }}
-          <span class="delta-neg js-fmt-delta" data-hours="{{ .DeltaHours }}">{{ fmtDelta .DeltaHours }}</span>
-          {{ end }}
+          <span class="js-fmt-hours" data-mins="{{ toMins .RemoteWorked }}">{{ toMins .RemoteWorked }}</span>
+          <span class="inline-delta {{ if isZeroDelta .WorkedDeltaHours }}inline-delta-ok{{ else }}inline-delta-warn{{ end }}">(
+            <span class="js-fmt-delta" data-hours="{{ .WorkedDeltaHours }}">{{ fmtDelta .WorkedDeltaHours }}</span>
+          )</span>
+        </td>
+        <td class="num">
+          <span class="js-fmt-hours" data-mins="{{ toMins .RemoteHours }}">{{ toMins .RemoteHours }}</span>
+          <span class="inline-delta {{ if isZeroDelta .BillableDeltaHours }}inline-delta-ok{{ else }}inline-delta-warn{{ end }}">(
+            <span class="js-fmt-delta" data-hours="{{ .BillableDeltaHours }}">{{ fmtDelta .BillableDeltaHours }}</span>
+          )</span>
         </td>
         <td><a href="{{ .DayLink }}">Open</a></td>
       </tr>
@@ -112,11 +119,20 @@
     <tfoot>
       <tr>
         <th>Total</th>
-        <td class="num"><span class="js-fmt-hours" data-mins="{{ toMins .TotalLocalWorked }}">{{ toMins .TotalLocalWorked }}</span></td>
-        <td class="num"><span class="js-fmt-hours" data-mins="{{ toMins .TotalLocal }}">{{ toMins .TotalLocal }}</span></td>
-        <td class="num"><span class="js-fmt-hours" data-mins="{{ toMins .TotalRemoteWorked }}">{{ toMins .TotalRemoteWorked }}</span></td>
-        <td class="num"><span class="js-fmt-hours" data-mins="{{ toMins .TotalRemote }}">{{ toMins .TotalRemote }}</span></td>
-        <td class="num"><span class="js-fmt-delta" data-hours="{{ .TotalDelta }}">{{ fmtDelta .TotalDelta }}</span></td>
+        <td class="num"><span id="month-total-local-worked" class="js-fmt-hours" data-mins="{{ toMins .TotalLocalWorked }}">{{ toMins .TotalLocalWorked }}</span></td>
+        <td class="num"><span id="month-total-local" class="js-fmt-hours" data-mins="{{ toMins .TotalLocal }}">{{ toMins .TotalLocal }}</span></td>
+        <td class="num">
+          <span id="month-total-remote-worked" class="js-fmt-hours" data-mins="{{ toMins .TotalRemoteWorked }}">{{ toMins .TotalRemoteWorked }}</span>
+          <span id="month-total-worked-delta-wrap" class="inline-delta {{ if isZeroDelta .TotalWorkedDelta }}inline-delta-ok{{ else }}inline-delta-warn{{ end }}">(
+            <span id="month-total-worked-delta" class="js-fmt-delta" data-hours="{{ .TotalWorkedDelta }}">{{ fmtDelta .TotalWorkedDelta }}</span>
+          )</span>
+        </td>
+        <td class="num">
+          <span id="month-total-remote" class="js-fmt-hours" data-mins="{{ toMins .TotalRemote }}">{{ toMins .TotalRemote }}</span>
+          <span id="month-total-billable-delta-wrap" class="inline-delta {{ if isZeroDelta .TotalBillableDelta }}inline-delta-ok{{ else }}inline-delta-warn{{ end }}">(
+            <span id="month-total-billable-delta" class="js-fmt-delta" data-hours="{{ .TotalBillableDelta }}">{{ fmtDelta .TotalBillableDelta }}</span>
+          )</span>
+        </td>
         <td></td>
       </tr>
     </tfoot>

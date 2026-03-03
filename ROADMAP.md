@@ -1,5 +1,8 @@
 # ROADMAP for v0.2.3
 
+## Status
+Completed and shipped on branch `feature/v0.2.3` (pending release tag `v0.2.3`).
+
 ## Release Goal
 Improve reliability and usability of month/day workflows in the web UI, with a focus on remote data consistency, faster operator feedback, and cleaner release handling.
 
@@ -52,3 +55,11 @@ Improve reliability and usability of month/day workflows in the web UI, with a f
 - Month view displays deltas inline with remote totals and expected colors.
 - Remote write actions produce auditable local log entries.
 - README and Cobra help text are updated when CLI/UI behavior changes.
+
+## Delivered Notes
+- Added month/day remote refresh APIs and UI timestamps.
+- Unified submit and preview into one submit dialog with dry-run toggle.
+- Added targeted reconcile and unsynced-only post-import reconcile behavior.
+- Added inline month deltas and month actions menu cleanup.
+- Added file-based audit logging for submit and delete-remote operations.
+- Added release automation scripts: cross-platform build with checksums and release helper.
