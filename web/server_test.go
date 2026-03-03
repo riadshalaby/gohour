@@ -1580,8 +1580,9 @@ func TestServer_DeleteMonthRemoteWorklogs_SkipsLocked(t *testing.T) {
 		t.Fatalf("unexpected lockedDays payload: %+v", payload["lockedDays"])
 	}
 
-	if client.persistCalls != 1 {
-		t.Fatalf("expected exactly one clear persist call, got %d", client.persistCalls)
+	expectedPersistCalls := 31 - 1 // March days minus one locked day
+	if client.persistCalls != expectedPersistCalls {
+		t.Fatalf("expected %d clear persist calls, got %d", expectedPersistCalls, client.persistCalls)
 	}
 	day1Payload := client.persistByDate["2026-03-01"]
 	if day1Payload != nil {
@@ -1593,6 +1594,9 @@ func TestServer_DeleteMonthRemoteWorklogs_SkipsLocked(t *testing.T) {
 	}
 	if len(day2Payload) != 0 {
 		t.Fatalf("expected empty payload to clear day, got %+v", day2Payload)
+	}
+	if _, ok := client.persistByDate["2026-03-03"]; !ok {
+		t.Fatalf("expected clear call for empty day to catch stale month totals")
 	}
 }
 
