@@ -1,0 +1,82 @@
+{{ define "partial" }}
+{{- /* Main swap target: TR rows for #month-rows tbody innerHTML */}}
+{{ range .Rows }}
+<tr data-date="{{ .Date }}" data-href="{{ .DayLink }}"{{ if .IsToday }} class="today"{{ else if .IsWeekend }} class="weekend"{{ end }} onclick="if(window.innerWidth < 768){ window.location.href='{{ .DayLink }}'; }">
+  <td data-label="Date">
+    <span class="js-fmt-date" data-iso="{{ .Date }}">{{ .Date }}</span>
+    {{ if .HasLockedRemote }}<span class="locked-indicator" title="Remote day has locked entries">🔒</span>{{ end }}
+  </td>
+  <td data-label="Local Worked" class="num"><span class="js-fmt-hours" data-mins="{{ toMins .LocalWorked }}">{{ toMins .LocalWorked }}</span></td>
+  <td data-label="Local Billable" class="num"><span class="js-fmt-hours" data-mins="{{ toMins .LocalHours }}">{{ toMins .LocalHours }}</span></td>
+  <td data-label="Remote Worked" class="num">
+    <span class="js-fmt-hours" data-mins="{{ toMins .RemoteWorked }}">{{ toMins .RemoteWorked }}</span>
+    {{ if not (isZeroDelta .WorkedDeltaHours) }}
+    <span class="delta-pill delta-pill-warn">&nbsp;<span class="js-fmt-delta" data-hours="{{ .WorkedDeltaHours }}">{{ fmtDelta .WorkedDeltaHours }}</span></span>
+    {{ else }}
+    <span class="delta-pill delta-pill-ok"><span class="js-fmt-delta" data-hours="{{ .WorkedDeltaHours }}">{{ fmtDelta .WorkedDeltaHours }}</span></span>
+    {{ end }}
+  </td>
+  <td data-label="Remote Billable" class="num">
+    <span class="js-fmt-hours" data-mins="{{ toMins .RemoteHours }}">{{ toMins .RemoteHours }}</span>
+    {{ if not (isZeroDelta .BillableDeltaHours) }}
+    <span class="delta-pill delta-pill-warn"><span class="js-fmt-delta" data-hours="{{ .BillableDeltaHours }}">{{ fmtDelta .BillableDeltaHours }}</span></span>
+    {{ else }}
+    <span class="delta-pill delta-pill-ok"><span class="js-fmt-delta" data-hours="{{ .BillableDeltaHours }}">{{ fmtDelta .BillableDeltaHours }}</span></span>
+    {{ end }}
+  </td>
+  <td data-label="Open"><a href="{{ .DayLink }}">Open</a></td>
+</tr>
+{{ end }}
+
+{{- /* OOB swaps: stat cards and meta */}}
+<div id="month-stats" hx-swap-oob="outerHTML">
+  <div class="stat-cards">
+    <div class="stat-card">
+      <div class="stat-label">Local Worked</div>
+      <div class="stat-value" id="month-total-local-worked">
+        <span class="js-fmt-hours" data-mins="{{ toMins .TotalLocalWorked }}">{{ toMins .TotalLocalWorked }}</span>
+      </div>
+      <div class="stat-sublabel">hours</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-label">Local Billable</div>
+      <div class="stat-value" id="month-total-local">
+        <span class="js-fmt-hours" data-mins="{{ toMins .TotalLocal }}">{{ toMins .TotalLocal }}</span>
+      </div>
+      <div class="stat-sublabel">hours</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-label">Remote Worked</div>
+      <div class="stat-value" id="month-total-remote-worked">
+        <span class="js-fmt-hours" data-mins="{{ toMins .TotalRemoteWorked }}">{{ toMins .TotalRemoteWorked }}</span>
+      </div>
+      <div class="stat-sublabel">hours</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-label">Remote Billable</div>
+      <div class="stat-value" id="month-total-remote">
+        <span class="js-fmt-hours" data-mins="{{ toMins .TotalRemote }}">{{ toMins .TotalRemote }}</span>
+      </div>
+      <div class="stat-sublabel">hours</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-label">Worked Δ</div>
+      <div class="stat-value {{ if isZeroDelta .TotalWorkedDelta }}ok{{ else }}warn{{ end }}" id="month-stat-worked-delta">
+        <span class="js-fmt-delta" data-hours="{{ .TotalWorkedDelta }}">{{ fmtDelta .TotalWorkedDelta }}</span>
+      </div>
+      <div class="stat-sublabel">hours</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-label">Billable Δ</div>
+      <div class="stat-value {{ if isZeroDelta .TotalBillableDelta }}ok{{ else }}warn{{ end }}" id="month-stat-billable-delta">
+        <span class="js-fmt-delta" data-hours="{{ .TotalBillableDelta }}">{{ fmtDelta .TotalBillableDelta }}</span>
+      </div>
+      <div class="stat-sublabel">hours</div>
+    </div>
+  </div>
+</div>
+
+<div id="month-auth-error" hx-swap-oob="outerHTML" class="auth-banner"{{ if not .AuthErrorMsg }} hidden{{ end }}>{{ .AuthErrorMsg }}</div>
+
+<span id="month-remote-refreshed-at" hx-swap-oob="outerHTML" class="js-fmt-datetime refresh-timestamp" data-iso="{{ .RemoteRefreshedAt }}">{{ .RemoteRefreshedAt }}</span>
+{{ end }}

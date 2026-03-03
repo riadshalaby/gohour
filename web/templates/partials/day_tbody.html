@@ -1,0 +1,32 @@
+{{ define "partial" }}
+{{- /* Main swap target: TR rows for #day-entries tbody innerHTML */}}
+{{ range .DayRow.Entries }}
+<tr data-id="{{ .ID }}" data-date="{{ $.Day }}" data-source="{{ .Source }}" data-start="{{ .Start }}" data-end="{{ .End }}" data-duration-mins="{{ .DurationMins }}" data-project="{{ .Project }}" data-activity="{{ .Activity }}" data-skill="{{ .Skill }}" data-billable-mins="{{ .BillableMins }}" data-description="{{ .Description }}">
+  <td data-col="source" data-label="Status"><span class="badge badge-{{ .Source }}">{{ .Source }}</span></td>
+  <td data-col="date" data-label="Date"><span class="js-fmt-date" data-iso="{{ $.Day }}">{{ $.Day }}</span></td>
+  <td data-col="start" data-label="Start" class="time"><span class="js-fmt-time" data-hhmm="{{ .Start }}">{{ .Start }}</span></td>
+  <td data-col="end" data-label="End" class="time"><span class="js-fmt-time" data-hhmm="{{ .End }}">{{ .End }}</span></td>
+  <td data-col="duration" data-label="Duration" class="num"><span class="js-fmt-hours" data-mins="{{ .DurationMins }}">{{ .DurationMins }}</span></td>
+  <td data-col="project" data-label="Project">{{ .Project }}</td>
+  <td data-col="activity" data-label="Activity">{{ .Activity }}</td>
+  <td data-col="skill" data-label="Skill">{{ .Skill }}</td>
+  <td data-col="billable" data-label="Billable" class="num"><span class="js-fmt-hours" data-mins="{{ .BillableMins }}">{{ .BillableMins }}</span></td>
+  <td data-col="description" data-label="Description">{{ .Description }}</td>
+  <td data-col="actions" data-label="Actions" class="actions">
+    {{ if ne .Source "remote" }}
+    <button type="button" class="btn-icon" title="Edit entry" aria-label="Edit entry" onclick="editRow(this)">✎</button>
+    <button type="button" class="btn-danger btn-icon" title="Delete entry" aria-label="Delete entry" onclick="deleteRow(this)">🗑</button>
+    {{ else }}
+    <span class="muted">—</span>
+    {{ end }}
+  </td>
+</tr>
+{{ end }}
+
+{{- /* OOB swaps: stat values and refresh timestamp */}}
+<span id="day-local-worked" hx-swap-oob="outerHTML" class="js-fmt-hours" data-mins="{{ toMins .DayRow.LocalWorkedHours }}">{{ toMins .DayRow.LocalWorkedHours }}</span>
+<span id="day-local-hours" hx-swap-oob="outerHTML" class="js-fmt-hours" data-mins="{{ toMins .DayRow.LocalHours }}">{{ toMins .DayRow.LocalHours }}</span>
+<span id="day-remote-worked" hx-swap-oob="outerHTML" class="js-fmt-hours" data-mins="{{ toMins .DayRow.RemoteWorkedHours }}">{{ toMins .DayRow.RemoteWorkedHours }}</span>
+<span id="day-remote-hours" hx-swap-oob="outerHTML" class="js-fmt-hours" data-mins="{{ toMins .DayRow.RemoteHours }}">{{ toMins .DayRow.RemoteHours }}</span>
+<span id="day-remote-refreshed-at" hx-swap-oob="outerHTML" class="js-fmt-datetime refresh-timestamp" data-iso="{{ .RemoteRefreshedAt }}">{{ .RemoteRefreshedAt }}</span>
+{{ end }}

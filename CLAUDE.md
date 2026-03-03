@@ -64,3 +64,18 @@
 - Work in the current branch.
 - Never auto commit.
 - Human reviews diffs before commit.
+
+## Release Rules
+- Never release directly from a feature branch.
+- A feature is releasable only after it is merged into `main` via PR and required checks/tests pass.
+- Create tag `vX.Y.Z` on the corresponding merge commit in `main` (no unrelated extra commit between merge and tag).
+- Build release artifacts from the tagged commit with embedded version metadata:
+  - `go build -ldflags "-X gohour/cmd.Version=vX.Y.Z" ...`
+- Publish GitHub release with:
+  - consistent notes format: "Changes since `<previous-tag>`",
+  - distribution binaries for `darwin/linux/windows` on `amd64/arm64`,
+  - `SHA256SUMS`.
+- After the release is done:
+  - reset `.ai/PLAN.md` for the next cycle,
+  - reset `.ai/REVIEW.md` for the next cycle,
+  - rework `ROADMAP.md` to prepare scope and priorities for the next version.

@@ -1,0 +1,55 @@
+{{ define "partial" }}
+{{ if .IsError }}
+<div class="dialog-error">{{ .Error }}</div>
+{{ else }}
+  {{ if .DryRun }}
+  <div class="result-box">Preview only. No remote changes were made.</div>
+  {{ end }}
+
+  {{ if eq .Scope "day" }}
+    {{ if gt (len .Result.Days) 0 }}
+    {{ $day := index .Result.Days 0 }}
+    <div class="result-box">
+      {{ if .DryRun }}Would add{{ else }}Added{{ end }}: {{ $day.Added }} |
+      Duplicates: {{ $day.Duplicates }} |
+      Overlaps: {{ $day.Overlaps }} |
+      Locked: {{ if $day.Locked }}yes{{ else }}no{{ end }}
+    </div>
+    {{ else }}
+    <div class="result-box">No local entries found for this day.</div>
+    {{ end }}
+  {{ else }}
+    <div class="result-box">
+      {{ if .DryRun }}Would add{{ else }}Added{{ end }}:
+      {{ if .DryRun }}see day rows{{ else }}{{ .Result.Submitted }}{{ end }}
+      | Duplicates: {{ .Result.Duplicates }} |
+      Overlaps: {{ .Result.Overlaps }} |
+      Locked days: {{ len .Result.LockedDays }}
+    </div>
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>Date</th>
+            <th>{{ if .DryRun }}Would Add{{ else }}Added{{ end }}</th>
+            <th>Duplicates</th>
+            <th>Overlaps</th>
+            <th>Locked</th>
+          </tr>
+        </thead>
+        <tbody>
+          {{ range .Result.Days }}
+          <tr>
+            <td><span class="js-fmt-date" data-iso="{{ .Date }}">{{ .Date }}</span></td>
+            <td>{{ .Added }}</td>
+            <td>{{ .Duplicates }}</td>
+            <td>{{ .Overlaps }}</td>
+            <td>{{ if .Locked }}yes{{ else }}no{{ end }}</td>
+          </tr>
+          {{ end }}
+        </tbody>
+      </table>
+    </div>
+  {{ end }}
+{{ end }}
+{{ end }}
