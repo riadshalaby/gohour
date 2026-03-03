@@ -211,7 +211,7 @@ func TestServer_DayPageShowsClassificationBadges(t *testing.T) {
 
 	body, _ := io.ReadAll(resp.Body)
 	text := string(body)
-	for _, label := range []string{"duplicate", "overlap", "new", "remote"} {
+	for _, label := range []string{"synced", "conflict", "local", "remote"} {
 		if !strings.Contains(text, label) {
 			t.Fatalf("expected badge label %q in response body", label)
 		}
@@ -249,7 +249,7 @@ func TestServer_DayPageRemoteErrorRendersAuthBanner(t *testing.T) {
 	if !strings.Contains(text, "gohour auth login") {
 		t.Fatalf("expected auth login hint, got: %s", text)
 	}
-	if !strings.Contains(text, "badge-new") {
+	if !strings.Contains(text, "badge-local") {
 		t.Fatalf("expected local data to render, got: %s", text)
 	}
 }
@@ -579,6 +579,108 @@ func TestCreateWorklog_OverlapConflict(t *testing.T) {
 	}
 }
 
+func TestServer_WorklogCreate_ForceOverlapHeader_Succeeds(t *testing.T) {
+	t.Parallel()
+
+	day := time.Date(2026, 3, 1, 9, 0, 0, 0, time.Local)
+	store := openTestStore(t)
+	insertWorklogs(t, store, []worklog.Entry{newLocalEntry(day)})
+
+	ts := httptest.NewServer(NewServer(store, &fakeClient{}, testConfig(nil)))
+	defer ts.Close()
+
+	body := strings.NewReader(`{"date":"2026-03-01","start":"09:30","end":"10:30","project":"Other","activity":"Other","skill":"Other","billable":60,"description":"overlap"}`)
+	req, _ := http.NewRequest(http.MethodPost, ts.URL+"/api/worklog", body)
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("X-Force-Overlap", "1")
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatalf("create request: %v", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusCreated {
+		payload, _ := io.ReadAll(resp.Body)
+		t.Fatalf("expected 201, got %d body=%s", resp.StatusCode, string(payload))
+	}
+
+	entries, err := store.ListWorklogs()
+	if err != nil {
+		t.Fatalf("list worklogs: %v", err)
+	}
+	if len(entries) != 2 {
+		t.Fatalf("expected 2 entries after forced overlap create, got %d", len(entries))
+	}
+}
+
+func TestServer_WorklogPatch_ForceOverlapHeader_Succeeds(t *testing.T) {
+	t.Parallel()
+
+	day := time.Date(2026, 3, 1, 0, 0, 0, 0, time.Local)
+	store := openTestStore(t)
+	insertWorklogs(t, store, []worklog.Entry{
+		{
+			StartDateTime: day.Add(9 * time.Hour),
+			EndDateTime:   day.Add(10 * time.Hour),
+			Billable:      60,
+			Description:   "base",
+			Project:       "P",
+			Activity:      "A",
+			Skill:         "S",
+			SourceFormat:  "csv",
+			SourceMapper:  "generic",
+			SourceFile:    "a.csv",
+		},
+		{
+			StartDateTime: day.Add(11 * time.Hour),
+			EndDateTime:   day.Add(12 * time.Hour),
+			Billable:      60,
+			Description:   "to-edit",
+			Project:       "P2",
+			Activity:      "A2",
+			Skill:         "S2",
+			SourceFormat:  "csv",
+			SourceMapper:  "generic",
+			SourceFile:    "a.csv",
+		},
+	})
+
+	entries, err := store.ListWorklogs()
+	if err != nil {
+		t.Fatalf("list worklogs: %v", err)
+	}
+	editID := entries[1].ID
+
+	ts := httptest.NewServer(NewServer(store, &fakeClient{}, testConfig(nil)))
+	defer ts.Close()
+
+	body := strings.NewReader(`{"date":"2026-03-01","start":"09:30","end":"10:30","project":"P2","activity":"A2","skill":"S2","billable":60,"description":"forced-overlap"}`)
+	req, _ := http.NewRequest(http.MethodPatch, ts.URL+"/api/worklog/"+strconvI64(editID), body)
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("X-Force-Overlap", "1")
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatalf("patch request: %v", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusNoContent {
+		payload, _ := io.ReadAll(resp.Body)
+		t.Fatalf("expected 204, got %d body=%s", resp.StatusCode, string(payload))
+	}
+
+	updated, found, err := store.GetWorklogByID(editID)
+	if err != nil {
+		t.Fatalf("get updated worklog: %v", err)
+	}
+	if !found {
+		t.Fatalf("expected updated row to exist")
+	}
+	if got := updated.StartDateTime.Format("15:04"); got != "09:30" {
+		t.Fatalf("expected updated start time 09:30, got %s", got)
+	}
+}
+
 func TestSubmitDay_LockedDay(t *testing.T) {
 	t.Parallel()
 
@@ -587,6 +689,17 @@ func TestSubmitDay_LockedDay(t *testing.T) {
 	insertWorklogs(t, store, []worklog.Entry{newLocalEntry(day)})
 
 	client := &fakeClient{
+		snapshot: onepoint.LookupSnapshot{
+			Projects: []onepoint.Project{
+				{ID: 100, Name: "P", Archived: "0"},
+			},
+			Activities: []onepoint.Activity{
+				{ID: 200, Name: "A", ProjectNodeID: 100, Locked: false},
+			},
+			Skills: []onepoint.Skill{
+				{SkillID: 300, Name: "S", ActivityID: 200},
+			},
+		},
 		dayWorklogs: map[string][]onepoint.DayWorklog{
 			"2026-03-01": {
 				{
@@ -657,6 +770,168 @@ func TestSubmitDay_NewEntry(t *testing.T) {
 	}
 	if client.persistCalls != 1 {
 		t.Fatalf("expected persist call, got %d", client.persistCalls)
+	}
+}
+
+func TestSubmitDay_ChangedSyncedEntry_PropagatesUpdate(t *testing.T) {
+	t.Parallel()
+
+	day := time.Date(2026, 3, 1, 9, 0, 0, 0, time.Local)
+	store := openTestStore(t)
+	insertWorklogs(t, store, []worklog.Entry{
+		{
+			StartDateTime: day,
+			EndDateTime:   day.Add(1 * time.Hour),
+			Billable:      30,
+			Description:   "updated locally",
+			Project:       "P",
+			Activity:      "A",
+			Skill:         "S",
+			SourceFormat:  "remote",
+			SourceMapper:  "onepoint",
+			SourceFile:    "onepoint-sync-2026-03",
+		},
+	})
+
+	client := &fakeClient{
+		snapshot: onepoint.LookupSnapshot{
+			Projects: []onepoint.Project{
+				{ID: 100, Name: "P", Archived: "0"},
+			},
+			Activities: []onepoint.Activity{
+				{ID: 200, Name: "A", ProjectNodeID: 100, Locked: false},
+			},
+			Skills: []onepoint.Skill{
+				{SkillID: 300, Name: "S", ActivityID: 200},
+			},
+		},
+		dayWorklogs: map[string][]onepoint.DayWorklog{
+			"2026-03-01": {
+				{
+					WorklogDate:  onepoint.FormatDay(day),
+					StartTime:    9 * 60,
+					FinishTime:   10 * 60,
+					Billable:     60,
+					Comment:      "remote old",
+					ProjectID:    100,
+					ActivityID:   200,
+					SkillID:      300,
+					TimeRecordID: 1,
+					WorkRecordID: 2,
+					WorkSlipID:   3,
+				},
+			},
+		},
+	}
+
+	ts := httptest.NewServer(NewServer(store, client, testConfig([]config.Rule{ruleForLocal()})))
+	defer ts.Close()
+
+	resp, err := http.Post(ts.URL+"/api/submit/day/2026-03-01", "application/json", nil)
+	if err != nil {
+		t.Fatalf("submit day request: %v", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		t.Fatalf("expected 200, got %d body=%s", resp.StatusCode, string(body))
+	}
+
+	var payload submitResponse
+	if err := json.NewDecoder(resp.Body).Decode(&payload); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if payload.Submitted != 1 {
+		t.Fatalf("expected submitted=1 for update, got %+v", payload)
+	}
+	if client.persistCalls != 1 {
+		t.Fatalf("expected persist call, got %d", client.persistCalls)
+	}
+
+	persisted := client.persistByDate["2026-03-01"]
+	if len(persisted) != 1 {
+		t.Fatalf("expected replacement payload with 1 entry, got %+v", persisted)
+	}
+	if persisted[0].Billable != 30 || persisted[0].Comment != "updated locally" {
+		t.Fatalf("expected updated billable/comment in payload, got %+v", persisted[0])
+	}
+}
+
+func TestServer_SubmitDay_DryRun_DoesNotPersist(t *testing.T) {
+	t.Parallel()
+
+	day := time.Date(2026, 3, 1, 9, 0, 0, 0, time.Local)
+	store := openTestStore(t)
+	insertWorklogs(t, store, []worklog.Entry{newLocalEntry(day)})
+
+	client := &fakeClient{dayWorklogs: map[string][]onepoint.DayWorklog{}}
+	ts := httptest.NewServer(NewServer(store, client, testConfig([]config.Rule{ruleForLocal()})))
+	defer ts.Close()
+
+	resp, err := http.Post(ts.URL+"/api/submit/day/2026-03-01?dry_run=1", "application/json", nil)
+	if err != nil {
+		t.Fatalf("submit day dry-run request: %v", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		t.Fatalf("expected 200, got %d body=%s", resp.StatusCode, string(body))
+	}
+
+	var payload submitResponse
+	if err := json.NewDecoder(resp.Body).Decode(&payload); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if !payload.DryRun {
+		t.Fatalf("expected dryRun=true, got %+v", payload)
+	}
+	if payload.Submitted != 0 {
+		t.Fatalf("expected submitted=0 in dry-run, got %d", payload.Submitted)
+	}
+	if len(payload.Days) != 1 || payload.Days[0].Added != 1 {
+		t.Fatalf("expected would-add count in day result, got %+v", payload.Days)
+	}
+	if client.persistCalls != 0 {
+		t.Fatalf("expected no persist calls in dry-run, got %d", client.persistCalls)
+	}
+}
+
+func TestServer_SubmitMonth_DryRun_DoesNotPersist(t *testing.T) {
+	t.Parallel()
+
+	day := time.Date(2026, 3, 1, 9, 0, 0, 0, time.Local)
+	store := openTestStore(t)
+	insertWorklogs(t, store, []worklog.Entry{newLocalEntry(day)})
+
+	client := &fakeClient{dayWorklogs: map[string][]onepoint.DayWorklog{}}
+	ts := httptest.NewServer(NewServer(store, client, testConfig([]config.Rule{ruleForLocal()})))
+	defer ts.Close()
+
+	resp, err := http.Post(ts.URL+"/api/submit/month/2026-03?dry_run=1", "application/json", nil)
+	if err != nil {
+		t.Fatalf("submit month dry-run request: %v", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		t.Fatalf("expected 200, got %d body=%s", resp.StatusCode, string(body))
+	}
+
+	var payload submitResponse
+	if err := json.NewDecoder(resp.Body).Decode(&payload); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if !payload.DryRun {
+		t.Fatalf("expected dryRun=true, got %+v", payload)
+	}
+	if payload.Submitted != 0 {
+		t.Fatalf("expected submitted=0 in dry-run, got %d", payload.Submitted)
+	}
+	if len(payload.Days) != 1 || payload.Days[0].Added != 1 {
+		t.Fatalf("expected would-add count in month result, got %+v", payload.Days)
+	}
+	if client.persistCalls != 0 {
+		t.Fatalf("expected no persist calls in dry-run, got %d", client.persistCalls)
 	}
 }
 
@@ -750,6 +1025,184 @@ func TestImport_ValidFile(t *testing.T) {
 	}
 	if len(entries) != 1 {
 		t.Fatalf("expected one imported entry, got %d", len(entries))
+	}
+}
+
+func TestServer_Import_BillableOverrideNonBillable(t *testing.T) {
+	t.Parallel()
+
+	store := openTestStore(t)
+	ts := httptest.NewServer(NewServer(store, &fakeClient{}, testConfig(nil)))
+	defer ts.Close()
+
+	var body bytes.Buffer
+	writer := multipart.NewWriter(&body)
+	part, err := writer.CreateFormFile("file", "import.csv")
+	if err != nil {
+		t.Fatalf("create form file: %v", err)
+	}
+	_, _ = part.Write([]byte(
+		"description,startdatetime,enddatetime,project,activity,skill\n" +
+			"Task1,2026-03-01 09:00,2026-03-01 10:00,P,A,S\n" +
+			"Task2,2026-03-01 10:00,2026-03-01 11:00,P,A,S\n",
+	))
+	_ = writer.WriteField("mapper", "generic")
+	_ = writer.WriteField("billable", "non-billable")
+	if err := writer.Close(); err != nil {
+		t.Fatalf("close multipart writer: %v", err)
+	}
+
+	resp, err := http.Post(ts.URL+"/api/import", writer.FormDataContentType(), &body)
+	if err != nil {
+		t.Fatalf("import request: %v", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		payload, _ := io.ReadAll(resp.Body)
+		t.Fatalf("expected 200, got %d body=%s", resp.StatusCode, string(payload))
+	}
+
+	entries, err := store.ListWorklogs()
+	if err != nil {
+		t.Fatalf("list worklogs: %v", err)
+	}
+	if len(entries) != 2 {
+		t.Fatalf("expected 2 rows, got %d", len(entries))
+	}
+	for _, entry := range entries {
+		if entry.Billable != 0 {
+			t.Fatalf("expected non-billable row, got %+v", entry)
+		}
+	}
+}
+
+func TestServer_ImportPreview_ReturnsClassifiedEntries(t *testing.T) {
+	t.Parallel()
+
+	store := openTestStore(t)
+	base := time.Date(2026, 3, 1, 0, 0, 0, 0, time.Local)
+	insertWorklogs(t, store, []worklog.Entry{
+		{
+			StartDateTime: base.Add(9 * time.Hour),
+			EndDateTime:   base.Add(10 * time.Hour),
+			Billable:      60,
+			Description:   "existing-duplicate",
+			Project:       "P",
+			Activity:      "A",
+			Skill:         "S",
+			SourceFormat:  "csv",
+			SourceMapper:  "generic",
+			SourceFile:    "existing.csv",
+		},
+		{
+			StartDateTime: base.Add(12 * time.Hour),
+			EndDateTime:   base.Add(13 * time.Hour),
+			Billable:      60,
+			Description:   "existing-overlap",
+			Project:       "X",
+			Activity:      "Y",
+			Skill:         "Z",
+			SourceFormat:  "csv",
+			SourceMapper:  "generic",
+			SourceFile:    "existing.csv",
+		},
+	})
+
+	ts := httptest.NewServer(NewServer(store, &fakeClient{}, testConfig(nil)))
+	defer ts.Close()
+
+	var body bytes.Buffer
+	writer := multipart.NewWriter(&body)
+	part, err := writer.CreateFormFile("file", "import.csv")
+	if err != nil {
+		t.Fatalf("create form file: %v", err)
+	}
+	_, _ = part.Write([]byte(
+		"description,startdatetime,enddatetime,project,activity,skill\n" +
+			"dup,2026-03-01 09:00,2026-03-01 10:00,P,A,S\n" +
+			"ovl,2026-03-01 12:30,2026-03-01 13:30,Q,R,T\n" +
+			"ok,2026-03-01 14:00,2026-03-01 15:00,Q,R,T\n",
+	))
+	_ = writer.WriteField("mapper", "generic")
+	if err := writer.Close(); err != nil {
+		t.Fatalf("close multipart writer: %v", err)
+	}
+
+	resp, err := http.Post(ts.URL+"/api/import-preview", writer.FormDataContentType(), &body)
+	if err != nil {
+		t.Fatalf("import preview request: %v", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		payload, _ := io.ReadAll(resp.Body)
+		t.Fatalf("expected 200, got %d body=%s", resp.StatusCode, string(payload))
+	}
+
+	var payload importPreviewResponse
+	if err := json.NewDecoder(resp.Body).Decode(&payload); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if len(payload.Entries) != 3 {
+		t.Fatalf("expected 3 preview entries, got %d", len(payload.Entries))
+	}
+	if payload.Entries[0].Status != "duplicate" {
+		t.Fatalf("expected first row duplicate, got %+v", payload.Entries[0])
+	}
+	if payload.Entries[1].Status != "overlap" {
+		t.Fatalf("expected second row overlap, got %+v", payload.Entries[1])
+	}
+	if payload.Entries[2].Status != "clean" {
+		t.Fatalf("expected third row clean, got %+v", payload.Entries[2])
+	}
+	if payload.Entries[0].ConflictID <= 0 || payload.Entries[1].ConflictID <= 0 {
+		t.Fatalf("expected conflict IDs for duplicate/overlap, got %+v", payload.Entries)
+	}
+}
+
+func TestServer_Import_SkipIndices(t *testing.T) {
+	t.Parallel()
+
+	store := openTestStore(t)
+	ts := httptest.NewServer(NewServer(store, &fakeClient{}, testConfig(nil)))
+	defer ts.Close()
+
+	var body bytes.Buffer
+	writer := multipart.NewWriter(&body)
+	part, err := writer.CreateFormFile("file", "import.csv")
+	if err != nil {
+		t.Fatalf("create form file: %v", err)
+	}
+	_, _ = part.Write([]byte(
+		"description,startdatetime,enddatetime,project,activity,skill\n" +
+			"Task1,2026-03-01 09:00,2026-03-01 10:00,P,A,S\n" +
+			"Task2,2026-03-01 10:00,2026-03-01 11:00,P,A,S\n" +
+			"Task3,2026-03-01 11:00,2026-03-01 12:00,P,A,S\n",
+	))
+	_ = writer.WriteField("mapper", "generic")
+	_ = writer.WriteField("skipIndices", "0,1")
+	if err := writer.Close(); err != nil {
+		t.Fatalf("close multipart writer: %v", err)
+	}
+
+	resp, err := http.Post(ts.URL+"/api/import", writer.FormDataContentType(), &body)
+	if err != nil {
+		t.Fatalf("import request: %v", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		payload, _ := io.ReadAll(resp.Body)
+		t.Fatalf("expected 200, got %d body=%s", resp.StatusCode, string(payload))
+	}
+
+	entries, err := store.ListWorklogs()
+	if err != nil {
+		t.Fatalf("list worklogs: %v", err)
+	}
+	if len(entries) != 1 {
+		t.Fatalf("expected only 1 inserted row, got %d", len(entries))
+	}
+	if got := entries[0].StartDateTime.Format("15:04"); got != "11:00" {
+		t.Fatalf("expected only third row to remain, got %s", got)
 	}
 }
 
@@ -964,6 +1417,351 @@ func TestGetLookup_CachedOnSecondCall(t *testing.T) {
 
 	if client.snapshotCalls != 1 {
 		t.Fatalf("expected one snapshot fetch, got %d", client.snapshotCalls)
+	}
+}
+
+func TestServer_DeleteMonthWorklogs(t *testing.T) {
+	t.Parallel()
+
+	store := openTestStore(t)
+	insertWorklogs(t, store, []worklog.Entry{
+		{
+			StartDateTime: time.Date(2026, 3, 1, 9, 0, 0, 0, time.Local),
+			EndDateTime:   time.Date(2026, 3, 1, 10, 0, 0, 0, time.Local),
+			Billable:      60,
+			Description:   "march-a",
+			Project:       "P",
+			Activity:      "A",
+			Skill:         "S",
+			SourceFormat:  "csv",
+			SourceMapper:  "generic",
+			SourceFile:    "a.csv",
+		},
+		{
+			StartDateTime: time.Date(2026, 3, 15, 9, 0, 0, 0, time.Local),
+			EndDateTime:   time.Date(2026, 3, 15, 10, 0, 0, 0, time.Local),
+			Billable:      60,
+			Description:   "march-b",
+			Project:       "P",
+			Activity:      "A",
+			Skill:         "S",
+			SourceFormat:  "csv",
+			SourceMapper:  "generic",
+			SourceFile:    "b.csv",
+		},
+		{
+			StartDateTime: time.Date(2026, 4, 2, 9, 0, 0, 0, time.Local),
+			EndDateTime:   time.Date(2026, 4, 2, 10, 0, 0, 0, time.Local),
+			Billable:      60,
+			Description:   "april-a",
+			Project:       "P",
+			Activity:      "A",
+			Skill:         "S",
+			SourceFormat:  "csv",
+			SourceMapper:  "generic",
+			SourceFile:    "c.csv",
+		},
+	})
+
+	ts := httptest.NewServer(NewServer(store, &fakeClient{}, testConfig(nil)))
+	defer ts.Close()
+
+	req, _ := http.NewRequest(http.MethodDelete, ts.URL+"/api/month/2026-03/worklogs", nil)
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatalf("delete month request: %v", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		t.Fatalf("expected 200, got %d body=%s", resp.StatusCode, string(body))
+	}
+
+	var payload map[string]int
+	if err := json.NewDecoder(resp.Body).Decode(&payload); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if payload["deleted"] != 2 {
+		t.Fatalf("expected deleted=2, got %+v", payload)
+	}
+
+	entries, err := store.ListWorklogs()
+	if err != nil {
+		t.Fatalf("list worklogs: %v", err)
+	}
+	if len(entries) != 1 {
+		t.Fatalf("expected one remaining row, got %d", len(entries))
+	}
+	if got := entries[0].StartDateTime.Format("2006-01"); got != "2026-04" {
+		t.Fatalf("expected remaining row in april, got %s", got)
+	}
+}
+
+func TestServer_DeleteMonthRemoteWorklogs_SkipsLocked(t *testing.T) {
+	t.Parallel()
+
+	store := openTestStore(t)
+	day1 := time.Date(2026, 3, 1, 0, 0, 0, 0, time.Local)
+	day2 := time.Date(2026, 3, 2, 0, 0, 0, 0, time.Local)
+
+	client := &fakeClient{
+		worklogs: []onepoint.DayWorklog{
+			{
+				WorklogDate: onepoint.FormatDay(day1),
+				StartTime:   9 * 60,
+				FinishTime:  10 * 60,
+				Billable:    60,
+				ProjectID:   11,
+				ActivityID:  22,
+				SkillID:     33,
+			},
+			{
+				WorklogDate: onepoint.FormatDay(day2),
+				StartTime:   10 * 60,
+				FinishTime:  11 * 60,
+				Billable:    60,
+				ProjectID:   11,
+				ActivityID:  22,
+				SkillID:     33,
+			},
+		},
+		dayWorklogs: map[string][]onepoint.DayWorklog{
+			"2026-03-01": {
+				{
+					WorklogDate: onepoint.FormatDay(day1),
+					Locked:      1,
+					StartTime:   9 * 60,
+					FinishTime:  10 * 60,
+					ProjectID:   11,
+					ActivityID:  22,
+					SkillID:     33,
+				},
+			},
+			"2026-03-02": {
+				{
+					WorklogDate: onepoint.FormatDay(day2),
+					Locked:      0,
+					StartTime:   10 * 60,
+					FinishTime:  11 * 60,
+					ProjectID:   11,
+					ActivityID:  22,
+					SkillID:     33,
+				},
+			},
+		},
+	}
+
+	ts := httptest.NewServer(NewServer(store, client, testConfig(nil)))
+	defer ts.Close()
+
+	req, _ := http.NewRequest(http.MethodDelete, ts.URL+"/api/month/2026-03/remote-worklogs", nil)
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatalf("delete remote month request: %v", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		t.Fatalf("expected 200, got %d body=%s", resp.StatusCode, string(body))
+	}
+
+	var payload map[string]any
+	if err := json.NewDecoder(resp.Body).Decode(&payload); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if int(payload["deleted"].(float64)) != 1 {
+		t.Fatalf("expected deleted=1, got %+v", payload)
+	}
+	if int(payload["skippedLocked"].(float64)) != 1 {
+		t.Fatalf("expected skippedLocked=1, got %+v", payload)
+	}
+	lockedDays, ok := payload["lockedDays"].([]any)
+	if !ok || len(lockedDays) != 1 || lockedDays[0].(string) != "2026-03-01" {
+		t.Fatalf("unexpected lockedDays payload: %+v", payload["lockedDays"])
+	}
+
+	if client.persistCalls != 1 {
+		t.Fatalf("expected exactly one clear persist call, got %d", client.persistCalls)
+	}
+	day1Payload := client.persistByDate["2026-03-01"]
+	if day1Payload != nil {
+		t.Fatalf("expected no persist payload for locked day, got %+v", day1Payload)
+	}
+	day2Payload, ok := client.persistByDate["2026-03-02"]
+	if !ok {
+		t.Fatalf("expected persist call for unlocked day")
+	}
+	if len(day2Payload) != 0 {
+		t.Fatalf("expected empty payload to clear day, got %+v", day2Payload)
+	}
+}
+
+func TestServer_CopyMonthRemote(t *testing.T) {
+	t.Parallel()
+
+	store := openTestStore(t)
+	client := &fakeClient{
+		snapshot: onepoint.LookupSnapshot{
+			Projects: []onepoint.Project{{ID: 11, Name: "Project A", Archived: "0"}},
+			Activities: []onepoint.Activity{
+				{ID: 22, Name: "Activity B", ProjectNodeID: 11, Locked: false},
+			},
+			Skills: []onepoint.Skill{
+				{SkillID: 33, Name: "Skill C", ActivityID: 22},
+			},
+		},
+		worklogs: []onepoint.DayWorklog{
+			{
+				WorklogDate: onepoint.FormatDay(time.Date(2026, 3, 1, 0, 0, 0, 0, time.Local)),
+				StartTime:   9 * 60,
+				FinishTime:  10 * 60,
+				Billable:    60,
+				Comment:     "remote-a",
+				ProjectID:   11,
+				ActivityID:  22,
+				SkillID:     33,
+			},
+			{
+				WorklogDate: onepoint.FormatDay(time.Date(2026, 3, 2, 0, 0, 0, 0, time.Local)),
+				StartTime:   10 * 60,
+				FinishTime:  11 * 60,
+				Billable:    60,
+				Comment:     "remote-b",
+				ProjectID:   11,
+				ActivityID:  22,
+				SkillID:     33,
+			},
+			{
+				WorklogDate: onepoint.FormatDay(time.Date(2026, 4, 1, 0, 0, 0, 0, time.Local)),
+				StartTime:   9 * 60,
+				FinishTime:  10 * 60,
+				Billable:    60,
+				Comment:     "outside-range",
+				ProjectID:   11,
+				ActivityID:  22,
+				SkillID:     33,
+			},
+		},
+	}
+
+	ts := httptest.NewServer(NewServer(store, client, testConfig(nil)))
+	defer ts.Close()
+
+	resp, err := http.Post(ts.URL+"/api/month/2026-03/copy-from-remote", "application/json", nil)
+	if err != nil {
+		t.Fatalf("sync request: %v", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		t.Fatalf("expected 200, got %d body=%s", resp.StatusCode, string(body))
+	}
+
+	var payload map[string]int
+	if err := json.NewDecoder(resp.Body).Decode(&payload); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if payload["copied"] != 2 || payload["total"] != 2 {
+		t.Fatalf("unexpected copy payload: %+v", payload)
+	}
+
+	entries, err := store.ListWorklogs()
+	if err != nil {
+		t.Fatalf("list worklogs: %v", err)
+	}
+	if len(entries) != 2 {
+		t.Fatalf("expected 2 synced entries, got %d", len(entries))
+	}
+	for _, entry := range entries {
+		if entry.Project != "Project A" || entry.Activity != "Activity B" || entry.Skill != "Skill C" {
+			t.Fatalf("expected lookup names on synced row, got %+v", entry)
+		}
+		if entry.SourceMapper != "onepoint" || entry.SourceFormat != "remote" {
+			t.Fatalf("expected onepoint source metadata, got %+v", entry)
+		}
+	}
+}
+
+func TestServer_CopyMonthRemote_SkipsEntriesAlreadyInLocal(t *testing.T) {
+	t.Parallel()
+
+	store := openTestStore(t)
+	insertWorklogs(t, store, []worklog.Entry{
+		{
+			StartDateTime: time.Date(2026, 3, 1, 9, 0, 0, 0, time.Local),
+			EndDateTime:   time.Date(2026, 3, 1, 10, 0, 0, 0, time.Local),
+			Billable:      60,
+			Description:   "existing",
+			Project:       "Project A",
+			Activity:      "Activity B",
+			Skill:         "Skill C",
+			SourceFormat:  "manual",
+			SourceMapper:  "manual",
+			SourceFile:    "web-ui",
+		},
+	})
+
+	client := &fakeClient{
+		snapshot: onepoint.LookupSnapshot{
+			Projects: []onepoint.Project{{ID: 11, Name: "Project A", Archived: "0"}},
+			Activities: []onepoint.Activity{
+				{ID: 22, Name: "Activity B", ProjectNodeID: 11, Locked: false},
+			},
+			Skills: []onepoint.Skill{
+				{SkillID: 33, Name: "Skill C", ActivityID: 22},
+			},
+		},
+		worklogs: []onepoint.DayWorklog{
+			{
+				WorklogDate: onepoint.FormatDay(time.Date(2026, 3, 1, 0, 0, 0, 0, time.Local)),
+				StartTime:   9 * 60,
+				FinishTime:  10 * 60,
+				Billable:    60,
+				Comment:     "remote-same",
+				ProjectID:   11,
+				ActivityID:  22,
+				SkillID:     33,
+			},
+			{
+				WorklogDate: onepoint.FormatDay(time.Date(2026, 3, 2, 0, 0, 0, 0, time.Local)),
+				StartTime:   10 * 60,
+				FinishTime:  11 * 60,
+				Billable:    60,
+				Comment:     "remote-new",
+				ProjectID:   11,
+				ActivityID:  22,
+				SkillID:     33,
+			},
+		},
+	}
+
+	ts := httptest.NewServer(NewServer(store, client, testConfig(nil)))
+	defer ts.Close()
+
+	resp, err := http.Post(ts.URL+"/api/month/2026-03/copy-from-remote", "application/json", nil)
+	if err != nil {
+		t.Fatalf("copy request: %v", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		t.Fatalf("expected 200, got %d body=%s", resp.StatusCode, string(body))
+	}
+
+	var payload map[string]int
+	if err := json.NewDecoder(resp.Body).Decode(&payload); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if payload["copied"] != 1 || payload["total"] != 2 {
+		t.Fatalf("unexpected copy payload: %+v", payload)
+	}
+
+	entries, err := store.ListWorklogs()
+	if err != nil {
+		t.Fatalf("list worklogs: %v", err)
+	}
+	if len(entries) != 2 {
+		t.Fatalf("expected one existing + one copied entry, got %d", len(entries))
 	}
 }
 

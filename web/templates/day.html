@@ -8,6 +8,7 @@
       'Push all local entries for this day to OnePoint. This cannot be undone.',
       function() { submitDay('{{ .Day }}'); }
     )">Submit day</button>
+  <button type="button" onclick="previewSubmitDay('{{ .Day }}')">Preview submit</button>
   <button type="button" onclick="openImportDialog('day-import-dialog', 'day-import-form')">Import file</button>
 </div>
 <dialog id="day-import-dialog">
@@ -40,6 +41,13 @@
         <label for="day-import-skill">Skill</label>
         <select id="day-import-skill" name="skill" required></select>
       </div>
+      <div class="dialog-field">
+        <label for="day-import-billable">Billable</label>
+        <select id="day-import-billable" name="billable">
+          <option value="auto">Auto (computed from file)</option>
+          <option value="non-billable">Non-billable (force 0)</option>
+        </select>
+      </div>
     </div>
     <div class="dialog-footer">
       <button type="button" onclick="closeImportDialog('day-import-dialog')">Cancel</button>
@@ -48,15 +56,21 @@
   </form>
 </dialog>
 <p class="muted" style="margin-top:0;">
-  Local hours: <span id="day-local-hours" class="js-fmt-hours" data-mins="{{ toMins .DayRow.LocalHours }}">{{ toMins .DayRow.LocalHours }}</span>
-  |
-  Remote hours: <span id="day-remote-hours" class="js-fmt-hours" data-mins="{{ toMins .DayRow.RemoteHours }}">{{ toMins .DayRow.RemoteHours }}</span>
+  Local:
+  <span id="day-local-worked" class="js-fmt-hours" data-mins="{{ toMins .DayRow.LocalWorkedHours }}">{{ toMins .DayRow.LocalWorkedHours }}</span> worked
+  /
+  <span id="day-local-hours" class="js-fmt-hours" data-mins="{{ toMins .DayRow.LocalHours }}">{{ toMins .DayRow.LocalHours }}</span> billable
+  &nbsp;&nbsp;|&nbsp;&nbsp;
+  Remote:
+  <span id="day-remote-worked" class="js-fmt-hours" data-mins="{{ toMins .DayRow.RemoteWorkedHours }}">{{ toMins .DayRow.RemoteWorkedHours }}</span> worked
+  /
+  <span id="day-remote-hours" class="js-fmt-hours" data-mins="{{ toMins .DayRow.RemoteHours }}">{{ toMins .DayRow.RemoteHours }}</span> billable
 </p>
 <div class="table-wrap">
   <table>
     <thead>
       <tr>
-        <th>Source</th>
+        <th>Status</th>
         <th>Date</th>
         <th>Start</th>
         <th>End</th>
@@ -97,6 +111,12 @@
 </div>
 <div class="page-nav" style="margin-top:0.8rem;">
   <button type="button" onclick="addEntryRow('{{ .Day }}')">Add entry</button>
+</div>
+<div class="footer">
+  Status: <span class="badge badge-local">local</span> not submitted &nbsp;
+  <span class="badge badge-synced">synced</span> exists on OnePoint &nbsp;
+  <span class="badge badge-conflict">conflict</span> overlaps remote &nbsp;
+  <span class="badge badge-remote">remote</span> remote only
 </div>
 <div class="footer">Duration is read-only; Billable auto-fills from Start/End and can be overridden.</div>
 <dialog id="edit-dialog">

@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"bufio"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -470,6 +471,7 @@ func withTemporaryStdin(t *testing.T, input string) func() {
 	t.Helper()
 
 	old := os.Stdin
+	oldReader := submitInputReader
 	r, w, err := os.Pipe()
 	if err != nil {
 		t.Fatalf("create stdin pipe: %v", err)
@@ -482,8 +484,10 @@ func withTemporaryStdin(t *testing.T, input string) func() {
 	}
 
 	os.Stdin = r
+	submitInputReader = bufio.NewReader(r)
 	return func() {
 		os.Stdin = old
+		submitInputReader = oldReader
 		_ = r.Close()
 	}
 }

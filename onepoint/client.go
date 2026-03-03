@@ -293,10 +293,6 @@ func (c *HTTPClient) GetDayWorklogs(ctx context.Context, day time.Time) ([]DayWo
 }
 
 func (c *HTTPClient) PersistWorklogs(ctx context.Context, day time.Time, worklogs []PersistWorklog) ([]PersistResult, error) {
-	if len(worklogs) == 0 {
-		return nil, errors.New("persist worklogs payload must not be empty")
-	}
-
 	path := fmt.Sprintf("/OPServices/resources/OpWorklogs/%s/persistWorklogs", FormatDay(day))
 	var out []PersistResult
 	if err := c.doJSON(ctx, http.MethodPost, path, worklogs, &out); err != nil {

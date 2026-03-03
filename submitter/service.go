@@ -255,21 +255,30 @@ func BuildDayBatches(entries []worklog.Entry, idsByTuple map[NameTuple]ResolvedI
 	return out, nil
 }
 
-func ClassifyWorklogs(local, existing []onepoint.PersistWorklog) (toAdd []onepoint.PersistWorklog, overlaps []onepoint.OverlapInfo, duplicates int) {
+func ClassifyWorklogs(local, existing []onepoint.PersistWorklog) (toAdd []onepoint.PersistWorklog, overlaps []onepoint.OverlapInfo, duplicates []onepoint.PersistWorklog) {
 	toAdd = make([]onepoint.PersistWorklog, 0, len(local))
 	overlaps = make([]onepoint.OverlapInfo, 0)
-	duplicates = 0
+	duplicates = make([]onepoint.PersistWorklog, 0)
 
 	for _, candidate := range local {
-		isDuplicate := false
+		equivalentFound := false
+		requiresUpdate := false
 		for _, existingEntry := range existing {
 			if onepoint.PersistWorklogsEquivalent(existingEntry, candidate) {
-				isDuplicate = true
+				equivalentFound = true
+				if existingEntry.Billable != candidate.Billable ||
+					strings.TrimSpace(existingEntry.Comment) != strings.TrimSpace(candidate.Comment) {
+					requiresUpdate = true
+				}
 				break
 			}
 		}
-		if isDuplicate {
-			duplicates++
+		if equivalentFound && !requiresUpdate {
+			duplicates = append(duplicates, candidate)
+			continue
+		}
+		if equivalentFound && requiresUpdate {
+			toAdd = append(toAdd, candidate)
 			continue
 		}
 
@@ -292,6 +301,28 @@ func ClassifyWorklogs(local, existing []onepoint.PersistWorklog) (toAdd []onepoi
 	}
 
 	return toAdd, overlaps, duplicates
+}
+
+// BuildPersistPayload merges existing remote entries with local entries to write.
+// For equivalent keys, local entries replace existing entries so billable/comment edits are propagated.
+func BuildPersistPayload(existing, toWrite []onepoint.PersistWorklog) []onepoint.PersistWorklog {
+	payload := append([]onepoint.PersistWorklog(nil), existing...)
+	if len(toWrite) == 0 {
+		return payload
+	}
+
+	for _, candidate := range toWrite {
+		filtered := make([]onepoint.PersistWorklog, 0, len(payload))
+		for _, existingEntry := range payload {
+			if onepoint.PersistWorklogsEquivalent(existingEntry, candidate) {
+				continue
+			}
+			filtered = append(filtered, existingEntry)
+		}
+		filtered = append(filtered, candidate)
+		payload = filtered
+	}
+	return payload
 }
 
 func CountLockedDayWorklogs(existing []onepoint.DayWorklog) int {

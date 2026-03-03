@@ -11,7 +11,10 @@
 - SQLite persistence with duplicate protection
 - Export normalized worklogs to CSV or Excel
 - Submit local SQLite worklogs to OnePoint REST
+- Local web UI for month/day review, import preview, edit, copy-from-remote, and submit
 - Submit safety checks: duplicate detection, overlap warnings/prompts, locked-day skip
+- Submit update propagation: billable/comment edits on synced entries are written back to remote
+- `gohour version` command for release/build identification
 
 > **Recommended workflow:** `gohour import` loads files locally, then `gohour serve` opens a browser UI to review local vs. remote hours and submit. Login happens automatically when needed - a browser window will open.
 
@@ -199,6 +202,17 @@ Run the local web UI for month/day review, edits, import, and submit actions:
 
 If no valid OnePoint session is available, `serve` opens a browser login flow automatically before starting.
 
+Month view includes:
+- `Preview submit` (dry-run classification before submit)
+- `Submit month`
+- `Copy from remote` (imports only remote rows that do not already exist locally)
+- `Delete all local` and `Delete all remote` (with confirmation)
+
+Day view includes:
+- `Preview submit` and `Submit day`
+- local add/edit/delete with overlap warning + "save anyway" flow
+- status badges: `local`, `synced`, `conflict`, `remote`
+
 Main flags:
 
 - `--port` (optional): HTTP port (default `8080`)
@@ -234,13 +248,14 @@ What submit does:
   - loads existing remote day worklogs (`getFilteredWorklogs` day range),
   - skips the full day when any existing entry is locked (`Locked != 0`),
   - skips local duplicates (same `StartTime`, `FinishTime`, `ProjectID`, `ActivityID`, `SkillID`),
+  - treats equivalent entries with changed billable/comment as updates (writes local value to remote),
   - detects local-vs-existing overlaps and handles them:
     - `--dry-run`: warning only, no prompt,
     - normal mode: interactive choice per day (`w/s/W/S/a`),
   - persists the merged payload via `persistWorklogs` (only when entries remain to add).
 
 Dry-run output includes:
-- per-day stats (`local`, `duplicates`, `overlaps`, `ready`)
+- detailed per-entry output (`ready`, `duplicate`, `overlap`) and per-day summary
 - summary with skipped locked days and overlap warnings
 
 Main flags:
@@ -360,3 +375,11 @@ A unique constraint prevents duplicate imports of the same normalized row.
 ## Notes
 
 - REST submission is available via `gohour submit`.
+
+## Version
+
+Print current build version:
+
+```bash
+./gohour version
+```

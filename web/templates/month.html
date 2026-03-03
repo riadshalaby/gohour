@@ -9,6 +9,28 @@
       'Push all local entries for this month to OnePoint. This cannot be undone.',
       function() { submitMonth('{{ .CurrentMonth }}'); }
     )">Submit month</button>
+  <button type="button" onclick="previewSubmitMonth('{{ .CurrentMonth }}')">Preview submit</button>
+  <button type="button"
+    onclick="openConfirmDialog(
+      'Copy remote entries',
+      'Import all remote entries for {{ .CurrentMonth }} into local database?',
+      function() { copyMonthRemote('{{ .CurrentMonth }}'); },
+      'Copy'
+    )">Copy from remote</button>
+  <button type="button" class="btn-danger"
+    onclick="openConfirmDialog(
+      'Delete remote entries',
+      'Delete ALL remote OnePoint entries for {{ .CurrentMonth }}? Locked days will be skipped. This cannot be undone.',
+      function() { deleteMonthRemoteEntries('{{ .CurrentMonth }}'); },
+      'Delete'
+    )">Delete all remote</button>
+  <button type="button" class="btn-danger"
+    onclick="openConfirmDialog(
+      'Delete local entries',
+      'Delete ALL local entries for {{ .CurrentMonth }}? This cannot be undone.',
+      function() { deleteMonthEntries('{{ .CurrentMonth }}'); },
+      'Delete'
+    )">Delete all local</button>
   <button type="button" onclick="openImportDialog('month-import-dialog', 'month-import-form')">Import file</button>
 </div>
 <dialog id="month-import-dialog">
@@ -41,6 +63,13 @@
         <label for="month-import-skill">Skill</label>
         <select id="month-import-skill" name="skill" required></select>
       </div>
+      <div class="dialog-field">
+        <label for="month-import-billable">Billable</label>
+        <select id="month-import-billable" name="billable">
+          <option value="auto">Auto (computed from file)</option>
+          <option value="non-billable">Non-billable (force 0)</option>
+        </select>
+      </div>
     </div>
     <div class="dialog-footer">
       <button type="button" onclick="closeImportDialog('month-import-dialog')">Cancel</button>
@@ -53,8 +82,10 @@
     <thead>
       <tr>
         <th>Date</th>
-        <th>Local Hours</th>
-        <th>Remote Hours</th>
+        <th>Lcl Worked</th>
+        <th>Lcl Billable</th>
+        <th>Rmt Worked</th>
+        <th>Rmt Billable</th>
         <th>Delta</th>
         <th>Day</th>
       </tr>
@@ -63,7 +94,9 @@
       {{ range .Rows }}
       <tr{{ if .IsToday }} class="today"{{ else if .IsWeekend }} class="weekend"{{ end }}>
         <td><span class="js-fmt-date" data-iso="{{ .Date }}">{{ .Date }}</span></td>
+        <td class="num"><span class="js-fmt-hours" data-mins="{{ toMins .LocalWorked }}">{{ toMins .LocalWorked }}</span></td>
         <td class="num"><span class="js-fmt-hours" data-mins="{{ toMins .LocalHours }}">{{ toMins .LocalHours }}</span></td>
+        <td class="num"><span class="js-fmt-hours" data-mins="{{ toMins .RemoteWorked }}">{{ toMins .RemoteWorked }}</span></td>
         <td class="num"><span class="js-fmt-hours" data-mins="{{ toMins .RemoteHours }}">{{ toMins .RemoteHours }}</span></td>
         <td class="num">
           {{ if ge .DeltaHours 0.0 }}
@@ -79,7 +112,9 @@
     <tfoot>
       <tr>
         <th>Total</th>
+        <td class="num"><span class="js-fmt-hours" data-mins="{{ toMins .TotalLocalWorked }}">{{ toMins .TotalLocalWorked }}</span></td>
         <td class="num"><span class="js-fmt-hours" data-mins="{{ toMins .TotalLocal }}">{{ toMins .TotalLocal }}</span></td>
+        <td class="num"><span class="js-fmt-hours" data-mins="{{ toMins .TotalRemoteWorked }}">{{ toMins .TotalRemoteWorked }}</span></td>
         <td class="num"><span class="js-fmt-hours" data-mins="{{ toMins .TotalRemote }}">{{ toMins .TotalRemote }}</span></td>
         <td class="num"><span class="js-fmt-delta" data-hours="{{ .TotalDelta }}">{{ fmtDelta .TotalDelta }}</span></td>
         <td></td>

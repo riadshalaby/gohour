@@ -418,6 +418,34 @@ func (s *SQLiteStore) DeleteWorklog(id int64) (bool, error) {
 	return rowsAffected > 0, nil
 }
 
+// DeleteWorklogsByMonth deletes all worklogs whose start_datetime falls within
+// the given month. yearMonth must be in "YYYY-MM" format.
+// Returns the number of rows deleted.
+func (s *SQLiteStore) DeleteWorklogsByMonth(yearMonth string) (int, error) {
+	month, err := time.ParseInLocation("2006-01", strings.TrimSpace(yearMonth), time.Local)
+	if err != nil {
+		return 0, fmt.Errorf("parse month %q: %w", yearMonth, err)
+	}
+
+	monthStart := time.Date(month.Year(), month.Month(), 1, 0, 0, 0, 0, time.Local)
+	nextMonthStart := monthStart.AddDate(0, 1, 0)
+
+	res, err := s.db.Exec(
+		`DELETE FROM worklogs WHERE start_datetime >= ? AND start_datetime < ?;`,
+		monthStart.Format(time.RFC3339),
+		nextMonthStart.Format(time.RFC3339),
+	)
+	if err != nil {
+		return 0, fmt.Errorf("delete worklogs by month %q: %w", yearMonth, err)
+	}
+
+	rows, err := res.RowsAffected()
+	if err != nil {
+		return 0, fmt.Errorf("read deleted row count: %w", err)
+	}
+	return int(rows), nil
+}
+
 func (s *SQLiteStore) UpdateWorklogTimes(entries []worklog.Entry) (int, error) {
 	if len(entries) == 0 {
 		return 0, nil

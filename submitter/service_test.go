@@ -38,8 +38,8 @@ func TestClassifyWorklogs_Duplicate(t *testing.T) {
 	if len(overlaps) != 0 {
 		t.Fatalf("expected 0 overlaps, got %d", len(overlaps))
 	}
-	if duplicates != 1 {
-		t.Fatalf("expected 1 duplicate, got %d", duplicates)
+	if len(duplicates) != 1 {
+		t.Fatalf("expected 1 duplicate, got %d", len(duplicates))
 	}
 }
 
@@ -72,8 +72,8 @@ func TestClassifyWorklogs_Overlap(t *testing.T) {
 	if len(overlaps) != 1 {
 		t.Fatalf("expected 1 overlap, got %d", len(overlaps))
 	}
-	if duplicates != 0 {
-		t.Fatalf("expected 0 duplicates, got %d", duplicates)
+	if len(duplicates) != 0 {
+		t.Fatalf("expected 0 duplicates, got %d", len(duplicates))
 	}
 }
 
@@ -97,8 +97,81 @@ func TestClassifyWorklogs_New(t *testing.T) {
 	if len(overlaps) != 0 {
 		t.Fatalf("expected 0 overlaps, got %d", len(overlaps))
 	}
-	if duplicates != 0 {
-		t.Fatalf("expected 0 duplicates, got %d", duplicates)
+	if len(duplicates) != 0 {
+		t.Fatalf("expected 0 duplicates, got %d", len(duplicates))
+	}
+}
+
+func TestClassifyWorklogs_EquivalentChangedFields_TreatedAsUpdate(t *testing.T) {
+	t.Parallel()
+
+	local := []onepoint.PersistWorklog{
+		{
+			StartTime:  submitterIntPtr(9 * 60),
+			FinishTime: submitterIntPtr(10 * 60),
+			ProjectID:  onepoint.ID(1),
+			ActivityID: onepoint.ID(2),
+			SkillID:    onepoint.ID(3),
+			Billable:   30,
+			Comment:    "changed",
+		},
+	}
+	existing := []onepoint.PersistWorklog{
+		{
+			StartTime:  submitterIntPtr(9 * 60),
+			FinishTime: submitterIntPtr(10 * 60),
+			ProjectID:  onepoint.ID(1),
+			ActivityID: onepoint.ID(2),
+			SkillID:    onepoint.ID(3),
+			Billable:   60,
+			Comment:    "original",
+		},
+	}
+
+	toAdd, overlaps, duplicates := ClassifyWorklogs(local, existing)
+	if len(toAdd) != 1 {
+		t.Fatalf("expected 1 toAdd(update), got %d", len(toAdd))
+	}
+	if len(overlaps) != 0 {
+		t.Fatalf("expected 0 overlaps, got %d", len(overlaps))
+	}
+	if len(duplicates) != 0 {
+		t.Fatalf("expected 0 duplicates, got %d", len(duplicates))
+	}
+}
+
+func TestBuildPersistPayload_ReplacesEquivalentExisting(t *testing.T) {
+	t.Parallel()
+
+	existing := []onepoint.PersistWorklog{
+		{
+			StartTime:  submitterIntPtr(9 * 60),
+			FinishTime: submitterIntPtr(10 * 60),
+			ProjectID:  onepoint.ID(1),
+			ActivityID: onepoint.ID(2),
+			SkillID:    onepoint.ID(3),
+			Billable:   60,
+			Comment:    "old",
+		},
+	}
+	toWrite := []onepoint.PersistWorklog{
+		{
+			StartTime:  submitterIntPtr(9 * 60),
+			FinishTime: submitterIntPtr(10 * 60),
+			ProjectID:  onepoint.ID(1),
+			ActivityID: onepoint.ID(2),
+			SkillID:    onepoint.ID(3),
+			Billable:   30,
+			Comment:    "new",
+		},
+	}
+
+	payload := BuildPersistPayload(existing, toWrite)
+	if len(payload) != 1 {
+		t.Fatalf("expected replaced payload length 1, got %d", len(payload))
+	}
+	if payload[0].Billable != 30 || payload[0].Comment != "new" {
+		t.Fatalf("expected updated entry to replace existing, got %+v", payload[0])
 	}
 }
 

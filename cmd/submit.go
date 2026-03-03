@@ -29,6 +29,8 @@ var (
 	submitIncludeLockedActivities bool
 )
 
+var submitInputReader = bufio.NewReader(os.Stdin)
+
 var submitCmd = &cobra.Command{
 	Use:   "submit",
 	Short: "Submit worklogs from SQLite to OnePoint",
@@ -115,10 +117,10 @@ Authentication uses session cookies from auth state JSON (created by "gohour aut
 			totalLocal += len(batch.Worklogs)
 		}
 
-		totalResponses := 0
+		classified := make([]classifiedDay, 0, len(dayBatches))
 		totalDuplicates := 0
 		totalOverlaps := 0
-		lockedDays := make([]string, 0)
+		lockedDays := make([]string, 0, len(dayBatches))
 		globalSkipAllOverlaps := false
 		globalWriteAllOverlaps := false
 
@@ -128,6 +130,10 @@ Authentication uses session cookies from auth state JSON (created by "gohour aut
 
 		for _, batch := range dayBatches {
 			dayLabel := onepoint.FormatDay(batch.Day)
+			cd := classifiedDay{
+				batch:    batch,
+				dayLabel: dayLabel,
+			}
 
 			existing, submitErr := retryWithRelogin(
 				baseURL,
@@ -148,71 +154,50 @@ Authentication uses session cookies from auth state JSON (created by "gohour aut
 
 			lockedCount := submitter.CountLockedDayWorklogs(existing)
 			if lockedCount > 0 {
+				cd.locked = true
 				lockedDays = append(lockedDays, dayLabel)
-				fmt.Printf("Warning: skipping day %s: %d locked entry/entries found - no changes made\n", dayLabel, lockedCount)
+				classified = append(classified, cd)
 				continue
 			}
 
-			existingPayload := submitter.DayWorklogsToPersistPayload(existing)
-			toAdd, overlaps, duplicates := submitter.ClassifyWorklogs(batch.Worklogs, existingPayload)
-			totalDuplicates += duplicates
-			totalOverlaps += len(overlaps)
-
-			approvedOverlaps, err := handleOverlaps(overlaps, submitDryRun, &globalSkipAllOverlaps, &globalWriteAllOverlaps)
-			if err != nil {
-				return err
-			}
-			toAdd = append(toAdd, approvedOverlaps...)
-
-			if submitDryRun {
-				fmt.Printf(
-					"Dry-run day %s: local=%d duplicates=%d overlaps=%d ready=%d\n",
-					dayLabel,
-					len(batch.Worklogs),
-					duplicates,
-					len(overlaps),
-					len(toAdd),
-				)
-				continue
-			}
-
-			if len(toAdd) == 0 {
-				fmt.Printf("No new entries for day %s. Skipping persist.\n", dayLabel)
-				continue
-			}
-
-			payload := make([]onepoint.PersistWorklog, 0, len(existingPayload)+len(toAdd))
-			payload = append(payload, existingPayload...)
-			payload = append(payload, toAdd...)
-
-			results, err := retryWithRelogin(
-				baseURL,
-				homeURL,
-				host,
-				stateFile,
-				"gohour-submit/1.0",
-				&cookieHeader,
-				func(client onepoint.Client) ([]onepoint.PersistResult, error) {
-					dayCtx, cancelDay := context.WithTimeout(context.Background(), submitTimeout)
-					defer cancelDay()
-					return client.PersistWorklogs(dayCtx, batch.Day, payload)
-				},
-			)
-			if err != nil {
-				return fmt.Errorf("submit day %s failed: %w", dayLabel, err)
-			}
-
-			totalResponses += len(results)
-			fmt.Printf(
-				"Submitted day %s. Local entries: %d, Added entries: %d, Persist responses: %d\n",
-				dayLabel,
-				len(batch.Worklogs),
-				len(toAdd),
-				len(results),
-			)
+			cd.existingPayload = submitter.DayWorklogsToPersistPayload(existing)
+			cd.toAdd, cd.overlaps, cd.duplicates = submitter.ClassifyWorklogs(batch.Worklogs, cd.existingPayload)
+			totalDuplicates += len(cd.duplicates)
+			totalOverlaps += len(cd.overlaps)
+			classified = append(classified, cd)
 		}
 
 		if submitDryRun {
+			for _, cd := range classified {
+				fmt.Printf("Dry-run day %s:\n", cd.dayLabel)
+				if cd.locked {
+					fmt.Println("  [locked] day contains locked remote entries (skipped)")
+					continue
+				}
+				for _, item := range cd.batch.Worklogs {
+					if containsEquivalentPersistWorklog(cd.duplicates, item) {
+						fmt.Printf("  [duplicate] %s (skipped - already remote)\n", formatDryRunWorklog(item))
+						continue
+					}
+					if overlap, ok := findOverlapForLocal(cd.overlaps, item); ok {
+						fmt.Printf(
+							"  [overlap]   %s overlaps with existing %s\n",
+							formatDryRunWorklog(item),
+							formatPersistWorklogRange(overlap.Existing),
+						)
+						continue
+					}
+					fmt.Printf("  [ready]     %s\n", formatDryRunWorklog(item))
+				}
+				fmt.Printf(
+					"  Summary: local=%d ready=%d duplicates=%d overlaps=%d\n",
+					len(cd.batch.Worklogs),
+					len(cd.toAdd),
+					len(cd.duplicates),
+					len(cd.overlaps),
+				)
+			}
+
 			fmt.Println("Dry-run summary:")
 			fmt.Printf("  Days to submit:               %d\n", len(dayBatches))
 			if len(lockedDays) > 0 {
@@ -226,10 +211,83 @@ Authentication uses session cookies from auth state JSON (created by "gohour aut
 			return nil
 		}
 
+		totalResponses := 0
+		totalAdded := 0
+		totalReady := countTotalToAdd(classified)
+
+		fmt.Printf("\nPre-flight summary:\n")
+		fmt.Printf("  Days:               %d\n", len(dayBatches))
+		fmt.Printf("  Locked (skipped):   %d\n", len(lockedDays))
+		fmt.Printf("  Entries to add:     %d\n", totalReady)
+		fmt.Printf("  Duplicates to skip: %d\n", totalDuplicates)
+		fmt.Printf("  Overlapping:        %d\n", totalOverlaps)
+
+		if totalDuplicates > 0 || totalOverlaps > 0 {
+			if totalDuplicates > 0 {
+				fmt.Printf("Warning: %d duplicate entries will be silently skipped.\n", totalDuplicates)
+			}
+			if totalOverlaps > 0 {
+				fmt.Printf("Warning: %d overlapping entries will require interactive resolution.\n", totalOverlaps)
+			}
+			fmt.Print("Proceed with submit? [y/N]: ")
+			input, err := submitInputReader.ReadString('\n')
+			if err != nil && strings.TrimSpace(input) == "" {
+				return fmt.Errorf("read submit confirmation: %w", err)
+			}
+			if strings.ToLower(strings.TrimSpace(input)) != "y" {
+				fmt.Println("Submit aborted.")
+				return nil
+			}
+		}
+
+		for _, cd := range classified {
+			if cd.locked {
+				fmt.Printf("Warning: skipping day %s: locked\n", cd.dayLabel)
+				continue
+			}
+
+			approvedOverlaps, err := handleOverlaps(cd.overlaps, false, &globalSkipAllOverlaps, &globalWriteAllOverlaps)
+			if err != nil {
+				return err
+			}
+
+			toAdd := make([]onepoint.PersistWorklog, 0, len(cd.toAdd)+len(approvedOverlaps))
+			toAdd = append(toAdd, cd.toAdd...)
+			toAdd = append(toAdd, approvedOverlaps...)
+			if len(toAdd) == 0 {
+				fmt.Printf("No new entries for day %s. Skipping.\n", cd.dayLabel)
+				continue
+			}
+
+			payload := submitter.BuildPersistPayload(cd.existingPayload, toAdd)
+
+			results, err := retryWithRelogin(
+				baseURL,
+				homeURL,
+				host,
+				stateFile,
+				"gohour-submit/1.0",
+				&cookieHeader,
+				func(client onepoint.Client) ([]onepoint.PersistResult, error) {
+					dayCtx, cancelDay := context.WithTimeout(context.Background(), submitTimeout)
+					defer cancelDay()
+					return client.PersistWorklogs(dayCtx, cd.batch.Day, payload)
+				},
+			)
+			if err != nil {
+				return fmt.Errorf("submit day %s failed: %w", cd.dayLabel, err)
+			}
+
+			totalResponses += len(results)
+			totalAdded += len(toAdd)
+			fmt.Printf("Submitted day %s. Added: %d\n", cd.dayLabel, len(toAdd))
+		}
+
 		fmt.Printf(
-			"Submit completed. Days: %d, Local entries submitted: %d, Duplicates skipped: %d, Overlaps seen: %d, Persist responses: %d\n",
+			"Submit completed. Days: %d, Local entries prepared: %d, Added entries: %d, Duplicates skipped: %d, Overlaps seen: %d, Persist responses: %d\n",
 			len(dayBatches),
 			totalLocal,
+			totalAdded,
 			totalDuplicates,
 			totalOverlaps,
 			totalResponses,
@@ -241,6 +299,16 @@ Authentication uses session cookies from auth state JSON (created by "gohour aut
 type submitDayBatch = submitter.DayBatch
 type submitNameTuple = submitter.NameTuple
 type submitResolvedIDs = submitter.ResolvedIDs
+
+type classifiedDay struct {
+	batch           submitDayBatch
+	existingPayload []onepoint.PersistWorklog
+	toAdd           []onepoint.PersistWorklog
+	overlaps        []onepoint.OverlapInfo
+	duplicates      []onepoint.PersistWorklog
+	locked          bool
+	dayLabel        string
+}
 
 func init() {
 	rootCmd.AddCommand(submitCmd)
@@ -314,6 +382,32 @@ func buildSubmitDayBatches(entries []worklog.Entry, idsByTuple map[submitNameTup
 	return submitter.BuildDayBatches(entries, idsByTuple)
 }
 
+func countTotalToAdd(classified []classifiedDay) int {
+	total := 0
+	for _, cd := range classified {
+		total += len(cd.toAdd)
+	}
+	return total
+}
+
+func containsEquivalentPersistWorklog(values []onepoint.PersistWorklog, candidate onepoint.PersistWorklog) bool {
+	for _, item := range values {
+		if onepoint.PersistWorklogsEquivalent(item, candidate) {
+			return true
+		}
+	}
+	return false
+}
+
+func findOverlapForLocal(overlaps []onepoint.OverlapInfo, candidate onepoint.PersistWorklog) (onepoint.OverlapInfo, bool) {
+	for _, overlap := range overlaps {
+		if onepoint.PersistWorklogsEquivalent(overlap.Local, candidate) {
+			return overlap, true
+		}
+	}
+	return onepoint.OverlapInfo{}, false
+}
+
 func handleOverlaps(
 	overlaps []onepoint.OverlapInfo,
 	dryRun bool,
@@ -360,7 +454,6 @@ func handleOverlaps(
 		)
 	}
 
-	reader := bufio.NewReader(os.Stdin)
 	for {
 		fmt.Println("How to handle overlapping entries?")
 		fmt.Println("  (w) Write overlapping entries anyway")
@@ -370,7 +463,7 @@ func handleOverlaps(
 		fmt.Println("  (a) Abort submit")
 		fmt.Print("Enter choice: ")
 
-		input, err := reader.ReadString('\n')
+		input, err := submitInputReader.ReadString('\n')
 		if err != nil && strings.TrimSpace(input) == "" {
 			return nil, fmt.Errorf("read overlap choice: %w", err)
 		}
