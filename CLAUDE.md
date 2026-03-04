@@ -57,7 +57,7 @@
   - Convenience wrappers:
     - `scripts/ai-plan.sh [agent] [agent-options...]` (default agent: `claude`)
     - `scripts/ai-implement.sh [agent] [agent-options...]` (default agent: `codex`)
-    - `scripts/ai-review.sh [agent] [agent-options...]` (default agent: `codex`)
+    - `scripts/ai-review.sh [agent] [agent-options...]` (default agent: `claude`)
 - No `.ai/MODE` file is used.
 
 ## Git Rules

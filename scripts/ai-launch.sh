@@ -64,11 +64,18 @@ echo "Expected output: $expected_output"
 
 case "$agent" in
   claude)
-    exec claude "$@" --system-prompt-file "$prompt_file"
+    exec claude \
+      --permission-mode acceptEdits \
+      --add-dir "$REPO_ROOT" \
+      "$@" --system-prompt-file "$prompt_file"
     ;;
   codex)
     prompt_text="$(cat "$prompt_file")"
-    exec codex "$@" "$prompt_text"
+    exec codex \
+      --full-auto \
+      --sandbox workspace-write \
+      -c "sandbox_workspace_write.network_access=true" \
+      "$@" "$prompt_text"
     ;;
   *)
     echo "Unsupported agent: $agent" >&2
