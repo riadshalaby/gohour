@@ -431,7 +431,7 @@ func (s *Server) handlePartialMonth(w http.ResponseWriter, r *http.Request) {
 	remoteEntries, refreshedAt, err := s.loadRemoteRange(r.Context(), monthStart, monthEnd, refresh)
 	if err != nil {
 		if refresh {
-			http.Error(w, fmt.Sprintf("load remote worklogs: %v", err), http.StatusBadGateway)
+			writePartialTableError(w, http.StatusBadGateway, 6, fmt.Sprintf("load remote worklogs: %v", err))
 			return
 		}
 		authErrorMsg = fmt.Sprintf(
@@ -470,15 +470,9 @@ func (s *Server) handlePartialDay(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	refresh := strings.TrimSpace(r.URL.Query().Get("refresh")) == "1"
-	// Match month partial behavior: only fail closed on explicit remote refresh.
-	view, err := s.buildDayPartialView(r.Context(), day, refresh, refresh)
-	if err != nil {
+	if err := s.renderDayPartial(w, r, day, refresh, refresh); err != nil {
 		http.Error(w, fmt.Sprintf("load remote worklogs: %v", err), http.StatusBadGateway)
 		return
-	}
-	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	if err := renderPartialTemplate(w, "partials/day_tbody.html", view); err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
 	}
 }
 
@@ -735,10 +729,24 @@ func (s *Server) handlePartialSubmit(w http.ResponseWriter, r *http.Request, sco
 func (s *Server) renderDayPartial(w http.ResponseWriter, r *http.Request, day time.Time, refresh bool, failOnRemoteErr bool) error {
 	view, err := s.buildDayPartialView(r.Context(), day, refresh, failOnRemoteErr)
 	if err != nil {
+		if failOnRemoteErr {
+			writePartialTableError(w, http.StatusBadGateway, 11, fmt.Sprintf("load remote worklogs: %v", err))
+			return nil
+		}
 		return err
 	}
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	return renderPartialTemplate(w, "partials/day_tbody.html", view)
+}
+
+func writePartialTableError(w http.ResponseWriter, statusCode int, colspan int, message string) {
+	if colspan < 1 {
+		colspan = 1
+	}
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	w.WriteHeader(statusCode)
+	escaped := template.HTMLEscapeString(message)
+	_, _ = fmt.Fprintf(w, `<tr><td colspan="%d"><div class="dialog-error">%s</div></td></tr>`, colspan, escaped)
 }
 
 func (s *Server) buildDayPartialView(ctx context.Context, day time.Time, refresh bool, failOnRemoteErr bool) (dayPageView, error) {

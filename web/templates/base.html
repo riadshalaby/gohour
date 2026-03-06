@@ -16,7 +16,7 @@
 </head>
 <body class="has-sticky-bar">
   <div class="wrap">
-    <header class="top">
+    <header class="top" role="banner">
       <div class="brand-group">
         <a class="brand" href="/month/{{ .CurrentMonth }}">gohour</a>
         {{- if .CurrentMonth }}
@@ -32,14 +32,14 @@
         {{ end }}
       </div>
       <div class="nav">
-        <form action="/month" method="get" style="display:flex;gap:0.4rem;align-items:center;">
+        <form action="/month" method="get" aria-label="Navigation" style="display:flex;gap:0.4rem;align-items:center;">
           <input type="month" name="month" value="{{ .CurrentMonth }}" required>
           <button type="submit">Go</button>
         </form>
       </div>
     </header>
 
-    <main class="content">
+    <main class="content" role="main">
       {{ if .AuthErrorMsg }}
       <div class="auth-banner">{{ .AuthErrorMsg }}</div>
       {{ end }}
@@ -53,12 +53,16 @@
     x-show="$store.toast.visible"
     x-text="$store.toast.message"
     :class="$store.toast.isError ? 'toast error' : 'toast'"
+    role="status"
+    aria-live="polite"
     x-cloak
     style="pointer-events:none;"
   ></div>
 
   <!-- Confirm dialog -->
   <dialog id="confirm-dialog"
+    aria-labelledby="confirm-title"
+    aria-describedby="confirm-body"
     x-data
     x-ref="confirmDialog"
     x-init="
@@ -86,6 +90,7 @@
 
   <!-- Submit dialog -->
   <dialog id="submit-dialog"
+    aria-labelledby="submit-dialog-title"
     x-data
     x-ref="submitDialog"
     x-init="
@@ -96,7 +101,10 @@
           $refs.submitDialog.close();
         }
       });
-      $refs.submitDialog.addEventListener('close', () => { $store.submit.open = false; });
+      $refs.submitDialog.addEventListener('close', () => {
+        if ($store.submit.running) $store.submit.running = false;
+        $store.submit.close();
+      });
     ">
     <form id="submit-form"
       x-bind:hx-post="$store.submit.endpoint()"
@@ -127,15 +135,16 @@
   </dialog>
 
   <!-- Import preview dialog -->
-  <dialog id="import-preview-dialog" class="dialog-wide" x-data>
+  <dialog id="import-preview-dialog" class="dialog-wide" aria-labelledby="import-preview-title" x-data>
     <div class="dialog-header">
-      <h2>Import preview — <span id="preview-filename"></span></h2>
+      <h2 id="import-preview-title">Import preview — <span id="preview-filename"></span></h2>
     </div>
     <div class="dialog-body">
       <p id="preview-summary"></p>
       <p id="preview-status" class="muted" style="margin-top:0;"></p>
       <div class="table-wrap" style="max-height:400px;overflow-y:auto;overflow-x:auto;">
         <table id="preview-table">
+          <caption class="sr-only">Import preview entries</caption>
           <thead>
             <tr>
               <th>Import</th>
@@ -163,6 +172,7 @@
 
   <!-- Edit / create entry dialog -->
   <dialog id="edit-dialog"
+    aria-labelledby="edit-dialog-title"
     x-data
     x-ref="editDialog"
     x-init="
@@ -173,7 +183,7 @@
           $refs.editDialog.close();
         }
       });
-      $refs.editDialog.addEventListener('close', () => { $store.edit.open = false; });
+      $refs.editDialog.addEventListener('close', () => { $store.edit.close(); });
     ">
     <form id="edit-form"
       x-bind:hx-post="$store.edit.endpoint"

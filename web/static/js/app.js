@@ -304,6 +304,28 @@ document.addEventListener('htmx:afterSettle', (evt) => {
   applyLocaleFormatting(document);
 });
 
+// Allow month/day partial refreshes to swap server-provided 502 HTML fragments.
+document.body.addEventListener('htmx:beforeSwap', (event) => {
+  const detail = event.detail || {};
+  const xhr = detail.xhr;
+  if (!xhr || xhr.status !== 502) return;
+
+  const target = detail.target;
+  const targetID = target && target.id ? target.id : '';
+  if (targetID !== 'month-rows' && targetID !== 'day-entries') {
+    return;
+  }
+
+  const path = detail.requestConfig && detail.requestConfig.path
+    ? String(detail.requestConfig.path)
+    : '';
+  if (!path.includes('/partials/month/') && !path.includes('/partials/day/')) {
+    return;
+  }
+
+  detail.shouldSwap = true;
+});
+
 // ── Lookup / selects ──
 async function getLookup(refresh) {
   if (!_lookup || refresh) {
@@ -524,6 +546,17 @@ function openImportPreviewDialog(previewData, form, options) {
   updatePreviewCount();
   applyLocaleFormatting(dialog);
   dialog.showModal();
+  requestAnimationFrame(() => {
+    const firstCheckbox = body.querySelector('input.preview-select');
+    if (firstCheckbox) {
+      firstCheckbox.focus();
+      return;
+    }
+    const importButton = document.getElementById('preview-import-btn');
+    if (importButton) {
+      importButton.focus();
+    }
+  });
 }
 
 function updatePreviewCount() {
@@ -550,12 +583,19 @@ function setImportPreviewStatus(message, isError) {
 }
 
 function cancelImportPreview() {
+  const previewState = importPreviewStore();
+  const form = previewState ? previewState.form : null;
+  if (form) {
+    const fileInput = form.querySelector('input[name=file]');
+    if (fileInput) {
+      fileInput.value = '';
+    }
+  }
   const dialog = document.getElementById('import-preview-dialog');
   if (dialog && dialog.open) {
     dialog.close();
   }
   setImportPreviewStatus('', false);
-  const previewState = importPreviewStore();
   if (previewState) {
     previewState.reset();
   }
@@ -610,8 +650,8 @@ async function confirmImportPreview(modeFlag) {
       message += ' Reconcile warning: ' + String(result.reconcileWarning);
     }
     setImportPreviewStatus(message, false);
-    openStatusDialog('Import result', '<div class="result-box">' + escapeHtml(message) + '</div>');
     cancelImportPreview();
+    openStatusDialog('Import result', '<div class="result-box">' + escapeHtml(message) + '</div>');
     if (options && options.dialogID) {
       closeImportDialog(options.dialogID);
     }
@@ -801,6 +841,7 @@ function closeEditDialog() {
   if (state) {
     state.close();
   }
+  syncEditFormEndpoint();
 }
 
 function replaceDialogSelect(existingID, select) {
@@ -884,7 +925,14 @@ async function openEditDialog(options) {
   }
 
   updateDialogDuration(form);
+  syncEditFormEndpoint();
   state.open = true;
+  requestAnimationFrame(() => {
+    const startInputForFocus = form.querySelector('[name=start]');
+    if (startInputForFocus) {
+      startInputForFocus.focus();
+    }
+  });
 }
 
 function handleEditAfterRequest(event) {
@@ -897,6 +945,25 @@ function handleEditAfterRequest(event) {
   const message = state.mode === 'create' ? 'Entry created.' : 'Entry updated.';
   closeEditDialog();
   showToast(message, false);
+}
+
+function syncEditFormEndpoint() {
+  const form = document.getElementById('edit-form');
+  const state = editStore();
+  if (!form || !state) return;
+
+  if (state.endpoint) {
+    form.setAttribute('hx-post', state.endpoint);
+    form.setAttribute('action', state.endpoint);
+    form.setAttribute('method', 'post');
+  } else {
+    form.removeAttribute('hx-post');
+    form.removeAttribute('action');
+    form.removeAttribute('method');
+  }
+  if (window.htmx) {
+    htmx.process(form);
+  }
 }
 
 function handleEditResponseError(event) {
@@ -1003,8 +1070,9 @@ function refreshMonthPartial(month, refresh) {
 // ── Month action helpers ──
 async function deleteMonthEntries(month) {
   try {
-    await apiFetch('DELETE', '/api/month/' + encodeURIComponent(month) + '/worklogs');
-    window.location.href = '/month/' + encodeURIComponent(month);
+    const result = await apiFetch('DELETE', '/api/month/' + encodeURIComponent(month) + '/worklogs');
+    await refreshMonthPartial(month, false);
+    showToast('Deleted ' + result.deleted + ' local entries.', false);
   } catch (err) {
     showToast(String(err.message || err), true);
   }
@@ -1098,6 +1166,12 @@ function openSubmitAction(scope, value) {
   if (!store) return;
   store.openSubmit(scope, value);
   syncSubmitFormEndpoint();
+  requestAnimationFrame(() => {
+    const dryRunToggle = document.getElementById('submit-dry-run');
+    if (dryRunToggle) {
+      dryRunToggle.focus();
+    }
+  });
 }
 
 function syncSubmitFormEndpoint() {
@@ -1118,6 +1192,21 @@ function syncSubmitFormEndpoint() {
   if (window.htmx) {
     htmx.process(form);
   }
+}
+
+function clearHTMXIndicator(indicatorID, event) {
+  const indicator = document.getElementById(indicatorID);
+  if (indicator) {
+    indicator.classList.remove('htmx-request');
+  }
+
+  const trigger = event && event.detail && event.detail.elt
+    ? event.detail.elt
+    : (event ? event.target : null);
+  if (!trigger || !trigger.classList) {
+    return;
+  }
+  trigger.classList.remove('htmx-request');
 }
 
 function handleSubmitBeforeRequest(event) {
@@ -1164,6 +1253,67 @@ function handleSubmitResponseError(event) {
     target.innerHTML = '<div class="dialog-error">' + escapeHtml(errorText) + '</div>';
   }
   showToast(errorText, true);
+}
+
+function handleActionsMenuKeydown(event) {
+  const menu = event.currentTarget;
+  if (!menu) return;
+  const items = Array.from(menu.querySelectorAll('[role="menuitem"]'))
+    .filter((item) => !item.disabled);
+  if (!items.length) return;
+
+  if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
+    event.preventDefault();
+    const active = document.activeElement;
+    let index = items.indexOf(active);
+    if (index < 0) {
+      index = event.key === 'ArrowDown' ? 0 : items.length - 1;
+    } else {
+      index = event.key === 'ArrowDown'
+        ? (index + 1) % items.length
+        : (index - 1 + items.length) % items.length;
+    }
+    items[index].focus();
+    return;
+  }
+
+  if (event.key === 'Enter' || event.key === ' ' || event.key === 'Spacebar') {
+    const active = document.activeElement;
+    if (items.includes(active)) {
+      event.preventDefault();
+      active.click();
+    }
+  }
+}
+
+function handleActionsMenuTriggerKeydown(event) {
+  if (event.key !== 'ArrowDown' && event.key !== 'ArrowUp') {
+    return;
+  }
+
+  const trigger = event.currentTarget;
+  if (!trigger) return;
+  const container = trigger.closest('.actions-menu');
+  const menu = container ? container.querySelector('.actions-menu-items') : null;
+  if (!menu) return;
+
+  event.preventDefault();
+  const focusMenuItem = () => {
+    const items = Array.from(menu.querySelectorAll('[role="menuitem"]'))
+      .filter((item) => !item.disabled);
+    if (!items.length) return;
+    const targetIndex = event.key === 'ArrowUp' ? items.length - 1 : 0;
+    items[targetIndex].focus();
+  };
+
+  const isExpanded = trigger.getAttribute('aria-expanded') === 'true';
+  if (!isExpanded) {
+    trigger.click();
+    requestAnimationFrame(focusMenuItem);
+    return;
+  }
+
+  focusMenuItem();
 }
 
 // ── Day keyboard navigation ──
@@ -1213,4 +1363,19 @@ document.body.addEventListener('refresh-month', (event) => {
 document.addEventListener('DOMContentLoaded', () => {
   applyLocaleFormatting(document);
   syncSubmitFormEndpoint();
+
+  const importPreviewDialog = document.getElementById('import-preview-dialog');
+  if (importPreviewDialog) {
+    importPreviewDialog.addEventListener('cancel', (event) => {
+      event.preventDefault();
+      cancelImportPreview();
+    });
+    importPreviewDialog.addEventListener('close', () => {
+      const state = importPreviewStore();
+      if (state) {
+        state.reset();
+      }
+      setImportPreviewStatus('', false);
+    });
+  }
 });

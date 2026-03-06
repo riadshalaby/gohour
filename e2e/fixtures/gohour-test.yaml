@@ -1,0 +1,16 @@
+onepoint:
+  url: "https://onepoint.example.invalid/onepoint/faces/home"
+
+import:
+  auto_reconcile_after_import: false
+
+rules:
+  - name: "generic-local"
+    mapper: "generic"
+    file_template: "*.csv"
+    project_id: 100
+    project: "P"
+    activity_id: 200
+    activity: "A"
+    skill_id: 300
+    skill: "S"

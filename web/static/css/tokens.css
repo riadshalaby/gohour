@@ -9,14 +9,14 @@
   /* ── Colors: header ── */
   --hdr-bg: #0f1117;
   --hdr-text: #e8e8e5;
-  --hdr-muted: #5c6070;
+  --hdr-muted: #8890a4;
   --hdr-border: rgba(255, 255, 255, 0.07);
 
   /* ── Colors: text ── */
   --text: #111318;
   --text-secondary: #374151;
   --muted: #6b7280;
-  --muted-light: #9ca3af;
+  --muted-light: #6b7280;
 
   /* ── Colors: borders ── */
   --border: #e3e2de;
@@ -35,7 +35,7 @@
 
   --txt-local: #15803d;
   --txt-synced: #1d4ed8;
-  --txt-conflict: #92400e;
+  --txt-conflict: #78350f;
   --txt-remote: #5b21b6;
 
   --bdr-local: #bbf7d0;

@@ -1,10 +1,13 @@
 package cmd
 
 import (
+	"context"
 	"net/http"
 	"net/http/httptest"
 	"testing"
 	"time"
+
+	"gohour/config"
 )
 
 func TestParseServeMonthBounds_NoFlagsUsesCurrentMonth(t *testing.T) {
@@ -67,5 +70,60 @@ func TestWithServeMonthRedirect(t *testing.T) {
 	}
 	if nextCalled {
 		t.Fatalf("expected wrapper to intercept root redirect")
+	}
+}
+
+func TestBuildServeClient_UsesE2EStubWhenEnabled(t *testing.T) {
+	t.Setenv(e2eStubRemoteEnv, "1")
+	client, err := buildServeClient(config.Config{
+		Rules: []config.Rule{
+			{
+				Name:         "generic-local",
+				Mapper:       "generic",
+				FileTemplate: "*.csv",
+				ProjectID:    100,
+				Project:      "P",
+				ActivityID:   200,
+				Activity:     "A",
+				SkillID:      300,
+				Skill:        "S",
+			},
+		},
+	})
+	if err != nil {
+		t.Fatalf("buildServeClient returned error: %v", err)
+	}
+
+	snapshot, err := client.FetchLookupSnapshot(t.Context())
+	if err != nil {
+		t.Fatalf("FetchLookupSnapshot returned error: %v", err)
+	}
+	if len(snapshot.Projects) != 1 || snapshot.Projects[0].Name != "P" {
+		t.Fatalf("unexpected projects: %+v", snapshot.Projects)
+	}
+	if len(snapshot.Activities) != 1 || snapshot.Activities[0].Name != "A" {
+		t.Fatalf("unexpected activities: %+v", snapshot.Activities)
+	}
+	if len(snapshot.Skills) != 1 || snapshot.Skills[0].Name != "S" {
+		t.Fatalf("unexpected skills: %+v", snapshot.Skills)
+	}
+}
+
+func TestBuildServeClient_StubRefreshFailsButDayLookupWorks(t *testing.T) {
+	t.Setenv(e2eStubRemoteEnv, "1")
+	client, err := buildServeClient(config.Config{})
+	if err != nil {
+		t.Fatalf("buildServeClient returned error: %v", err)
+	}
+
+	if _, err := client.GetFilteredWorklogs(context.Background(), time.Now(), time.Now()); err == nil {
+		t.Fatalf("expected GetFilteredWorklogs to fail in e2e stub mode")
+	}
+	worklogs, err := client.GetDayWorklogs(context.Background(), time.Now())
+	if err != nil {
+		t.Fatalf("GetDayWorklogs returned error: %v", err)
+	}
+	if len(worklogs) != 0 {
+		t.Fatalf("expected empty day worklogs, got %+v", worklogs)
 	}
 }
