@@ -102,6 +102,9 @@ func TestServer_MonthPageRendersMonthDays(t *testing.T) {
 	if !strings.Contains(text, `src="/static/js/app.js"`) {
 		t.Fatalf("month page missing external app.js script tag")
 	}
+	if !strings.Contains(text, `@keydown="handleActionsMenuTriggerKeydown($event)"`) {
+		t.Fatalf("month page missing actions trigger keyboard handler")
+	}
 	for _, action := range []string{"Refresh remote", "Copy from remote", "Delete all local", "Delete all remote", "Import file"} {
 		if !strings.Contains(text, action) {
 			t.Fatalf("month page missing action %q", action)
@@ -412,6 +415,7 @@ func TestServer_DayPageIncludesResponsiveTableAndEditDialog(t *testing.T) {
 	text := string(body)
 	for _, needle := range []string{
 		// HTML structure still in templates
+		`<div class="day-page day-table-mobile-cards" x-data="{}">`,
 		`<div class="table-wrap">`,
 		`id="edit-dialog"`,
 		`id="confirm-dialog"`,
@@ -679,9 +683,13 @@ func TestServer_PartialMonth_AuthError_Returns502OnRefresh(t *testing.T) {
 		t.Fatalf("request partial month with refresh: %v", err)
 	}
 	defer resp2.Body.Close()
+	body2, _ := io.ReadAll(resp2.Body)
 	if resp2.StatusCode != http.StatusBadGateway {
-		body, _ := io.ReadAll(resp2.Body)
-		t.Fatalf("expected 502 with refresh on auth error, got %d body=%s", resp2.StatusCode, string(body))
+		t.Fatalf("expected 502 with refresh on auth error, got %d body=%s", resp2.StatusCode, string(body2))
+	}
+	text := string(body2)
+	if !strings.Contains(text, `colspan="6"`) || !strings.Contains(text, `class="dialog-error"`) {
+		t.Fatalf("expected HTML error fragment for month partial refresh failure, got %s", text)
 	}
 }
 
@@ -750,9 +758,13 @@ func TestServer_PartialDay_AuthError_GracefulWithoutRefreshAnd502WithRefresh(t *
 		t.Fatalf("request partial day with refresh: %v", err)
 	}
 	defer resp.Body.Close()
+	refreshBody, _ := io.ReadAll(resp.Body)
 	if resp.StatusCode != http.StatusBadGateway {
-		body, _ := io.ReadAll(resp.Body)
-		t.Fatalf("expected 502 on auth error with refresh, got %d body=%s", resp.StatusCode, string(body))
+		t.Fatalf("expected 502 on auth error with refresh, got %d body=%s", resp.StatusCode, string(refreshBody))
+	}
+	refreshText := string(refreshBody)
+	if !strings.Contains(refreshText, `colspan="11"`) || !strings.Contains(refreshText, `class="dialog-error"`) {
+		t.Fatalf("expected HTML error fragment for day partial refresh failure, got %s", refreshText)
 	}
 }
 
@@ -2949,6 +2961,348 @@ func TestLoadRemoteRange_SortsOnceAndUsesCache(t *testing.T) {
 		if strings.Join(got, ",") != strings.Join(want, ",") {
 			t.Fatalf("unexpected order on run %d: got=%v want=%v", i+1, got, want)
 		}
+	}
+}
+
+func TestServer_PartialMonth_AuthError_GracefulWithoutRefresh(t *testing.T) {
+	t.Parallel()
+
+	store := openTestStore(t)
+	insertWorklogs(t, store, []worklog.Entry{
+		newLocalEntry(time.Date(2026, 3, 1, 9, 0, 0, 0, time.Local)),
+	})
+	client := &fakeClient{
+		worklogs: []onepoint.DayWorklog{
+			{
+				WorklogDate: onepoint.FormatDay(time.Date(2026, 3, 1, 0, 0, 0, 0, time.Local)),
+				StartTime:   9 * 60,
+				FinishTime:  11 * 60,
+				Billable:    120,
+			},
+		},
+	}
+	ts := httptest.NewServer(NewServer(store, client, testConfig(nil)))
+	defer ts.Close()
+
+	primeResp, err := http.Get(ts.URL + "/partials/month/2026-03?refresh=1")
+	if err != nil {
+		t.Fatalf("prime partial month refresh request: %v", err)
+	}
+	io.ReadAll(primeResp.Body)
+	primeResp.Body.Close()
+	if primeResp.StatusCode != http.StatusOK {
+		t.Fatalf("expected 200 while priming cache, got %d", primeResp.StatusCode)
+	}
+	callsAfterPrime := client.filteredCalls
+	if callsAfterPrime == 0 {
+		t.Fatalf("expected initial remote fetch while priming cache")
+	}
+
+	client.filteredErr = errors.New("session expired")
+
+	resp, err := http.Get(ts.URL + "/partials/month/2026-03")
+	if err != nil {
+		t.Fatalf("request partial month without refresh: %v", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		t.Fatalf("expected 200 without refresh, got %d body=%s", resp.StatusCode, string(body))
+	}
+	if client.filteredCalls != callsAfterPrime {
+		t.Fatalf("expected stale cache to be reused without refresh, calls=%d afterPrime=%d", client.filteredCalls, callsAfterPrime)
+	}
+
+	body, _ := io.ReadAll(resp.Body)
+	text := string(body)
+	if !strings.Contains(text, `data-mins="120"`) {
+		t.Fatalf("expected stale remote totals to remain visible in graceful partial response, got: %s", text)
+	}
+}
+
+func TestServer_WorklogUpdate_OverlapConflict(t *testing.T) {
+	t.Parallel()
+
+	day := time.Date(2026, 3, 1, 0, 0, 0, 0, time.Local)
+	store := openTestStore(t)
+	insertWorklogs(t, store, []worklog.Entry{
+		{
+			StartDateTime: day.Add(9 * time.Hour),
+			EndDateTime:   day.Add(10 * time.Hour),
+			Billable:      60,
+			Description:   "base",
+			Project:       "P",
+			Activity:      "A",
+			Skill:         "S",
+			SourceFormat:  "csv",
+			SourceMapper:  "generic",
+			SourceFile:    "a.csv",
+		},
+		{
+			StartDateTime: day.Add(11 * time.Hour),
+			EndDateTime:   day.Add(12 * time.Hour),
+			Billable:      60,
+			Description:   "to-edit",
+			Project:       "P2",
+			Activity:      "A2",
+			Skill:         "S2",
+			SourceFormat:  "csv",
+			SourceMapper:  "generic",
+			SourceFile:    "a.csv",
+		},
+	})
+	entries, err := store.ListWorklogs()
+	if err != nil {
+		t.Fatalf("list worklogs: %v", err)
+	}
+
+	ts := httptest.NewServer(NewServer(store, &fakeClient{}, testConfig(nil)))
+	defer ts.Close()
+
+	body := strings.NewReader(`{"date":"2026-03-01","start":"09:30","end":"10:30","project":"Other","activity":"Other","skill":"Other","billable":60,"description":"overlap"}`)
+	req, _ := http.NewRequest(http.MethodPatch, ts.URL+"/api/worklog/"+strconvI64(entries[1].ID), body)
+	req.Header.Set("Content-Type", "application/json")
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatalf("patch request: %v", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusConflict {
+		payload, _ := io.ReadAll(resp.Body)
+		t.Fatalf("expected 409, got %d body=%s", resp.StatusCode, string(payload))
+	}
+
+	var payload worklogConflictResponse
+	if err := json.NewDecoder(resp.Body).Decode(&payload); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if payload.Type != "overlap" {
+		t.Fatalf("expected overlap conflict, got %+v", payload)
+	}
+	if payload.ExistingID != entries[0].ID {
+		t.Fatalf("expected overlap against id=%d, got %+v", entries[0].ID, payload)
+	}
+}
+
+func TestServer_WorklogUpdate_DuplicateConflict(t *testing.T) {
+	t.Parallel()
+
+	day := time.Date(2026, 3, 1, 0, 0, 0, 0, time.Local)
+	store := openTestStore(t)
+	insertWorklogs(t, store, []worklog.Entry{
+		{
+			StartDateTime: day.Add(9 * time.Hour),
+			EndDateTime:   day.Add(10 * time.Hour),
+			Billable:      60,
+			Description:   "base",
+			Project:       "P",
+			Activity:      "A",
+			Skill:         "S",
+			SourceFormat:  "csv",
+			SourceMapper:  "generic",
+			SourceFile:    "a.csv",
+		},
+		{
+			StartDateTime: day.Add(11 * time.Hour),
+			EndDateTime:   day.Add(12 * time.Hour),
+			Billable:      60,
+			Description:   "to-edit",
+			Project:       "P2",
+			Activity:      "A2",
+			Skill:         "S2",
+			SourceFormat:  "csv",
+			SourceMapper:  "generic",
+			SourceFile:    "a.csv",
+		},
+	})
+	entries, err := store.ListWorklogs()
+	if err != nil {
+		t.Fatalf("list worklogs: %v", err)
+	}
+
+	ts := httptest.NewServer(NewServer(store, &fakeClient{}, testConfig(nil)))
+	defer ts.Close()
+
+	body := strings.NewReader(`{"date":"2026-03-01","start":"09:00","end":"10:00","project":"P","activity":"A","skill":"S","billable":60,"description":"duplicate"}`)
+	req, _ := http.NewRequest(http.MethodPatch, ts.URL+"/api/worklog/"+strconvI64(entries[1].ID), body)
+	req.Header.Set("Content-Type", "application/json")
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatalf("patch request: %v", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusConflict {
+		payload, _ := io.ReadAll(resp.Body)
+		t.Fatalf("expected 409, got %d body=%s", resp.StatusCode, string(payload))
+	}
+
+	var payload worklogConflictResponse
+	if err := json.NewDecoder(resp.Body).Decode(&payload); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if payload.Type != "duplicate" {
+		t.Fatalf("expected duplicate conflict, got %+v", payload)
+	}
+	if payload.ExistingID != entries[0].ID {
+		t.Fatalf("expected duplicate against id=%d, got %+v", entries[0].ID, payload)
+	}
+}
+
+func TestServer_SubmitMonth_LockedDaysSkipped(t *testing.T) {
+	t.Parallel()
+
+	day1 := time.Date(2026, 3, 1, 9, 0, 0, 0, time.Local)
+	day2 := time.Date(2026, 3, 2, 9, 0, 0, 0, time.Local)
+	store := openTestStore(t)
+	insertWorklogs(t, store, []worklog.Entry{
+		newLocalEntry(day1),
+		newLocalEntry(day2),
+	})
+
+	client := &fakeClient{
+		snapshot: onepoint.LookupSnapshot{
+			Projects: []onepoint.Project{{ID: 100, Name: "P", Archived: "0"}},
+			Activities: []onepoint.Activity{
+				{ID: 200, Name: "A", ProjectNodeID: 100, Locked: false},
+			},
+			Skills: []onepoint.Skill{
+				{SkillID: 300, Name: "S", ActivityID: 200},
+			},
+		},
+		dayWorklogs: map[string][]onepoint.DayWorklog{
+			"2026-03-01": {
+				{
+					WorklogDate: onepoint.FormatDay(day1),
+					Locked:      1,
+					StartTime:   9 * 60,
+					FinishTime:  10 * 60,
+					ProjectID:   100,
+					ActivityID:  200,
+					SkillID:     300,
+				},
+			},
+		},
+	}
+
+	ts := httptest.NewServer(NewServer(store, client, testConfig([]config.Rule{ruleForLocal()})))
+	defer ts.Close()
+
+	resp, err := http.Post(ts.URL+"/api/submit/month/2026-03", "application/json", nil)
+	if err != nil {
+		t.Fatalf("submit month request: %v", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		t.Fatalf("expected 200, got %d body=%s", resp.StatusCode, string(body))
+	}
+
+	var payload submitResponse
+	if err := json.NewDecoder(resp.Body).Decode(&payload); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if len(payload.LockedDays) != 1 || payload.LockedDays[0] != "2026-03-01" {
+		t.Fatalf("unexpected locked days: %+v", payload.LockedDays)
+	}
+	if payload.Submitted != 1 {
+		t.Fatalf("expected one submitted entry from unlocked day, got %+v", payload)
+	}
+	if client.persistCalls != 1 {
+		t.Fatalf("expected one persist call for unlocked day, got %d", client.persistCalls)
+	}
+	if _, ok := client.persistByDate["2026-03-01"]; ok {
+		t.Fatalf("expected locked day to be skipped from persist payloads")
+	}
+}
+
+func TestServer_SyncMonthRemote_Redirects(t *testing.T) {
+	t.Parallel()
+
+	store := openTestStore(t)
+	client := &fakeClient{
+		snapshot: onepoint.LookupSnapshot{
+			Projects: []onepoint.Project{{ID: 11, Name: "Project A", Archived: "0"}},
+			Activities: []onepoint.Activity{
+				{ID: 22, Name: "Activity B", ProjectNodeID: 11, Locked: false},
+			},
+			Skills: []onepoint.Skill{
+				{SkillID: 33, Name: "Skill C", ActivityID: 22},
+			},
+		},
+		worklogs: []onepoint.DayWorklog{
+			{
+				WorklogDate: onepoint.FormatDay(time.Date(2026, 3, 1, 0, 0, 0, 0, time.Local)),
+				StartTime:   9 * 60,
+				FinishTime:  10 * 60,
+				Billable:    60,
+				Comment:     "remote-a",
+				ProjectID:   11,
+				ActivityID:  22,
+				SkillID:     33,
+			},
+		},
+	}
+	ts := httptest.NewServer(NewServer(store, client, testConfig(nil)))
+	defer ts.Close()
+
+	resp, err := http.Post(ts.URL+"/api/month/2026-03/sync", "application/json", nil)
+	if err != nil {
+		t.Fatalf("sync request: %v", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		t.Fatalf("expected 200, got %d body=%s", resp.StatusCode, string(body))
+	}
+
+	var payload map[string]int
+	if err := json.NewDecoder(resp.Body).Decode(&payload); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if payload["copied"] != 1 || payload["total"] != 1 {
+		t.Fatalf("unexpected sync payload: %+v", payload)
+	}
+
+	entries, err := store.ListWorklogs()
+	if err != nil {
+		t.Fatalf("list worklogs: %v", err)
+	}
+	if len(entries) != 1 {
+		t.Fatalf("expected one copied entry after sync alias route, got %d", len(entries))
+	}
+}
+
+func TestServer_Import_EmptyFile(t *testing.T) {
+	t.Parallel()
+
+	store := openTestStore(t)
+	ts := httptest.NewServer(NewServer(store, &fakeClient{}, testConfig(nil)))
+	defer ts.Close()
+
+	var body bytes.Buffer
+	writer := multipart.NewWriter(&body)
+	part, err := writer.CreateFormFile("file", "empty.csv")
+	if err != nil {
+		t.Fatalf("create form file: %v", err)
+	}
+	if _, err := part.Write([]byte("")); err != nil {
+		t.Fatalf("write empty file: %v", err)
+	}
+	_ = writer.WriteField("mapper", "generic")
+	if err := writer.Close(); err != nil {
+		t.Fatalf("close multipart writer: %v", err)
+	}
+
+	resp, err := http.Post(ts.URL+"/api/import", writer.FormDataContentType(), &body)
+	if err != nil {
+		t.Fatalf("import request: %v", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusBadRequest {
+		payload, _ := io.ReadAll(resp.Body)
+		t.Fatalf("expected 400, got %d body=%s", resp.StatusCode, string(payload))
 	}
 }
 

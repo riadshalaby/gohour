@@ -1,5 +1,5 @@
 {{ define "page" }}
-<div class="day-page day-table-mobile-cards">
+<div class="day-page day-table-mobile-cards" x-data="{}">
 <!-- Day navigation (Phase 4.4) -->
 <div class="page-nav">
   <!-- Back to month + prev/next day arrows -->
@@ -10,11 +10,13 @@
     {{- /* The anchors are built from the Day value; keyboard nav in app.js reads #day-prev-link / #day-next-link */}}
     <a id="day-prev-link" class="nav-arrow"
       href="/day/{{ dayOffset .Day -1 }}"
-      title="Previous day (←)">&#8592;</a>
+      title="Previous day (←)"
+      aria-label="Previous day">&#8592;</a>
     <span class="nav-current"><span class="js-fmt-date" data-iso="{{ .Day }}">{{ .Day }}</span></span>
     <a id="day-next-link" class="nav-arrow"
       href="/day/{{ dayOffset .Day 1 }}"
-      title="Next day (→)">&#8594;</a>
+      title="Next day (→)"
+      aria-label="Next day">&#8594;</a>
   </div>
 
   <!-- Primary actions -->
@@ -26,6 +28,7 @@
     hx-target="#day-entries"
     hx-swap="innerHTML"
     hx-indicator="#day-refresh-head"
+    @htmx:after-request="clearHTMXIndicator('day-refresh-head', $event)"
     @htmx:after-settle="showToast('Remote day data refreshed.', false)"
     @htmx:response-error="showToast('Failed to refresh remote data.', true)">
     Refresh remote
@@ -81,7 +84,8 @@
 
 <!-- Entry table (Phase 4.2) -->
 <div class="table-wrap">
-  <table>
+  <table aria-label="Day entries">
+    <caption class="sr-only">Day entries</caption>
     <thead>
       <tr>
         <th>Status</th>
@@ -126,7 +130,7 @@
 
 <!-- Add entry + footer -->
 <div class="page-nav" style="margin-top:0.8rem;">
-  <button type="button" onclick="addEntryRow('{{ .Day }}')">Add entry</button>
+  <button type="button" aria-label="Add new worklog entry" onclick="addEntryRow('{{ .Day }}')">Add entry</button>
 </div>
 
 <div class="footer">
@@ -140,7 +144,7 @@
 </div>
 
 <div class="sticky-bar">
-  <button type="button" onclick="addEntryRow('{{ .Day }}')">Add entry</button>
+  <button type="button" aria-label="Add new worklog entry" onclick="addEntryRow('{{ .Day }}')">Add entry</button>
   <button type="button" class="btn-primary" onclick="openSubmitAction('day', '{{ .Day }}')">Submit day</button>
 </div>
 {{ end }}

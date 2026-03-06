@@ -263,6 +263,21 @@ Main flags:
 - `--url` (optional): override OnePoint home URL for this run
 - `--no-open` (optional): do not auto-open browser tab
 
+## Browser Smoke Tests
+
+Browser smoke coverage now lives in the standalone `e2e/` Playwright subproject.
+
+Run the suite:
+
+```bash
+cd e2e
+npm install
+npx playwright install chromium
+npx playwright test
+```
+
+The Playwright `webServer` config auto-starts the pre-built `../gohour` binary against a seeded temporary SQLite database, so no manual server management is required for the default flow.
+
 ## Submit To OnePoint
 
 Submit normalized worklogs from SQLite to OnePoint:

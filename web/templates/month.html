@@ -4,9 +4,9 @@
 <div class="page-nav">
   <!-- Month navigation (Phase 3.3, 4.4 arrows) -->
   <div class="month-nav">
-    <a class="nav-arrow" href="/month/{{ .PreviousMonth }}" title="Previous month (←)">&#8592;</a>
+    <a class="nav-arrow" href="/month/{{ .PreviousMonth }}" title="Previous month (←)" aria-label="Previous month">&#8592;</a>
     <span class="nav-current">{{ .CurrentMonth }}</span>
-    <a class="nav-arrow" href="/month/{{ .NextMonth }}" title="Next month (→)">&#8594;</a>
+    <a class="nav-arrow" href="/month/{{ .NextMonth }}" title="Next month (→)" aria-label="Next month">&#8594;</a>
   </div>
 
   <!-- Primary actions -->
@@ -14,21 +14,24 @@
 
   <!-- Actions dropdown (Alpine.js x-data, Phase 2.5) -->
   <div x-data="{ open: false }" class="actions-menu" @click.outside="open = false" @keydown.escape="open = false">
-    <button type="button" class="actions-menu-trigger" @click="open = !open" :aria-expanded="open">
+    <button type="button" class="actions-menu-trigger" @click="open = !open" @keydown="handleActionsMenuTriggerKeydown($event)" :aria-expanded="open">
       Actions <span class="chevron">▾</span>
     </button>
-    <div class="actions-menu-items" x-show="open" x-cloak @click="open = false">
+    <div class="actions-menu-items" role="menu" x-show="open" x-cloak @click="open = false" @keydown="handleActionsMenuKeydown($event)">
       <span class="menu-section-label">Remote</span>
       <button type="button"
+        role="menuitem"
         hx-get="/partials/month/{{ .CurrentMonth }}?refresh=1"
         hx-target="#month-rows"
         hx-swap="innerHTML"
         hx-indicator="#month-refresh-head"
+        @htmx:after-request="clearHTMXIndicator('month-refresh-head', $event)"
         @htmx:after-settle="monthRemoteRefreshedAt = document.getElementById('month-remote-refreshed-at')?.dataset.iso || monthRemoteRefreshedAt; showToast('Remote month data refreshed.', false)"
         @htmx:response-error="showToast('Failed to refresh remote data.', true)">
         Refresh remote
       </button>
       <button type="button"
+        role="menuitem"
         onclick="openConfirmDialog(
           'Copy remote entries',
           'Import all remote entries for {{ .CurrentMonth }} into local database?',
@@ -38,6 +41,7 @@
       <div class="menu-separator"></div>
       <span class="menu-section-label">Danger zone</span>
       <button type="button" class="btn-danger"
+        role="menuitem"
         onclick="openConfirmDialog(
           'Delete remote entries',
           'Delete ALL remote OnePoint entries for {{ .CurrentMonth }}? Locked days will be skipped. This cannot be undone.',
@@ -45,6 +49,7 @@
           'Delete'
         )">Delete all remote</button>
       <button type="button" class="btn-danger"
+        role="menuitem"
         onclick="openConfirmDialog(
           'Delete local entries',
           'Delete ALL local entries for {{ .CurrentMonth }}? This cannot be undone.',
@@ -52,7 +57,7 @@
           'Delete'
         )">Delete all local</button>
       <div class="menu-separator"></div>
-      <button type="button" onclick="openImportDialog('month-import-dialog', 'month-import-form')">Import file</button>
+      <button type="button" role="menuitem" onclick="openImportDialog('month-import-dialog', 'month-import-form')">Import file</button>
     </div>
   </div>
 
@@ -121,7 +126,7 @@
 
 <!-- Month table (Phase 3.2) -->
 <div class="table-wrap">
-  <table>
+  <table aria-label="Monthly worklogs">
     <thead>
       <tr>
         <th>Date</th>
@@ -163,7 +168,7 @@
     </tbody>
     <tfoot>
       <tr>
-        <th>Total</th>
+        <th scope="row">Total</th>
         <td class="num"><span class="js-fmt-hours" data-mins="{{ toMins .TotalLocalWorked }}">{{ toMins .TotalLocalWorked }}</span></td>
         <td class="num"><span class="js-fmt-hours" data-mins="{{ toMins .TotalLocal }}">{{ toMins .TotalLocal }}</span></td>
         <td class="num">
