@@ -9,8 +9,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/riadshalaby/gohour/onepoint"
 	"github.com/spf13/viper"
-	"gohour/onepoint"
 )
 
 func TestResolveDefaultAuthStatePath(t *testing.T) {

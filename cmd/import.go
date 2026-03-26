@@ -2,11 +2,11 @@ package cmd
 
 import (
 	"fmt"
-	"gohour/config"
-	"gohour/importer"
-	"gohour/reconcile"
-	"gohour/storage"
-	"gohour/worklog"
+	"github.com/riadshalaby/gohour/config"
+	"github.com/riadshalaby/gohour/importer"
+	"github.com/riadshalaby/gohour/reconcile"
+	"github.com/riadshalaby/gohour/storage"
+	"github.com/riadshalaby/gohour/worklog"
 	"strings"
 
 	"github.com/spf13/cobra"

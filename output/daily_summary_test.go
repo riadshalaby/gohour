@@ -1,7 +1,7 @@
 package output
 
 import (
-	"gohour/worklog"
+	"github.com/riadshalaby/gohour/worklog"
 	"testing"
 	"time"
 )

@@ -23,7 +23,7 @@ TARGETS=(
   "windows arm64"
 )
 
-LDFLAGS="-X gohour/cmd.Version=${VERSION}"
+LDFLAGS="-X github.com/riadshalaby/gohour/cmd.Version=${VERSION}"
 
 echo "Building gohour ${VERSION} for ${#TARGETS[@]} targets into: $OUT_DIR"
 

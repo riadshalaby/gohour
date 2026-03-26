@@ -15,7 +15,7 @@ limitations under the License.
 */
 package main
 
-import "gohour/cmd"
+import "github.com/riadshalaby/gohour/cmd"
 
 func main() {
 	cmd.Execute()

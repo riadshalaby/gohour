@@ -13,14 +13,18 @@ coverage.out
 # Local binaries
 gohour
 dist/
+.bin/
+.gocache/
+.gopath/
 
 # Local runtime/config artifacts
 .gohour.yaml
-.claude/settings.local.json
+.claude/
 *.db
 *.sqlite
 
 # Generated export files
+artifacts/
 worklogs.csv
 worklogs.xlsx
 daily-summary.csv
@@ -29,6 +33,7 @@ daily-summary.xlsx
 # Logs
 *.log
 
-# Playwright discovery artifacts (may contain auth/session data)
-artifacts/playwright/
+# Test runner output
+test-results/
+
 .playwright-cli

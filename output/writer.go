@@ -2,7 +2,7 @@ package output
 
 import (
 	"fmt"
-	"gohour/worklog"
+	"github.com/riadshalaby/gohour/worklog"
 	"strings"
 )
 

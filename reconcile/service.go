@@ -2,8 +2,8 @@ package reconcile
 
 import (
 	"fmt"
-	"gohour/storage"
-	"gohour/worklog"
+	"github.com/riadshalaby/gohour/storage"
+	"github.com/riadshalaby/gohour/worklog"
 	"sort"
 	"strings"
 	"time"

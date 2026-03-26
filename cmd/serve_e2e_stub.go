@@ -9,8 +9,8 @@ import (
 	"strings"
 	"time"
 
-	"gohour/config"
-	"gohour/onepoint"
+	"github.com/riadshalaby/gohour/config"
+	"github.com/riadshalaby/gohour/onepoint"
 )
 
 const e2eStubRemoteEnv = "GOHOUR_E2E_STUB_REMOTE"

@@ -1,27 +1,31 @@
-# Review: v0.3.1 Reliability/Smoke/A11y
+# Review: v0.3.2 Module Path Migration
 
 ## Findings
 
-1. Medium: The e2e harness now expects a pre-built `gohour` binary, but the documented flow still does not ensure that binary exists. `e2e/run-server.sh:11-13` exits immediately if `../gohour` is missing, and `e2e/global-setup.ts:1-7` only validates env vars instead of building the binary "if needed" as called for in `.ai/PLAN.md` section 2.1/2.4. At the same time, the README still advertises `cd e2e && npm install && npx playwright test` as the run sequence (`README.md:270-279`). On a clean checkout without an existing `./gohour` binary, the smoke suite will fail before the app starts.
+1. Low: `e2e/tmp-import-probe.csv` is a checked-in scratch artifact with no repo references and no role in the actual browser smoke test. The Playwright import test already generates its own CSV at runtime via `testInfo.outputPath(...)`, so keeping this file in git adds noise and can mislead future maintainers into treating it as a required fixture. References: `e2e/tmp-import-probe.csv:1`, `e2e/tests/import.spec.ts:4`.
 
 ## Plan Compliance
 
-- Previously reported issues are addressed:
-  - Day refresh now has an Alpine root, so the `@htmx:*` handlers on the day page can execute.
-  - Month actions menu now supports opening/focusing items from the trigger with arrow keys.
-  - Playwright no longer reuses an arbitrary already-running server, so fixture determinism is improved.
-- Reliability hardening items 1.1 through 1.6 are implemented.
-- Accessibility items are implemented, including ARIA labels, focus management, keyboard support, and contrast token updates.
-- Handler tests listed in section 4.1 are present in `web/server_test.go`.
-- Browser smoke coverage exists in `e2e/`, but the setup still diverges from the plan’s “build binary if needed” workflow.
+- Phase 1 is implemented: `go.mod` now uses `github.com/riadshalaby/gohour`, and internal imports were rewritten to the canonical module path.
+- Phase 2 is implemented: `scripts/build-all.sh`, `cmd/version.go`, and `CLAUDE.md` all use `github.com/riadshalaby/gohour/cmd.Version`.
+- Phase 3 is implemented: `README.md` now documents `go install github.com/riadshalaby/gohour@latest`, PATH setup, and installed-binary quick start.
+- Phase 4 verification passed locally:
+  - `go vet ./...`
+  - `go test ./...`
+  - `go build -ldflags "-X github.com/riadshalaby/gohour/cmd.Version=v0.3.2-test" -o /tmp/gohour-review .`
+  - `/tmp/gohour-review version` -> `gohour v0.3.2-test`
+  - `GOBIN=/tmp/gobin-review go install -ldflags "-X github.com/riadshalaby/gohour/cmd.Version=v0.3.2-test" .`
+  - `/tmp/gobin-review/gohour version` -> `gohour v0.3.2-test`
+- `scripts/release.sh` still delegates to `scripts/build-all.sh`, so the ldflags migration propagates through the release helper as intended.
+- Extra changes outside the stated plan landed in `.gitignore`, `ROADMAP.md`, and `e2e/tmp-import-probe.csv`; only the tracked CSV is review-worthy.
 
 ## CLAUDE.md Compliance
 
-- Architecture boundaries are respected.
-- Error handling remains return-based; no panic-oriented regressions found.
-- README was updated, but it is still not fully aligned with the actual e2e prerequisite noted above.
+- Architecture boundaries remain intact. The patch is limited to module/import-path rewrites plus build metadata and documentation updates.
+- The coding rule to keep documentation aligned with workflow changes is satisfied by the README and CLAUDE updates.
+- No panic-oriented regressions, global mutable state additions, or architecture violations were found in the diff.
 
-## Verification
+## Verification Notes
 
-- `go test ./...` passed.
-- `cd e2e && npm test` still could not exercise the app in this environment because Playwright Chromium is not installed locally; the run fails before browser startup and asks for `npx playwright install`.
+- Repo scan found no remaining code or script references to the old `gohour/...` module path.
+- I did not run Playwright e2e during this review. For this change set, the Go-level verification required by the plan passed.

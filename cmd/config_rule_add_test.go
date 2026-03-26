@@ -4,7 +4,7 @@ import (
 	"strings"
 	"testing"
 
-	"gohour/config"
+	"github.com/riadshalaby/gohour/config"
 )
 
 func TestAppendRuleToConfigYAML_AppendsRule(t *testing.T) {

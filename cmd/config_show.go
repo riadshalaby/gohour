@@ -4,8 +4,8 @@ import (
 	"fmt"
 	"github.com/spf13/viper"
 
+	"github.com/riadshalaby/gohour/config"
 	"github.com/spf13/cobra"
-	"gohour/config"
 )
 
 var configShowCmd = &cobra.Command{

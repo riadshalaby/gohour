@@ -4,9 +4,9 @@ import (
 	"testing"
 	"time"
 
-	"gohour/config"
-	"gohour/onepoint"
-	"gohour/worklog"
+	"github.com/riadshalaby/gohour/config"
+	"github.com/riadshalaby/gohour/onepoint"
+	"github.com/riadshalaby/gohour/worklog"
 )
 
 func TestClassifyWorklogs_Duplicate(t *testing.T) {

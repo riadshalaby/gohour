@@ -3,7 +3,7 @@ package output
 import (
 	"encoding/csv"
 	"fmt"
-	"gohour/worklog"
+	"github.com/riadshalaby/gohour/worklog"
 	"os"
 	"strconv"
 	"time"

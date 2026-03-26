@@ -70,7 +70,7 @@
 - A feature is releasable only after it is merged into `main` via PR and required checks/tests pass.
 - Create tag `vX.Y.Z` on the corresponding merge commit in `main` (no unrelated extra commit between merge and tag).
 - Build release artifacts from the tagged commit with embedded version metadata:
-  - `go build -ldflags "-X gohour/cmd.Version=vX.Y.Z" ...`
+  - `go build -ldflags "-X github.com/riadshalaby/gohour/cmd.Version=vX.Y.Z" ...`
 - Publish GitHub release with:
   - consistent notes format: "Changes since `<previous-tag>`",
   - distribution binaries for `darwin/linux/windows` on `amd64/arm64`,

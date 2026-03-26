@@ -5,9 +5,9 @@ import (
 	"sort"
 	"time"
 
-	"gohour/internal/timeutil"
-	"gohour/onepoint"
-	"gohour/worklog"
+	"github.com/riadshalaby/gohour/internal/timeutil"
+	"github.com/riadshalaby/gohour/onepoint"
+	"github.com/riadshalaby/gohour/worklog"
 )
 
 type DayRow struct {

@@ -4,8 +4,8 @@ import (
 	"testing"
 	"time"
 
-	"gohour/onepoint"
-	"gohour/worklog"
+	"github.com/riadshalaby/gohour/onepoint"
+	"github.com/riadshalaby/gohour/worklog"
 )
 
 func TestBuildDailyView_NewEntry(t *testing.T) {

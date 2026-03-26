@@ -15,11 +15,11 @@ import (
 	"testing"
 	"time"
 
-	"gohour/config"
-	"gohour/internal/timeutil"
-	"gohour/onepoint"
-	"gohour/storage"
-	"gohour/worklog"
+	"github.com/riadshalaby/gohour/config"
+	"github.com/riadshalaby/gohour/internal/timeutil"
+	"github.com/riadshalaby/gohour/onepoint"
+	"github.com/riadshalaby/gohour/storage"
+	"github.com/riadshalaby/gohour/worklog"
 )
 
 func TestServer_MonthPageRendersMonthDays(t *testing.T) {

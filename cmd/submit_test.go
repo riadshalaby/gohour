@@ -12,10 +12,10 @@ import (
 	"testing"
 	"time"
 
-	"gohour/config"
-	"gohour/onepoint"
-	"gohour/submitter"
-	"gohour/worklog"
+	"github.com/riadshalaby/gohour/config"
+	"github.com/riadshalaby/gohour/onepoint"
+	"github.com/riadshalaby/gohour/submitter"
+	"github.com/riadshalaby/gohour/worklog"
 )
 
 type submitFakeDoer struct {

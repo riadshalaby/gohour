@@ -2,8 +2,8 @@ package cmd
 
 import (
 	"fmt"
-	"gohour/reconcile"
-	"gohour/storage"
+	"github.com/riadshalaby/gohour/reconcile"
+	"github.com/riadshalaby/gohour/storage"
 
 	"github.com/spf13/cobra"
 )
