@@ -2,7 +2,7 @@ package storage
 
 import (
 	"errors"
-	"gohour/worklog"
+	"github.com/riadshalaby/gohour/worklog"
 	"path/filepath"
 	"testing"
 	"time"

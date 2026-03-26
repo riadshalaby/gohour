@@ -11,9 +11,9 @@ import (
 	"strings"
 	"time"
 
-	"gohour/config"
-	"gohour/importer"
-	"gohour/onepoint"
+	"github.com/riadshalaby/gohour/config"
+	"github.com/riadshalaby/gohour/importer"
+	"github.com/riadshalaby/gohour/onepoint"
 
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"

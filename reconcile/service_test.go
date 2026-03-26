@@ -1,8 +1,8 @@
 package reconcile
 
 import (
-	"gohour/storage"
-	"gohour/worklog"
+	"github.com/riadshalaby/gohour/storage"
+	"github.com/riadshalaby/gohour/worklog"
 	"path/filepath"
 	"testing"
 	"time"

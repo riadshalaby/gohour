@@ -20,8 +20,8 @@ import (
 	"github.com/spf13/viper"
 	"os"
 
+	"github.com/riadshalaby/gohour/config"
 	"github.com/spf13/cobra"
-	"gohour/config"
 )
 
 var cfgFile string

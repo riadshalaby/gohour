@@ -12,7 +12,7 @@ import (
 	"time"
 
 	"github.com/chromedp/cdproto/cdp"
-	"gohour/onepoint"
+	"github.com/riadshalaby/gohour/onepoint"
 
 	"github.com/chromedp/cdproto/network"
 	"github.com/chromedp/cdproto/storage"

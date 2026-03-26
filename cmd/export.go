@@ -2,8 +2,8 @@ package cmd
 
 import (
 	"fmt"
-	"gohour/output"
-	"gohour/storage"
+	"github.com/riadshalaby/gohour/output"
+	"github.com/riadshalaby/gohour/storage"
 	"path/filepath"
 	"strings"
 

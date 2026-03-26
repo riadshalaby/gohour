@@ -2,8 +2,8 @@ package importer
 
 import (
 	"fmt"
-	"gohour/config"
-	"gohour/worklog"
+	"github.com/riadshalaby/gohour/config"
+	"github.com/riadshalaby/gohour/worklog"
 	"path/filepath"
 	"strings"
 )

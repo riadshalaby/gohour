@@ -1,7 +1,7 @@
 package importer
 
 import (
-	"gohour/config"
+	"github.com/riadshalaby/gohour/config"
 	"strings"
 	"testing"
 	"time"

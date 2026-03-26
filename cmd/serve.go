@@ -13,9 +13,9 @@ import (
 	"syscall"
 	"time"
 
-	"gohour/config"
-	"gohour/storage"
-	"gohour/web"
+	"github.com/riadshalaby/gohour/config"
+	"github.com/riadshalaby/gohour/storage"
+	"github.com/riadshalaby/gohour/web"
 
 	"github.com/spf13/cobra"
 )

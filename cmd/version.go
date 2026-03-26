@@ -7,7 +7,7 @@ import (
 )
 
 // Version is set at build time via:
-// go build -ldflags "-X gohour/cmd.Version=v0.2.2"
+// go build -ldflags "-X github.com/riadshalaby/gohour/cmd.Version=vX.Y.Z"
 var Version = "dev"
 
 var versionCmd = &cobra.Command{

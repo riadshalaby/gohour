@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	"gohour/config"
+	"github.com/riadshalaby/gohour/config"
 )
 
 func TestParseServeMonthBounds_NoFlagsUsesCurrentMonth(t *testing.T) {

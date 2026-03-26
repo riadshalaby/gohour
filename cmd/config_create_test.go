@@ -8,7 +8,7 @@ import (
 	"strings"
 	"testing"
 
-	"gohour/config"
+	"github.com/riadshalaby/gohour/config"
 
 	"github.com/spf13/viper"
 )

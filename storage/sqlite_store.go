@@ -4,7 +4,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
-	"gohour/worklog"
+	"github.com/riadshalaby/gohour/worklog"
 	"strings"
 	"time"
 

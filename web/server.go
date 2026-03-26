@@ -21,14 +21,14 @@ import (
 	"sync"
 	"time"
 
-	"gohour/config"
-	"gohour/importer"
-	"gohour/internal/timeutil"
-	"gohour/onepoint"
-	"gohour/reconcile"
-	"gohour/storage"
-	"gohour/submitter"
-	"gohour/worklog"
+	"github.com/riadshalaby/gohour/config"
+	"github.com/riadshalaby/gohour/importer"
+	"github.com/riadshalaby/gohour/internal/timeutil"
+	"github.com/riadshalaby/gohour/onepoint"
+	"github.com/riadshalaby/gohour/reconcile"
+	"github.com/riadshalaby/gohour/storage"
+	"github.com/riadshalaby/gohour/submitter"
+	"github.com/riadshalaby/gohour/worklog"
 )
 
 //go:embed templates

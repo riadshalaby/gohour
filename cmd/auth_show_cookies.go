@@ -3,7 +3,7 @@ package cmd
 import (
 	"fmt"
 
-	"gohour/onepoint"
+	"github.com/riadshalaby/gohour/onepoint"
 
 	"github.com/spf13/cobra"
 )

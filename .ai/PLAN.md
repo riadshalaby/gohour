@@ -1,374 +1,232 @@
-# Plan: v0.3.1 — Reliability Hardening, Browser Smoke Tests, Accessibility
+# Plan: v0.3.2 — Go Module Path Migration for `go install` Support
 
-## Scope
+## Goal
 
-Based on ROADMAP v0.3.1 priorities and user choices:
-- **Reliability hardening**: fix UX edge cases in dialogs and async actions
-- **Browser smoke tests**: standalone Playwright e2e subproject (`e2e/`), fully independent from Go
-- **Accessibility pass**: ARIA labels, focus management, keyboard nav, color contrast
+Make `gohour` installable via `go install github.com/riadshalaby/gohour@latest`
+by migrating the Go module path from `gohour` to `github.com/riadshalaby/gohour`.
 
-No new features. No responsive design rework (existing mobile layout is retained as-is).
+## Definition of Done
 
----
-
-## 1. Reliability Hardening (bugs & edge cases)
-
-### 1.1 Dialog state leaks on close/cancel
-
-**Problem**: When a dialog is dismissed via Escape or backdrop click, Alpine store
-state may not fully reset (e.g., `edit.forceOverlap` persists, `submit.running`
-stays true if request was in-flight).
-
-**Changes**:
-- `app.js`: In the `close` event listener for `edit-dialog`, call `$store.edit.close()`
-  (already wired). Verify `forceOverlap` resets. Add guard: if `submit.running` is
-  true when `submit-dialog` closes, set `running = false`.
-- `app.js`: In `cancelImportPreview()`, also reset the import form's file input
-  so re-opening doesn't show stale filename.
-
-**Files**: `web/static/js/app.js`
-
-### 1.2 Edit dialog error not cleared on re-open
-
-**Problem**: If a previous edit/create attempt produced a validation error
-(`$store.edit.error`), re-opening the dialog for a different row still shows the
-stale error until `htmx:before-request` fires.
-
-**Changes**:
-- `openEditDialog()`: already sets `state.error = ''`. Verify this is effective
-  for both create and edit modes. Add a test to confirm.
-
-**Files**: `web/static/js/app.js`
-
-### 1.3 Submit dialog: missing endpoint guard on re-open
-
-**Problem**: `syncSubmitFormEndpoint()` may fail silently when `$store.submit`
-returns an empty `endpoint()` if `scope`/`value` were not set. The `hx-post`
-attribute is removed, but HTMX may still hold the old cached value.
-
-**Changes**:
-- `openSubmitAction()`: after calling `store.openSubmit()` and
-  `syncSubmitFormEndpoint()`, call `htmx.process(form)` to force HTMX to
-  re-read attributes. Already done in `syncSubmitFormEndpoint` — verify it works
-  when the endpoint changes between two consecutive opens.
-
-**Files**: `web/static/js/app.js`
-
-### 1.4 Degraded auth: refresh button error feedback
-
-**Problem**: When auth token is expired, clicking "Refresh remote" on day/month
-page triggers an HTMX request that returns 502. The `@htmx:response-error`
-handler shows a toast, but the HTMX indicator spinner may remain visible
-indefinitely because the indicator class is not removed on error.
-
-**Changes**:
-- `day.html` / `month.html`: Add `@htmx:after-request` (in addition to
-  `@htmx:after-settle`) to ensure the indicator is hidden on both success and
-  error. HTMX should handle this natively via `htmx-indicator` class, but
-  verify by testing with a mock 502 response.
-- `web/server.go`: In `renderDayPartial` and `handlePartialMonth`, when
-  `failOnRemoteErr` is true and a remote error occurs, return HTTP 502 with
-  an HTML error fragment so HTMX swaps it cleanly.
-
-**Files**: `web/templates/day.html`, `web/templates/month.html`, `web/server.go`
-
-### 1.5 Import: toast fires before preview dialog closes
-
-**Problem**: In `confirmImportPreview()`, on success, `openStatusDialog()` is
-called before `cancelImportPreview()`, which means two dialogs may briefly
-overlap. The sequence should be: close preview first, then open status.
-
-**Changes**:
-- `app.js` `confirmImportPreview()`: reorder calls so `cancelImportPreview()`
-  runs before `openStatusDialog()`.
-
-**Files**: `web/static/js/app.js`
-
-### 1.6 Month actions: deleteMonthEntries uses full-page reload
-
-**Problem**: `deleteMonthEntries()` does `window.location.href = ...` after
-success, causing a full reload. Other month actions (copy, delete remote) use
-HTMX partial refresh. This is inconsistent.
-
-**Changes**:
-- `app.js` `deleteMonthEntries()`: after successful API call, use
-  `refreshMonthPartial(month, false)` and `showToast(...)` instead of
-  `window.location.href`.
-
-**Files**: `web/static/js/app.js`
+- `go install github.com/riadshalaby/gohour@v0.3.2` succeeds on a clean machine.
+- Installed binary runs and reports correct version (`gohour version`).
+- README documents install path and first-run flow.
+- All existing tests pass (`go test ./...`).
 
 ---
 
-## 2. Browser Smoke Tests (standalone Playwright e2e subproject)
+## Phase 1: Module and Import Path Migration
 
-### 2.1 Subproject structure
+### 1.1 Update `go.mod` module declaration
 
-Create a new `e2e/` directory at project root as an independent Node.js subproject.
-It has no dependency on the Go toolchain — tests run via `npx playwright test`.
+**File:** `go.mod`
 
+**Change:** Line 1 from `module gohour` to `module github.com/riadshalaby/gohour`.
+
+### 1.2 Rewrite all internal imports
+
+Mechanically replace `"gohour/` with `"github.com/riadshalaby/gohour/` in all
+44 Go source files. The 11 internal packages to rewrite:
+
+| Old Import                  | New Import                                          |
+|-----------------------------|-----------------------------------------------------|
+| `gohour/cmd`                | `github.com/riadshalaby/gohour/cmd`                 |
+| `gohour/config`             | `github.com/riadshalaby/gohour/config`              |
+| `gohour/importer`           | `github.com/riadshalaby/gohour/importer`            |
+| `gohour/internal/timeutil`  | `github.com/riadshalaby/gohour/internal/timeutil`   |
+| `gohour/onepoint`           | `github.com/riadshalaby/gohour/onepoint`            |
+| `gohour/output`             | `github.com/riadshalaby/gohour/output`              |
+| `gohour/reconcile`          | `github.com/riadshalaby/gohour/reconcile`           |
+| `gohour/storage`            | `github.com/riadshalaby/gohour/storage`             |
+| `gohour/submitter`          | `github.com/riadshalaby/gohour/submitter`           |
+| `gohour/web`                | `github.com/riadshalaby/gohour/web`                 |
+| `gohour/worklog`            | `github.com/riadshalaby/gohour/worklog`             |
+
+**Affected files by package (44 files):**
+
+- `main.go` (1)
+- `cmd/` (16): `auth_helpers.go`, `auth_helpers_test.go`, `auth_login.go`,
+  `auth_show_cookies.go`, `config_create_test.go`, `config_edit.go`,
+  `config_rule_add.go`, `config_rule_add_test.go`, `config_show.go`,
+  `export.go`, `import.go`, `import_test.go`, `reconcile.go`, `root.go`,
+  `serve.go`, `serve_e2e_stub.go`, `serve_test.go`, `submit.go`, `submit_test.go`
+- `importer/` (9): `mapper.go`, `mapper_atwork.go`, `mapper_atwork_test.go`,
+  `mapper_epm.go`, `mapper_epm_test.go`, `mapper_generic.go`,
+  `mapper_generic_test.go`, `service.go`, `service_test.go`
+- `output/` (5): `csv_writer.go`, `daily_summary.go`, `daily_summary_test.go`,
+  `excel_writer.go`, `writer.go`
+- `reconcile/` (2): `service.go`, `service_test.go`
+- `storage/` (2): `sqlite_store.go`, `sqlite_store_test.go`
+- `submitter/` (2): `service.go`, `service_test.go`
+- `web/` (4): `data.go`, `data_test.go`, `server.go`, `server_test.go`
+
+**Method:** Use `sed` or editor find-replace across all `*.go` files:
 ```
-e2e/
-  package.json            # @playwright/test dependency
-  playwright.config.ts    # Playwright config (baseURL from env, webServer launch)
-  global-setup.ts         # Builds gohour binary if needed, starts `gohour serve`
-  global-teardown.ts      # Stops the gohour serve process
-  fixtures/
-    import-smoke.csv      # Test CSV for import flow
-    gohour-test.yaml      # Minimal gohour config for test (SQLite path, mock/stub settings)
-  tests/
-    month.spec.ts         # Month page smoke tests
-    day.spec.ts           # Day page smoke tests
-    import.spec.ts        # Import flow smoke test
-    submit.spec.ts        # Submit dry-run smoke test
-  .gitignore              # node_modules/, test-results/, playwright-report/
+"gohour/  ->  "github.com/riadshalaby/gohour/
 ```
 
-**Files**: all new under `e2e/`
+### 1.3 Run `go mod tidy`
 
-### 2.2 package.json
+After import rewrite, run `go mod tidy` to update `go.sum` and verify module
+graph resolves cleanly.
 
-Minimal dependencies:
-- `@playwright/test` (latest stable)
+### 1.4 Validate with `go vet ./...` and `go test ./...`
 
-Scripts:
-- `test` → `playwright test`
-- `test:headed` → `playwright test --headed`
-- `test:report` → `playwright show-report`
-
-**Files**: `e2e/package.json`
-
-### 2.3 playwright.config.ts
-
-Key settings:
-- `baseURL`: read from `GOHOUR_BASE_URL` env var, default `http://localhost:9876`
-- `webServer` block: launches `gohour serve --port 9876 --db <temp-test-db>`
-  using the pre-built binary. The `webServer.command` handles starting the
-  server; Playwright waits for the port to be ready.
-  - `command`: `../gohour serve --port 9876 --config ./fixtures/gohour-test.yaml`
-  - `port`: 9876
-  - `reuseExistingServer`: true (allows running against a manually started server)
-- `use.headless`: true (CI-friendly default)
-- `retries`: 1 (flake tolerance)
-- `timeout`: 15000ms per test
-- `projects`: chromium only (keep it simple for smoke)
-
-**Files**: `e2e/playwright.config.ts`
-
-### 2.4 Test fixtures
-
-**`e2e/fixtures/import-smoke.csv`**: Copy/move existing `web/testdata/import-smoke.csv`
-content into the e2e subproject.
-
-**`e2e/fixtures/gohour-test.yaml`**: Minimal config that points to a temporary
-SQLite database and disables real OnePoint auth. The test server should use the
-same mock/lookup data seeding approach. Two options:
-- (a) Use a real `gohour serve` with a pre-seeded SQLite DB (fixture SQL script).
-- (b) Use `gohour serve` with a test config that stubs the remote client.
-
-**Recommendation**: Option (a) — seed a test SQLite DB via `gohour import` in
-`global-setup.ts` before starting the server. This exercises the real import
-path and keeps tests fully black-box.
-
-**Seed steps in global-setup.ts**:
-1. Create a temp directory for the test DB.
-2. Run `gohour import --config ./fixtures/gohour-test.yaml --db <tmp>/test.db
-   --mapper generic ./fixtures/import-smoke.csv` to populate seed data.
-3. Start `gohour serve --port 9876 --config ./fixtures/gohour-test.yaml
-   --db <tmp>/test.db`.
-4. Store the child process handle for teardown.
-
-**Note on remote/OnePoint stubs**: Since smoke tests focus on local UI flows,
-remote operations (refresh remote, submit) will return errors if no auth is
-configured. Tests that exercise remote-dependent flows should either:
-- Be skipped when no auth token is available (env-gated).
-- Or accept the error state as a valid test outcome (e.g., verify error toast
-  appears on refresh failure).
-
-**Files**: `e2e/fixtures/import-smoke.csv`, `e2e/fixtures/gohour-test.yaml`,
-`e2e/global-setup.ts`, `e2e/global-teardown.ts`
-
-### 2.5 Smoke test cases
-
-Each test is a standard Playwright Test spec using `page` fixture and `expect`:
-
-#### `tests/month.spec.ts`
-
-| # | Test Name | Steps | Assertions |
-|---|-----------|-------|------------|
-| 1 | Month page loads | Navigate to `/month/2025-01` | Title contains "2025-01", stat cards visible, table has day rows |
-| 2 | Month navigation | Click next-month arrow | URL changes to `/month/2025-02` |
-| 3 | Refresh remote (error state) | Click actions > "Refresh remote" | Error toast appears, spinner clears |
-
-#### `tests/day.spec.ts`
-
-| # | Test Name | Steps | Assertions |
-|---|-----------|-------|------------|
-| 4 | Day page loads | Navigate to `/day/2025-01-02` | Stat cards visible, entry table visible, "Add entry" button present |
-| 5 | Day navigation | Press ArrowRight on day page | URL changes to next day |
-| 6 | Add entry dialog opens | Click "Add entry" | Edit dialog opens with "Add entry" title, selects populated |
-| 7 | Create entry | Fill and submit add-entry form | Toast "Entry created.", new row in table |
-| 8 | Edit entry | Click edit on existing row | Dialog opens with pre-filled values |
-| 9 | Delete entry | Click delete, confirm | Toast "Entry deleted.", row removed |
-| 10 | Edit dialog clears stale error | Trigger validation error, close, reopen | Error text is cleared |
-
-#### `tests/submit.spec.ts`
-
-| # | Test Name | Steps | Assertions |
-|---|-----------|-------|------------|
-| 11 | Submit day dry-run | Open submit dialog, check dry-run, run | Result box shows dry-run output |
-
-#### `tests/import.spec.ts`
-
-| # | Test Name | Steps | Assertions |
-|---|-----------|-------|------------|
-| 12 | Import file flow | Open import, upload CSV, preview, confirm | Toast "Imported N row(s)." |
-
-**Files**: `e2e/tests/month.spec.ts`, `e2e/tests/day.spec.ts`,
-`e2e/tests/submit.spec.ts`, `e2e/tests/import.spec.ts`
-
-### 2.6 CI / run instructions
-
-- Add `e2e/.gitignore`: `node_modules/`, `test-results/`, `playwright-report/`, `*.db`
-- Update project `README.md` with a section on running e2e tests:
-  ```
-  cd e2e
-  npm install
-  npx playwright install chromium
-  npx playwright test
-  ```
-- The `webServer` block in `playwright.config.ts` auto-starts `gohour serve`,
-  so no manual server management is needed.
-
-### 2.7 Cleanup of old browser_test.go
-
-- Remove `web/browser_test.go` (the Go-based Playwright shim is replaced).
-- Remove `web/testdata/` directory (fixtures move to `e2e/fixtures/`).
-- Optionally remove `.playwright-cli/` logs if no longer needed.
-
-**Files**: delete `web/browser_test.go`, delete `web/testdata/`
+Confirm no import errors, no build failures, and all existing tests pass.
 
 ---
 
-## 3. Accessibility Pass
+## Phase 2: Build Script and Metadata Updates
 
-### 3.1 ARIA roles and labels
+### 2.1 Update ldflags in `scripts/build-all.sh`
 
-**Changes across templates**:
+**File:** `scripts/build-all.sh` (line 26)
 
-- `base.html`:
-  - Add `role="banner"` to `<header class="top">`.
-  - Add `role="main"` to `<main class="content">` (already `<main>`, but verify).
-  - Add `aria-label="Navigation"` to the month-picker form.
-  - Toast: add `role="status"` and `aria-live="polite"`.
-  - Confirm dialog: add `aria-labelledby="confirm-title"` and
-    `aria-describedby="confirm-body"`.
-  - Submit dialog: add `aria-labelledby="submit-dialog-title"`.
-  - Edit dialog: add `aria-labelledby="edit-dialog-title"`.
-  - Import preview dialog: add `aria-labelledby` pointing to its header.
+**Change:**
+```
+LDFLAGS="-X gohour/cmd.Version=${VERSION}"
+```
+to:
+```
+LDFLAGS="-X github.com/riadshalaby/gohour/cmd.Version=${VERSION}"
+```
 
-- `month.html`:
-  - Actions dropdown: add `role="menu"` on `.actions-menu-items`, `role="menuitem"`
-    on each button inside.
-  - Month table: add `aria-label="Monthly worklogs"` on `<table>`.
-  - Navigation arrows: add `aria-label="Previous month"` / `aria-label="Next month"`.
+### 2.2 Update ldflags comment in `cmd/version.go`
 
-- `day.html`:
-  - Day table: add `aria-label="Day entries"` on `<table>`.
-  - Navigation arrows: already have `title`; add matching `aria-label`.
-  - "Add entry" button: add `aria-label="Add new worklog entry"`.
+**File:** `cmd/version.go` (lines 9-10)
 
-**Files**: `web/templates/base.html`, `web/templates/month.html`,
-`web/templates/day.html`, `web/templates/partials/day_tbody.html`
+**Change comment** from:
+```go
+// go build -ldflags "-X gohour/cmd.Version=v0.2.2"
+```
+to:
+```go
+// go build -ldflags "-X github.com/riadshalaby/gohour/cmd.Version=vX.Y.Z"
+```
 
-### 3.2 Focus management in dialogs
+### 2.3 Verify `scripts/release.sh`
 
-**Problem**: When a dialog opens, focus is not explicitly moved to the first
-interactive element. Native `<dialog>.showModal()` moves focus to the dialog
-itself, but not to the first input.
+Confirm `release.sh` calls `build-all.sh` and inherits the corrected ldflags
+path. No direct changes expected, but verify end-to-end.
 
-**Changes**:
-- `app.js` `openEditDialog()`: after `state.open = true`, use
-  `requestAnimationFrame` to focus the start-time input.
-- `app.js` `openImportPreviewDialog()`: after `dialog.showModal()`, focus the
-  first checkbox or the import button.
-- `app.js` `openSubmitAction()`: after dialog opens, focus the dry-run checkbox.
+### 2.4 Scan for any other references to old module path
 
-**Files**: `web/static/js/app.js`
-
-### 3.3 Keyboard navigation improvements
-
-**Changes**:
-- `app.js`: Actions dropdown (month page) — add keyboard support:
-  `ArrowDown`/`ArrowUp` to move between items, `Enter`/`Space` to activate,
-  `Escape` to close (already handled by Alpine `@keydown.escape`).
-- `app.js`: Add `Escape` key handler for import preview dialog (call
-  `cancelImportPreview()`). The native `<dialog>` Escape closes the element,
-  but our state (`importPreviewStore`) needs cleanup too — wire the dialog's
-  `close` event.
-
-**Files**: `web/static/js/app.js`, `web/templates/month.html`
-
-### 3.4 Color contrast audit
-
-**Review these token values against WCAG 2.1 AA (4.5:1 for normal text)**:
-- `--muted: #6b7280` on `--surface: #ffffff` = 4.6:1 — passes (barely).
-- `--muted-light: #9ca3af` on `--surface: #ffffff` = 2.9:1 — **fails**.
-  Used in `.stat-sublabel`. Fix: darken to `#6b7280` (reuse `--muted`), or
-  accept since sublabels are supplementary.
-- `--hdr-muted: #5c6070` on `--hdr-bg: #0f1117` = 3.6:1 — **fails**.
-  Used in header breadcrumb. Fix: lighten to `#8890a4` (~4.7:1).
-- `--txt-conflict: #92400e` on `--bg-conflict: #fef3c7` = 4.2:1 — borderline.
-  Fix: darken to `#78350f` (~5.1:1).
-
-**Changes**:
-- `tokens.css`: Adjust `--muted-light`, `--hdr-muted`, `--txt-conflict` values.
-
-**Files**: `web/static/css/tokens.css`
-
-### 3.5 Semantic table markup
-
-**Changes**:
-- Month table `<tfoot>`: first cell uses `<th>` ("Total") — correct. Verify
-  `scope="row"` is set.
-- Day table: add `<caption class="sr-only">` for screen readers.
-- Import preview table: add `<caption class="sr-only">`.
-
-**Files**: `web/templates/month.html`, `web/templates/day.html`,
-`web/templates/base.html`
+Grep the entire repo for remaining `"gohour/` or `-X gohour/` strings to catch
+any stragglers in comments, docs, or scripts. Also check CLAUDE.md and ROADMAP.md
+for stale references (informational only — not code-breaking).
 
 ---
 
-## 4. Test Coverage (httptest handler tests)
+## Phase 3: Documentation Updates
 
-### 4.1 New/expanded handler tests
+### 3.1 Add Install section to `README.md`
 
-Add tests in `web/server_test.go` for edge cases not yet covered:
+Add a prominent section near the top of README.md:
 
-| # | Test | What it covers |
-|---|------|----------------|
-| 1 | `TestServer_PartialMonth_AuthError_GracefulWithoutRefresh` | Month partial returns 200 with stale cache when refresh=0 and remote fails |
-| 2 | `TestServer_WorklogUpdate_OverlapConflict` | PATCH worklog returns 409 with overlap JSON when update overlaps existing |
-| 3 | `TestServer_WorklogUpdate_DuplicateConflict` | PATCH worklog returns 409 with duplicate JSON |
-| 4 | `TestServer_SubmitMonth_LockedDaysSkipped` | Month submit skips days with locked remote entries |
-| 5 | `TestServer_SyncMonthRemote_Redirects` | Sync endpoint delegates to copy-from-remote |
-| 6 | `TestServer_Import_EmptyFile` | Import with empty CSV returns 400 |
+```markdown
+## Install
 
-**Files**: `web/server_test.go`
+### Via `go install` (recommended)
+
+Requires Go 1.25+:
+
+```bash
+go install github.com/riadshalaby/gohour@latest
+```
+
+The binary is placed in `$GOPATH/bin` (or `$GOBIN` if set). Ensure this
+directory is in your `PATH`.
+
+### Build from source
+
+```bash
+git clone https://github.com/riadshalaby/gohour.git
+cd gohour
+go build -o gohour .
+```
+```
+
+### 3.2 Update existing build examples in README.md
+
+Review the current Build section (lines 25-41) and ensure:
+- `go build` examples use the new module path for ldflags if shown.
+- Cross-compilation examples remain valid.
+
+### 3.3 Update CLAUDE.md ldflags example
+
+**File:** `CLAUDE.md` (Release Rules section)
+
+**Change:**
+```
+go build -ldflags "-X gohour/cmd.Version=vX.Y.Z" ...
+```
+to:
+```
+go build -ldflags "-X github.com/riadshalaby/gohour/cmd.Version=vX.Y.Z" ...
+```
 
 ---
 
-## 5. Documentation alignment
+## Phase 4: Verification
 
-- `README.md`: Add section on running e2e tests (`cd e2e && npm install && npx playwright test`).
-- Cobra help text: no changes needed (no CLI changes in scope).
+### 4.1 Full test suite
+
+```bash
+go test ./...
+```
+
+### 4.2 Build and version check
+
+```bash
+go build -ldflags "-X github.com/riadshalaby/gohour/cmd.Version=v0.3.2-test" -o gohour .
+./gohour version
+```
+
+Confirm output shows `v0.3.2-test`.
+
+### 4.3 Local `go install` simulation
+
+```bash
+go install -ldflags "-X github.com/riadshalaby/gohour/cmd.Version=v0.3.2-test" .
+gohour version
+```
+
+### 4.4 Run e2e smoke tests (if applicable)
+
+```bash
+cd e2e && npx playwright test
+```
+
+Verify the web UI still works with the rebuilt binary.
 
 ---
 
 ## Implementation Order
 
-1. **Phase A** — Reliability fixes (1.1-1.6): `app.js`, `server.go`, templates
-2. **Phase B** — Accessibility (3.1-3.5): templates, `tokens.css`, `app.js`
-3. **Phase C** — Handler test expansion (4.1): `server_test.go`
-4. **Phase D** — Playwright e2e subproject (2.1-2.7): `e2e/` directory, cleanup old `web/browser_test.go`
+| Step | Phase | Description                                   | Validates             |
+|------|-------|-----------------------------------------------|-----------------------|
+| 1    | 1.1   | Update `go.mod` module path                   | —                     |
+| 2    | 1.2   | Rewrite all 44 Go files' imports              | —                     |
+| 3    | 1.3   | Run `go mod tidy`                             | Module graph          |
+| 4    | 1.4   | Run `go vet ./...` + `go test ./...`          | Build + tests         |
+| 5    | 2.1   | Update ldflags in `build-all.sh`              | —                     |
+| 6    | 2.2   | Update comment in `version.go`                | —                     |
+| 7    | 2.3   | Verify `release.sh`                           | End-to-end build      |
+| 8    | 2.4   | Grep for remaining old-path references        | Completeness          |
+| 9    | 3.1   | Add Install section to README.md              | —                     |
+| 10   | 3.2   | Update build examples in README.md            | —                     |
+| 11   | 3.3   | Update CLAUDE.md ldflags reference            | —                     |
+| 12   | 4.1-4 | Full verification pass                        | Everything            |
 
-Each phase is independently committable and testable.
+All changes are in a single logical commit (or two: code migration + docs).
+
+---
+
+## Risks and Mitigations
+
+| Risk | Impact | Mitigation |
+|------|--------|------------|
+| Missed import in a file | Build failure | Grep for `"gohour/` after migration; `go vet` catches it |
+| ldflags path not updated | `gohour version` shows empty | Verify with explicit build before release |
+| `go.sum` drift | Build failure on clean checkout | `go mod tidy` + verify `go build` from scratch |
+| `@latest` resolves wrong tag | Users get old version | Tag only on `main` merge commit per release rules |
+| Go version constraint (1.25) | Users on older Go can't install | Document minimum version in README |

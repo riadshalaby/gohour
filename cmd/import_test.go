@@ -1,7 +1,7 @@
 package cmd
 
 import (
-	"gohour/config"
+	"github.com/riadshalaby/gohour/config"
 	"testing"
 )
 

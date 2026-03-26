@@ -20,47 +20,75 @@
 
 ## Requirements
 
-- Go 1.24+
+- Go 1.25+
+
+## Install
+
+### Via `go install` (recommended)
+
+```bash
+go install github.com/riadshalaby/gohour@latest
+```
+
+The binary is placed in `$GOPATH/bin` (or `$GOBIN` if set). Ensure that
+directory is in your `PATH`.
 
 ## Build
 
+Build from source:
+
 ```bash
+go build -o gohour .
+```
+
+Or clone the repository first:
+
+```bash
+git clone https://github.com/riadshalaby/gohour.git
+cd gohour
 go build -o gohour .
 ```
 
 Multi-platform artifacts + checksums:
 
 ```bash
-./scripts/build-all.sh dist v0.2.3
+./scripts/build-all.sh dist vX.Y.Z
 ```
 
 Release helper (tag + assets upload via `gh release create`):
 
 ```bash
-./scripts/release.sh v0.2.3 dist
+./scripts/release.sh vX.Y.Z dist
 ```
 
 ## Quick Start (3 Steps)
 
-If you just want to get started, do this:
+If you installed `gohour` via `go install`, do this first:
+
+1. Ensure your Go bin directory is on `PATH`.
+2. Run `gohour version` to confirm the binary is available.
+
+If you built locally instead, replace `gohour` with `./gohour` in the commands below.
+
+To get started:
 
 1. Create config and add one import rule:
 
 ```bash
-./gohour config create
-./gohour config rule add
+gohour config create
+gohour config rule add
 ```
 
 2. Import your local worklog file(s) into SQLite:
 
 ```bash
-./gohour import -i <your-file.xlsx>
+gohour import -i <your-file.xlsx>
 ```
 
 3. Review and submit from the local browser UI:
 
 ```bash
-./gohour serve
+gohour serve
 ```
 
 `auth login` is not a required manual step; login is triggered automatically when needed.
@@ -70,7 +98,7 @@ If you just want to get started, do this:
 Create a default config file:
 
 ```bash
-./gohour config create
+gohour config create
 ```
 
 Or with `go run`:
@@ -86,13 +114,13 @@ Default config file location:
 Show active config:
 
 ```bash
-./gohour config show
+gohour config show
 ```
 
 Edit config in your terminal editor (`$VISUAL`, then `$EDITOR`, fallback `vi`):
 
 ```bash
-./gohour config edit
+gohour config edit
 ```
 If no config exists yet, `config edit` creates one with an example template first, then opens it.
 After closing the editor, the file is validated as gohour YAML config.
@@ -100,7 +128,7 @@ After closing the editor, the file is validated as gohour YAML config.
 Add one rule interactively from OnePoint (project/activity/skill selection):
 
 ```bash
-./gohour config rule add
+gohour config rule add
 ```
 
 Optional flags:
@@ -114,7 +142,7 @@ During `config rule add`, mapper is selected interactively from available mapper
 Delete active config:
 
 ```bash
-./gohour config delete
+gohour config delete
 ```
 
 Example config:
@@ -158,8 +186,8 @@ imported via that rule get `Billable=0` (entry is imported but not counted as bi
 Import one or more files into SQLite:
 
 ```bash
-./gohour import -i examples/EPMExportRZ202601.xlsx
-./gohour import -i examples/EPMExportRZ202601.xlsx -i examples/EPMExportSZ202601.xlsx
+gohour import -i examples/EPMExportRZ202601.xlsx
+gohour import -i examples/EPMExportRZ202601.xlsx -i examples/EPMExportSZ202601.xlsx
 ```
 
 Flags:
@@ -184,8 +212,8 @@ Use optional flags like `--mapper`, `--format`, `--project`, `--activity`, `--sk
 Export normalized records from SQLite:
 
 ```bash
-./gohour export --output ./worklogs.csv
-./gohour export --output ./worklogs.xlsx
+gohour export --output ./worklogs.csv
+gohour export --output ./worklogs.xlsx
 ```
 
 Export daily summaries:
@@ -209,7 +237,7 @@ Flags:
 Run the local web UI for month/day review, edits, import, and submit actions:
 
 ```bash
-./gohour serve
+gohour serve
 ```
 
 If no valid OnePoint session is available, `serve` opens a browser login flow automatically before starting.
@@ -283,7 +311,7 @@ The Playwright `webServer` config auto-starts the pre-built `../gohour` binary a
 Submit normalized worklogs from SQLite to OnePoint:
 
 ```bash
-./gohour submit
+gohour submit
 ```
 
 Use optional flags like `--dry-run`, `--from`, `--to`, `--timeout`, `--url`, and `--state-file` only when needed.
@@ -330,7 +358,7 @@ Main flags:
 After importing mixed sources (for example `epm` plus `generic`) on the same day, you can run an explicit reconciliation step:
 
 ```bash
-./gohour reconcile
+gohour reconcile
 ```
 
 What it does:
@@ -346,7 +374,7 @@ This is useful because EPM task times are simulated during import and may collid
 Destructive cleanup command (always deletes the complete SQLite database file):
 
 ```bash
-./gohour delete
+gohour delete
 ```
 
 Notes:
@@ -437,5 +465,5 @@ A unique constraint prevents duplicate imports of the same normalized row.
 Print current build version:
 
 ```bash
-./gohour version
+gohour version
 ```
