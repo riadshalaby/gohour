@@ -20,7 +20,7 @@ func buildServeClient(cfg config.Config) (onepoint.Client, error) {
 		return newServeE2EStubClient(cfg), nil
 	}
 
-	cookieHeader, baseURL, homeURL, host, stateFile, err := ensureAuthenticatedWithStateFile(serveURL, serveStateFile)
+	cookieHeader, baseURL, homeURL, host, stateFile, err := ensureAuthenticatedWithStateFile(cfg.OnePoint.URL, config.AuthStatePath())
 	if err != nil {
 		return nil, err
 	}

@@ -3,8 +3,11 @@ package web
 import (
 	"encoding/json"
 	"os"
+	"path/filepath"
 	"sync"
 	"time"
+
+	"github.com/riadshalaby/gohour/config"
 )
 
 type auditRecord struct {
@@ -37,7 +40,7 @@ func newFileAuditLogger(path string) auditLogger {
 }
 
 func defaultAuditLogPath() string {
-	return "gohour-audit.log"
+	return filepath.Join(config.DataDir(), "gohour-audit.log")
 }
 
 func (l *fileAuditLogger) Log(record auditRecord) error {

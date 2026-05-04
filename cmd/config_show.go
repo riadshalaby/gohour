@@ -29,7 +29,6 @@ This command validates the configuration before printing values.`,
 			fmt.Println("Config file loaded from:", viper.ConfigFileUsed())
 			fmt.Println("Configuration:")
 			fmt.Printf("onepoint.url: %s\n", cfg.OnePoint.URL)
-			fmt.Printf("import.auto_reconcile_after_import: %t\n", cfg.Import.AutoReconcileAfterImport)
 			fmt.Printf("rules: %d\n", len(cfg.Rules))
 			for i, rule := range cfg.Rules {
 				fmt.Printf("rules[%d].name: %s\n", i, rule.Name)

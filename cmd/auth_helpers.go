@@ -19,22 +19,14 @@ func resolveDefaultAuthStatePath(explicitPath string) (string, error) {
 	if strings.TrimSpace(explicitPath) != "" {
 		return explicitPath, nil
 	}
-	home, err := os.UserHomeDir()
-	if err != nil {
-		return "", fmt.Errorf("resolve home directory: %w", err)
-	}
-	return filepath.Join(home, ".gohour", "onepoint-auth-state.json"), nil
+	return config.AuthStatePath(), nil
 }
 
 func resolveProfileDir(explicitDir string) (string, bool, error) {
 	if strings.TrimSpace(explicitDir) != "" {
 		return explicitDir, false, nil
 	}
-	home, err := os.UserHomeDir()
-	if err != nil {
-		return "", false, fmt.Errorf("resolve home directory: %w", err)
-	}
-	base := filepath.Join(home, ".gohour")
+	base := config.DataDir()
 	if err := os.MkdirAll(base, 0o700); err != nil {
 		return "", false, fmt.Errorf("create directory %q: %w", base, err)
 	}

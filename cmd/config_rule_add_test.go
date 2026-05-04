@@ -12,8 +12,6 @@ func TestAppendRuleToConfigYAML_AppendsRule(t *testing.T) {
 
 	input := []byte(`onepoint:
   url: "https://onepoint.virtual7.io"
-import:
-  auto_reconcile_after_import: true
 rules:
   - name: "rz"
     mapper: "epm"
@@ -62,8 +60,6 @@ func TestAppendRuleToConfigYAML_DuplicateName(t *testing.T) {
 
 	input := []byte(`onepoint:
   url: "https://onepoint.virtual7.io"
-import:
-  auto_reconcile_after_import: true
 rules:
   - name: "rz"
     mapper: "epm"
@@ -100,8 +96,6 @@ func TestAppendRuleToConfigYAML_AddsRulesBlockWhenMissing(t *testing.T) {
 
 	input := []byte(`onepoint:
   url: "https://onepoint.virtual7.io/onepoint/faces/home"
-import:
-  auto_reconcile_after_import: true
 `)
 
 	newRule := config.Rule{

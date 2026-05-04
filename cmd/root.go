@@ -16,7 +16,6 @@ limitations under the License.
 package cmd
 
 import (
-	"fmt"
 	"github.com/spf13/viper"
 	"os"
 
@@ -74,12 +73,6 @@ func init() {
 
 	config.SetDefaults()
 
-	// Here you will define your flags and configuration settings.
-	// Cobra supports persistent flags, which, if defined here,
-	// will be global for your application.
-
-	rootCmd.PersistentFlags().StringVar(&cfgFile, "configFile", "", "Config file override (default discovery: $HOME/.gohour.yaml, then ./.gohour.yaml)")
-
 	// Optional: Validate configuration
 	rootCmd.PreRunE = func(cmd *cobra.Command, args []string) error {
 		if !requiresConfig(cmd) {
@@ -95,27 +88,15 @@ func requiresConfig(cmd *cobra.Command) bool {
 	return cmd != nil && cmd.Name() == "import"
 }
 
-// initConfig reads in config file and ENV variables if set.
+// initConfig migrates legacy paths once, then reads the fixed config file.
 func initConfig() {
-	if cfgFile != "" {
-		// Use config file from the flag.
-		viper.SetConfigFile(cfgFile)
-	} else {
-		// Find home directory.
-		home, err := os.UserHomeDir()
-		cobra.CheckErr(err)
+	cobra.CheckErr(config.RunMigration())
 
-		// Search config in home directory with name ".gohour" (without extension).
-		viper.AddConfigPath(home)
-		viper.AddConfigPath(".")
-		viper.SetConfigType("yaml")
-		viper.SetConfigName(".gohour")
-	}
-
+	viper.SetConfigFile(config.ConfigPath())
+	viper.SetConfigType("yaml")
 	viper.AutomaticEnv() // read in environment variables that match
 
-	// If a config file is found, read it in.
 	if err := viper.ReadInConfig(); err != nil {
-		fmt.Fprintln(os.Stderr, "No config file found. Create one first with: gohour config create")
+		cobra.CheckErr(err)
 	}
 }
