@@ -1,14 +1,33 @@
 # OS
 .DS_Store
+Thumbs.db
+*.swp
+*.swo
 
-# IDE
-.idea/
+# Editors
 .vscode/
+!.vscode/extensions.json
+!.vscode/settings.json
+!.vscode/launch.json
+!.vscode/tasks.json
+.history/
+.idea/
+*.iml
 
-# Go build/test artifacts
+# AI workflow runtime logs
+.ai/mcp-server.log
+.ai/sessions.json
+
+# Go
+bin/
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
 *.test
 *.out
-coverage.out
+vendor/
 
 # Local binaries
 gohour
