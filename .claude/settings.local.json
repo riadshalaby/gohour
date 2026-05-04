@@ -1,0 +1,23 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(gh:*)",
+      "Bash(rg:*)",
+      "Bash(fd:*)",
+      "Bash(bat:*)",
+      "Bash(jq:*)",
+      "Bash(sg:*)",
+      "Bash(fzf:*)",
+      "Bash(tree-sitter:*)",
+      "Bash(go:*)",
+      "Bash(go fmt ./...:*)",
+      "Bash(go vet ./...:*)",
+      "Bash(go test ./...:*)",
+      "Bash(git:*)",
+      "mcp__aide__*",
+      "Bash(grep -E \"\\\\.go$\")",
+      "Bash(grep -rn \"rootCmd.AddCommand\\\\|var.*Cmd.*=.*&cobra.Command\" /Users/riadshalaby/localrepos/gohour/cmd/*.go)",
+      "Bash(wc -l /Users/riadshalaby/localrepos/gohour/e2e/tests/*.spec.ts)"
+    ]
+  }
+}

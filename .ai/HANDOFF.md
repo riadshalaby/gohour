@@ -22,3 +22,14 @@ Each entry uses this exact structure. Omit fields marked as role-specific when t
 | Next Role | plan \| implement \| review \| none |
 
 ---
+
+### T-001..T-006 — plan — 2026-05-04T12:00:00Z
+
+| Field | Value |
+|-------|-------|
+| Agent | claude |
+| Summary | Planned v0.4.0 cycle: 6 tasks covering file consolidation + migration, CLI command removal, web UI config page, web UI import with rule matching, unconditional EPM reconcile, and README rewrite |
+| Files Changed | `.ai/PLAN.md`, `.ai/TASKS.md`, `.ai/HANDOFF.md`, `ROADMAP.md` |
+| Next Role | implement |
+
+---
