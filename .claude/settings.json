@@ -1,0 +1,11 @@
+{
+  "autoUpdatesChannel": "stable",
+  "includeCoAuthoredBy": false,
+  "mcpServers": {
+    "aide": {
+      "command": "aide",
+      "args": ["mcp"],
+      "env": {}
+    }
+  }
+}
