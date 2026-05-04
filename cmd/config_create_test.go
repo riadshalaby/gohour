@@ -54,7 +54,7 @@ func TestSaveDefaultConfigDoesNotOverwriteExistingFile(t *testing.T) {
 	})
 
 	tmpConfig := filepath.Join(t.TempDir(), "existing.yaml")
-	original := "onepoint:\n  url: \"https://onepoint.virtual7.io/onepoint/faces/home\"\nimport:\n  auto_reconcile_after_import: true\n"
+	original := "onepoint:\n  url: \"https://onepoint.virtual7.io/onepoint/faces/home\"\n"
 	if err := os.WriteFile(tmpConfig, []byte(original), 0o644); err != nil {
 		t.Fatalf("failed writing initial config: %v", err)
 	}
@@ -84,8 +84,6 @@ func TestConfigShow_PrintsRuleBillable(t *testing.T) {
 	tmpConfig := filepath.Join(t.TempDir(), "config-show.yaml")
 	content := `onepoint:
   url: "https://onepoint.virtual7.io/onepoint/faces/home"
-import:
-  auto_reconcile_after_import: true
 rules:
   - name: "rule-false"
     mapper: "generic"

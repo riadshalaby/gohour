@@ -33,3 +33,41 @@ Each entry uses this exact structure. Omit fields marked as role-specific when t
 | Next Role | implement |
 
 ---
+
+### T-001 — review — 2026-05-04T21:30:00Z
+
+| Field | Value |
+|-------|-------|
+| Agent | claude |
+| Summary | Reviewed T-001 implementation; all acceptance criteria met, `go fmt/vet/test` all pass, no blocking findings. |
+| Verdict | PASS |
+| Blocking Findings | none |
+| Next Role | implement |
+
+---
+
+### T-001 — implement — 2026-05-04T21:06:01Z
+
+| Field | Value |
+|-------|-------|
+| Agent | codex |
+| Summary | Consolidated config, database, auth state, and audit paths under the gohour data directory with first-run migration and fixed-path serve startup. |
+| Files Changed | README.md, cmd/auth_helpers.go, cmd/config.go, cmd/config_create_test.go, cmd/config_rule_add_test.go, cmd/config_show.go, cmd/import.go, cmd/root.go, cmd/serve.go, cmd/serve_e2e_stub.go, cmd/serve_test.go, config/config.go, config/config_test.go, config/migration.go, config/migration_test.go, web/audit.go, web/server.go, web/server_test.go |
+| Validation | `go fmt ./...` PASS; `go vet ./...` PASS; `go test ./...` PASS |
+| Commit | `feat(config): store gohour data under ~/.gohour` |
+| Next Role | review |
+
+---
+
+### T-001 — implement — 2026-05-04T21:13:21Z
+
+| Field | Value |
+|-------|-------|
+| Agent | codex |
+| Summary | Committed T-001 file consolidation and migration work. |
+| Files Changed | .ai/HANDOFF.md, .ai/TASKS.md, README.md, cmd/auth_helpers.go, cmd/config.go, cmd/config_create_test.go, cmd/config_rule_add_test.go, cmd/config_show.go, cmd/import.go, cmd/root.go, cmd/serve.go, cmd/serve_e2e_stub.go, cmd/serve_test.go, config/config.go, config/config_test.go, config/migration.go, config/migration_test.go, web/audit.go, web/server.go, web/server_test.go |
+| Validation | `go fmt ./...` PASS; `go vet ./...` PASS; `go test ./...` PASS |
+| Commit | `feat(config): store gohour data under ~/.gohour` |
+| Next Role | implement |
+
+---

@@ -5,19 +5,21 @@ import (
 	"fmt"
 	"github.com/go-playground/validator/v10"
 	"github.com/spf13/viper"
+	"os"
+	"path/filepath"
 	"strings"
+
+	"gopkg.in/yaml.v3"
 )
 
 const (
-	KeyOnePointURL              = "onepoint.url"
-	KeyImportAutoReconcileAfter = "import.auto_reconcile_after_import"
-	KeyRules                    = "rules"
+	KeyOnePointURL = "onepoint.url"
+	KeyRules       = "rules"
 )
 
 type Config struct {
-	OnePoint OnePointConfig `mapstructure:"onepoint" validate:"required"`
-	Import   ImportConfig   `mapstructure:"import"`
-	Rules    []Rule         `mapstructure:"rules"`
+	OnePoint OnePointConfig `mapstructure:"onepoint" yaml:"onepoint" validate:"required"`
+	Rules    []Rule         `mapstructure:"rules" yaml:"rules"`
 
 	// Runtime-only values resolved per imported file (not loaded from config).
 	ImportProject  string `mapstructure:"-"`
@@ -27,24 +29,20 @@ type Config struct {
 }
 
 type OnePointConfig struct {
-	URL string `mapstructure:"url" validate:"required,url"`
-}
-
-type ImportConfig struct {
-	AutoReconcileAfterImport bool `mapstructure:"auto_reconcile_after_import"`
+	URL string `mapstructure:"url" yaml:"url" validate:"required,url"`
 }
 
 type Rule struct {
-	Name         string `mapstructure:"name"`
-	Mapper       string `mapstructure:"mapper"`
-	FileTemplate string `mapstructure:"file_template"`
-	Billable     *bool  `mapstructure:"billable"`
-	ProjectID    int64  `mapstructure:"project_id"`
-	Project      string `mapstructure:"project"`
-	ActivityID   int64  `mapstructure:"activity_id"`
-	Activity     string `mapstructure:"activity"`
-	SkillID      int64  `mapstructure:"skill_id"`
-	Skill        string `mapstructure:"skill"`
+	Name         string `mapstructure:"name" yaml:"name"`
+	Mapper       string `mapstructure:"mapper" yaml:"mapper"`
+	FileTemplate string `mapstructure:"file_template" yaml:"file_template"`
+	Billable     *bool  `mapstructure:"billable" yaml:"billable,omitempty"`
+	ProjectID    int64  `mapstructure:"project_id" yaml:"project_id"`
+	Project      string `mapstructure:"project" yaml:"project"`
+	ActivityID   int64  `mapstructure:"activity_id" yaml:"activity_id"`
+	Activity     string `mapstructure:"activity" yaml:"activity"`
+	SkillID      int64  `mapstructure:"skill_id" yaml:"skill_id"`
+	Skill        string `mapstructure:"skill" yaml:"skill"`
 }
 
 // IsBillable returns whether entries from this rule should be billable.
@@ -59,8 +57,49 @@ func (r Rule) IsBillable() bool {
 // SetDefaults sets default values if not provided
 func SetDefaults() {
 	viper.SetDefault(KeyOnePointURL, "https://onepoint.virtual7.io/onepoint/faces/home")
-	viper.SetDefault(KeyImportAutoReconcileAfter, true)
 	viper.SetDefault(KeyRules, []map[string]any{})
+}
+
+// DataDir returns the directory where gohour stores config, database, and auth state files.
+func DataDir() string {
+	if override := strings.TrimSpace(os.Getenv("GOHOUR_DATA_DIR")); override != "" {
+		return override
+	}
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return filepath.Join(".", ".gohour")
+	}
+	return filepath.Join(home, ".gohour")
+}
+
+func ConfigPath() string {
+	return filepath.Join(DataDir(), "config.yaml")
+}
+
+func DBPath() string {
+	return filepath.Join(DataDir(), "gohour.db")
+}
+
+func AuthStatePath() string {
+	return filepath.Join(DataDir(), "onepoint-auth-state.json")
+}
+
+// WriteConfig writes the current configuration to the fixed gohour config path.
+func WriteConfig(cfg *Config) error {
+	if cfg == nil {
+		return fmt.Errorf("config is required")
+	}
+	if err := os.MkdirAll(DataDir(), 0o700); err != nil {
+		return fmt.Errorf("create data directory: %w", err)
+	}
+	content, err := yaml.Marshal(cfg)
+	if err != nil {
+		return fmt.Errorf("marshal config: %w", err)
+	}
+	if err := os.WriteFile(ConfigPath(), content, 0o600); err != nil {
+		return fmt.Errorf("write config: %w", err)
+	}
+	return nil
 }
 
 // LoadAndValidate loads config from Viper and validates it
@@ -85,9 +124,6 @@ func ExampleYAML() string {
 onepoint:
   url: "https://onepoint.virtual7.io/onepoint/faces/home"
 
-import:
-  auto_reconcile_after_import: true
-
 rules: []
 `
 }
@@ -111,15 +147,14 @@ func loadAndValidateFromViper(v *viper.Viper) (*Config, error) {
 
 func setDefaults(v *viper.Viper) {
 	v.SetDefault(KeyOnePointURL, "https://onepoint.virtual7.io/onepoint/faces/home")
-	v.SetDefault(KeyImportAutoReconcileAfter, true)
 	v.SetDefault(KeyRules, []map[string]any{})
 }
 
 func validateRules(rules []Rule) error {
 	validMappers := map[string]bool{
-		"epm":        true,
-		"generic":    true,
-		"atwork": true,
+		"epm":     true,
+		"generic": true,
+		"atwork":  true,
 	}
 	seen := make(map[string]struct{}, len(rules))
 	for i, rule := range rules {

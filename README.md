@@ -5,7 +5,7 @@
 ## Features
 
 - CLI built with Cobra and Viper
-- Config file support (`onepoint.url`, `import.auto_reconcile_after_import`, `rules`)
+- Config file support (`onepoint.url`, `rules`)
 - Input formats: Excel (`.xlsx`, `.xlsm`, `.xls`) and CSV (`.csv`)
 - Mapper-based normalization pipeline (`epm`, `generic`, `atwork`)
 - SQLite persistence with duplicate protection
@@ -107,9 +107,13 @@ Or with `go run`:
 go run . config create
 ```
 
-Default config file location:
+Default data file locations:
 
-- `$HOME/.gohour.yaml`
+- Config: `$HOME/.gohour/config.yaml`
+- SQLite database: `$HOME/.gohour/gohour.db`
+- OnePoint auth state: `$HOME/.gohour/onepoint-auth-state.json`
+
+On first run, gohour checks for older `.gohour.yaml` / `gohour.db` files in the current directory, then `$HOME/.gohour.yaml`, and prompts whether to move them into `$HOME/.gohour/` or start fresh.
 
 Show active config:
 
@@ -150,9 +154,6 @@ Example config:
 ```yaml
 onepoint:
   url: "https://onepoint.virtual7.io/onepoint/faces/home"
-
-import:
-  auto_reconcile_after_import: true
 
 rules:
   - name: "rz"
@@ -201,7 +202,7 @@ Flags:
 - `--reconcile` (optional): `auto` (default, uses config), `on`, or `off`
 - `--db` (optional): SQLite file path (default `./gohour.db`)
 
-By default (`import.auto_reconcile_after_import: true`), import automatically runs reconciliation after every import, independent of source format/mapper.
+The legacy `import.auto_reconcile_after_import` setting is no longer used.
 If a file matches a `rules` entry by `file_template`, that rule's `mapper` is used for importing that file.
 For EPM-mapped files, `project/activity/skill` must come from a matching `rules` entry or explicit `--project/--activity/--skill`.
 If no rule matches and no explicit values are provided, import fails.
@@ -279,16 +280,12 @@ Important OnePoint UI note:
 - If that happens, close the open OnePoint window/tab and open/login again to refresh the displayed values.
 
 Audit log:
-- Remote-write operations from the web UI append JSON lines to `./gohour-audit.log`
+- Remote-write operations from the web UI append JSON lines to `$HOME/.gohour/gohour-audit.log`
 - Logged operations include day/month submit and month remote delete (attempts, outcomes, counts, and locked-day info)
 
 Main flags:
 
 - `--port` (optional): HTTP port (default `8080`)
-- `--db` (optional): SQLite path (default `./gohour.db`)
-- `--from` / `--to` (optional): month range for initial view, format `YYYY-MM`
-- `--state-file` (optional): auth state JSON path
-- `--url` (optional): override OnePoint home URL for this run
 - `--no-open` (optional): do not auto-open browser tab
 
 ## Browser Smoke Tests
@@ -391,7 +388,7 @@ Automatic login is used by:
 - `gohour config rule add`
 
 If no valid session cookie exists, a headed browser opens, you complete Microsoft login, and auth state is saved automatically.
-The URL comes from `onepoint.url` in config (`~/.gohour.yaml`) and defaults to:
+The URL comes from `onepoint.url` in config (`$HOME/.gohour/config.yaml`) and defaults to:
 `https://onepoint.virtual7.io/onepoint/faces/home`.
 You can override it with `--url` on the corresponding command.
 

@@ -10,40 +10,13 @@ import (
 	"github.com/riadshalaby/gohour/config"
 )
 
-func TestParseServeMonthBounds_NoFlagsUsesCurrentMonth(t *testing.T) {
+func TestDefaultServeMonthBoundsUsesCurrentMonth(t *testing.T) {
 	t.Parallel()
 
-	bounds, err := parseServeMonthBounds("", "")
-	if err != nil {
-		t.Fatalf("parse bounds: %v", err)
-	}
+	bounds := defaultServeMonthBounds()
 	want := time.Now().In(time.Local).Format("2006-01")
 	if bounds.defaultMonth != want {
 		t.Fatalf("expected default month %q, got %q", want, bounds.defaultMonth)
-	}
-}
-
-func TestParseServeMonthBounds_ClampsWhenNowOutsideRange(t *testing.T) {
-	t.Parallel()
-
-	now := time.Now().In(time.Local)
-	fromFuture := now.AddDate(0, 2, 0).Format("2006-01")
-	toPast := now.AddDate(0, -2, 0).Format("2006-01")
-
-	futureBounds, err := parseServeMonthBounds(fromFuture, "")
-	if err != nil {
-		t.Fatalf("parse future bounds: %v", err)
-	}
-	if futureBounds.defaultMonth != fromFuture {
-		t.Fatalf("expected future clamp %q, got %q", fromFuture, futureBounds.defaultMonth)
-	}
-
-	pastBounds, err := parseServeMonthBounds("", toPast)
-	if err != nil {
-		t.Fatalf("parse past bounds: %v", err)
-	}
-	if pastBounds.defaultMonth != toPast {
-		t.Fatalf("expected past clamp %q, got %q", toPast, pastBounds.defaultMonth)
 	}
 }
 
@@ -70,6 +43,21 @@ func TestWithServeMonthRedirect(t *testing.T) {
 	}
 	if nextCalled {
 		t.Fatalf("expected wrapper to intercept root redirect")
+	}
+}
+
+func TestServeFlagsOnlyExposePortAndNoOpen(t *testing.T) {
+	t.Parallel()
+
+	for _, name := range []string{"port", "no-open"} {
+		if serveCmd.Flags().Lookup(name) == nil {
+			t.Fatalf("expected --%s flag", name)
+		}
+	}
+	for _, name := range []string{"db", "url", "state-file", "from", "to"} {
+		if serveCmd.Flags().Lookup(name) != nil {
+			t.Fatalf("did not expect removed --%s flag", name)
+		}
 	}
 }
 

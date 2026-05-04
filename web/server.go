@@ -1053,11 +1053,6 @@ func (s *Server) handleAPIImport(w http.ResponseWriter, r *http.Request) {
 	toInsert := result.Entries
 	overlapsSkipped := 0
 	duplicateCount := 0
-	var (
-		importRangeStart time.Time
-		importRangeEnd   time.Time
-		hasImportRange   bool
-	)
 	if len(result.Entries) > 0 {
 		minDay := timeutil.StartOfDay(result.Entries[0].StartDateTime)
 		maxDay := minDay
@@ -1070,9 +1065,6 @@ func (s *Server) handleAPIImport(w http.ResponseWriter, r *http.Request) {
 				maxDay = day
 			}
 		}
-		importRangeStart = minDay
-		importRangeEnd = maxDay
-		hasImportRange = true
 
 		existingEntries, err := s.loadLocalRange(minDay, maxDay)
 		if err != nil {
@@ -1139,11 +1131,6 @@ func (s *Server) handleAPIImport(w http.ResponseWriter, r *http.Request) {
 	}
 
 	reconcileWarning := ""
-	if s.cfg.Import.AutoReconcileAfterImport && hasImportRange {
-		if _, err := s.autoReconcileImportedRange(r.Context(), importRangeStart, importRangeEnd); err != nil {
-			reconcileWarning = fmt.Sprintf("reconcile imported worklogs: %v", err)
-		}
-	}
 
 	s.invalidateLocalCache()
 	writeJSON(w, http.StatusOK, importResponse{

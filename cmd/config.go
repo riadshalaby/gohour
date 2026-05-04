@@ -9,7 +9,6 @@ var configCmd = &cobra.Command{
 
 The configuration stores application-wide values and import rules:
 - onepoint.url
-- import.auto_reconcile_after_import
 - rules[].mapper / file_template / billable / project_id+project / activity_id+activity / skill_id+skill`,
 	Example: `
   # Create default config in $HOME/.gohour.yaml
