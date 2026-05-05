@@ -29,6 +29,68 @@ Reviewed: YYYY-MM-DD
 
 ---
 
+## Task: T-004
+
+### Review Round 1
+
+Status: **complete**
+
+Reviewed: 2026-05-05
+
+#### Findings
+
+- severity: `nit`
+  - file: `web/server.go` — `importSelectionFromForm`
+  - description: `firstNonEmptyString` is called with the form `mapper` value as first arg but the matched rule's mapper is already pre-populated in `selection` via `rulePayloadFromRule`. Then it's immediately overridden with the form value again as first arg, which means an explicitly submitted form value overrides the rule. This is the correct priority, but the logic could be simplified. No functional issue.
+  - required fix: no
+
+- severity: `nit`
+  - file: `web/server.go` — `persistImportRuleUpdate`
+  - description: If `updateRule=true` is sent but no rule matched (empty `FileTemplate`), the handler returns a 500 error. A 400 Bad Request would be more appropriate for a client-driven mismatch.
+  - required fix: no
+
+- severity: `nit`
+  - file: `web/templates/month.html`
+  - description: The new "Billable (force full duration)" option in the billable select was added. Previously `applyImportSelection` only handled `non-billable`; now it handles `billable` too via `boolValuePtr(true)`. The JS and handler are consistent. Minor note: the "auto" option still falls through to whatever the file provides, which is correct.
+  - required fix: no
+
+#### Verification
+##### Steps
+1. Re-read `.ai/PLAN.md` T-004 section and acceptance criteria.
+2. Reviewed all diffs: `web/server.go`, `web/server_test.go`, `web/static/js/app.js`, `web/templates/month.html`.
+3. Verified acceptance criteria:
+   - Import preview auto-matches rules via `importer.MatchRuleByTemplate` — ✅
+   - Preview returns `MatchedRule`, `Selection`, `Mappers`, `Lookup` — ✅
+   - Pre-filled values from matched rule: mapper, project/ID, activity/ID, skill/ID, billable — ✅
+   - User can override all fields via form values (priority: form > rule > default) — ✅
+   - "Update rule" option (`updateRule=true`) persists overrides to YAML via `persistImportRuleUpdate` → `updateConfig` — ✅
+   - No-match returns empty selection and no `MatchedRule` — ✅
+   - All three mappers selectable (epm/generic/atwork) returned in `Mappers` field — ✅
+   - Handler tests pass — ✅
+4. Verified `lookupResponseFromSnapshot` was correctly extracted into a standalone function (no duplicate logic).
+5. Verified `applyImportSelection` correctly handles billable/non-billable/auto with the new `boolValuePtr` helper.
+6. Verified `persistImportRuleUpdate` safely guards against no-match (`FileTemplate == ""`) and uses the same `updateConfig` lock path as T-003.
+7. Ran `go fmt ./...` → PASS
+8. Ran `go vet ./...` → PASS
+9. Ran `go test ./...` → all 11 packages PASS
+10. Ran `npx playwright test` → 12/12 PASS (no regressions)
+
+##### Findings
+- All four required handler tests are present and pass: preview-with-match, preview-no-match, import-with-overrides, import-update-rule-persist.
+- Round-trip test (`TestServer_Import_UpdateRulePersistsOverrides`) reads from disk after import to confirm YAML was updated — correct.
+- JavaScript functions (`renderImportPreviewSelection`, `fillImportOverrideSelects`, `appendImportPreviewSelection`) wired to pre-fill and submit form overrides.
+
+##### Risks
+- None. All tests pass.
+
+#### Open Questions
+- None.
+
+#### Verdict
+`PASS`
+
+---
+
 ## Task: T-003
 
 ### Review Round 1

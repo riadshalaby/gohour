@@ -201,11 +201,18 @@ type importPreviewResponse struct {
 	RowsMapped  int                  `json:"rowsMapped"`
 	RowsSkipped int                  `json:"rowsSkipped"`
 	Entries     []importPreviewEntry `json:"entries"`
+	MatchedRule *rulePayload         `json:"matchedRule,omitempty"`
+	Selection   rulePayload          `json:"selection"`
+	Mappers     []string             `json:"mappers"`
+	Lookup      *lookupResponse      `json:"lookup,omitempty"`
 }
 
 type importFormResult struct {
-	tmpPath string
-	result  *importer.Result
+	tmpPath     string
+	result      *importer.Result
+	matchedRule config.Rule
+	selection   rulePayload
+	updateRule  bool
 }
 
 type importOverlapItem struct {
@@ -923,6 +930,11 @@ func (s *Server) handleAPILookup(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	resp := lookupResponseFromSnapshot(snapshot)
+	writeJSON(w, http.StatusOK, resp)
+}
+
+func lookupResponseFromSnapshot(snapshot onepoint.LookupSnapshot) lookupResponse {
 	resp := lookupResponse{
 		Projects:   make([]lookupProject, 0, len(snapshot.Projects)),
 		Activities: make([]lookupActivity, 0, len(snapshot.Activities)),
@@ -950,8 +962,7 @@ func (s *Server) handleAPILookup(w http.ResponseWriter, r *http.Request) {
 			ActivityID: sk.ActivityID,
 		})
 	}
-
-	writeJSON(w, http.StatusOK, resp)
+	return resp
 }
 
 func (s *Server) handleAPIConfig(w http.ResponseWriter, r *http.Request) {
@@ -1324,6 +1335,10 @@ func (s *Server) handleAPIImport(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, fmt.Sprintf("insert imported worklogs: %v", err), http.StatusInternalServerError)
 		return
 	}
+	if err := s.persistImportRuleUpdate(formResult); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
 
 	reconcileWarning := ""
 
@@ -1352,6 +1367,16 @@ func (s *Server) handleAPIImportPreview(w http.ResponseWriter, r *http.Request) 
 		RowsMapped:  result.RowsMapped,
 		RowsSkipped: result.RowsSkipped,
 		Entries:     make([]importPreviewEntry, 0, len(result.Entries)),
+		Selection:   formResult.selection,
+		Mappers:     importMapperNames(),
+	}
+	if formResult.matchedRule.FileTemplate != "" {
+		matched := rulePayloadFromRule(formResult.matchedRule)
+		response.MatchedRule = &matched
+	}
+	if snapshot, err := s.loadLookupSnapshot(r.Context(), false); err == nil {
+		lookup := lookupResponseFromSnapshot(snapshot)
+		response.Lookup = &lookup
 	}
 
 	if len(result.Entries) == 0 {
@@ -2051,7 +2076,12 @@ func (s *Server) parseAndRunImportForm(r *http.Request) (importFormResult, error
 	}
 	defer file.Close()
 
+	cfg := s.configSnapshot()
+	matchedRule := importer.MatchRuleByTemplate(header.Filename, cfg.Rules)
 	mapperName := strings.TrimSpace(r.FormValue("mapper"))
+	if mapperName == "" {
+		mapperName = strings.TrimSpace(matchedRule.Mapper)
+	}
 	if mapperName == "" {
 		mapperName = "epm"
 	}
@@ -2059,6 +2089,8 @@ func (s *Server) parseAndRunImportForm(r *http.Request) (importFormResult, error
 	if err != nil {
 		return importFormResult{}, err
 	}
+	mapperName = mapper.Name()
+	selection := importSelectionFromForm(r, mapperName, matchedRule)
 
 	tmp, err := os.CreateTemp("", tempUploadPattern(header.Filename))
 	if err != nil {
@@ -2080,11 +2112,11 @@ func (s *Server) parseAndRunImportForm(r *http.Request) (importFormResult, error
 		[]string{tmpPath},
 		"",
 		mapper,
-		s.configSnapshot(),
+		cfg,
 		importer.RunOptions{
-			EPMProject:  strings.TrimSpace(r.FormValue("project")),
-			EPMActivity: strings.TrimSpace(r.FormValue("activity")),
-			EPMSkill:    strings.TrimSpace(r.FormValue("skill")),
+			EPMProject:  selection.Project,
+			EPMActivity: selection.Activity,
+			EPMSkill:    selection.Skill,
 		},
 	)
 	if err != nil {
@@ -2092,14 +2124,84 @@ func (s *Server) parseAndRunImportForm(r *http.Request) (importFormResult, error
 		return importFormResult{}, err
 	}
 
-	billableMode := strings.TrimSpace(r.FormValue("billable"))
-	if billableMode == "non-billable" {
-		for i := range result.Entries {
-			result.Entries[i].Billable = 0
+	applyImportSelection(result.Entries, selection)
+
+	return importFormResult{
+		tmpPath:     tmpPath,
+		result:      result,
+		matchedRule: matchedRule,
+		selection:   selection,
+		updateRule:  parseBoolFormValue(r.FormValue("updateRule")),
+	}, nil
+}
+
+func importSelectionFromForm(r *http.Request, mapperName string, matchedRule config.Rule) rulePayload {
+	selection := rulePayloadFromRule(matchedRule)
+	selection.Mapper = firstNonEmptyString(strings.TrimSpace(r.FormValue("mapper")), selection.Mapper, mapperName)
+	selection.Mapper = strings.ToLower(strings.TrimSpace(selection.Mapper))
+	selection.Project = firstNonEmptyString(strings.TrimSpace(r.FormValue("project")), selection.Project)
+	selection.Activity = firstNonEmptyString(strings.TrimSpace(r.FormValue("activity")), selection.Activity)
+	selection.Skill = firstNonEmptyString(strings.TrimSpace(r.FormValue("skill")), selection.Skill)
+	selection.ProjectID = firstNonZeroInt64(parseInt64FormValue(r.FormValue("projectId")), selection.ProjectID)
+	selection.ActivityID = firstNonZeroInt64(parseInt64FormValue(r.FormValue("activityId")), selection.ActivityID)
+	selection.SkillID = firstNonZeroInt64(parseInt64FormValue(r.FormValue("skillId")), selection.SkillID)
+	switch strings.TrimSpace(r.FormValue("billable")) {
+	case "billable":
+		selection.Billable = boolValuePtr(true)
+	case "non-billable":
+		selection.Billable = boolValuePtr(false)
+	}
+	return selection
+}
+
+func applyImportSelection(entries []worklog.Entry, selection rulePayload) {
+	for i := range entries {
+		if strings.TrimSpace(selection.Project) != "" {
+			entries[i].Project = selection.Project
+		}
+		if strings.TrimSpace(selection.Activity) != "" {
+			entries[i].Activity = selection.Activity
+		}
+		if strings.TrimSpace(selection.Skill) != "" {
+			entries[i].Skill = selection.Skill
+		}
+		if selection.Billable != nil {
+			if *selection.Billable {
+				entries[i].Billable = max(0, int(entries[i].EndDateTime.Sub(entries[i].StartDateTime).Minutes()))
+			} else {
+				entries[i].Billable = 0
+			}
 		}
 	}
+}
 
-	return importFormResult{tmpPath: tmpPath, result: result}, nil
+func (s *Server) persistImportRuleUpdate(result importFormResult) error {
+	if !result.updateRule {
+		return nil
+	}
+	if result.matchedRule.FileTemplate == "" {
+		return fmt.Errorf("updateRule requires a matched rule")
+	}
+	rule, err := ruleFromPayload(result.selection, result.matchedRule.Name, true)
+	if err != nil {
+		return fmt.Errorf("update import rule: %w", err)
+	}
+	if rule.FileTemplate == "" {
+		rule.FileTemplate = result.matchedRule.FileTemplate
+	}
+
+	_, err = s.updateConfig(func(next *config.Config) error {
+		index := findRuleIndex(next.Rules, result.matchedRule.Name)
+		if index < 0 {
+			return errRuleNotFound
+		}
+		next.Rules[index] = rule
+		return nil
+	})
+	if err != nil {
+		return fmt.Errorf("update import rule: %w", err)
+	}
+	return nil
 }
 
 func (s *Server) writeMutationConflictIfAny(w http.ResponseWriter, r *http.Request, entry worklog.Entry, existingEntries []worklog.Entry, ignoreID int64) bool {
@@ -2531,6 +2633,40 @@ func parseBoolFormValue(value string) bool {
 	default:
 		return false
 	}
+}
+
+func parseInt64FormValue(value string) int64 {
+	parsed, err := strconv.ParseInt(strings.TrimSpace(value), 10, 64)
+	if err != nil || parsed < 0 {
+		return 0
+	}
+	return parsed
+}
+
+func firstNonEmptyString(values ...string) string {
+	for _, value := range values {
+		if strings.TrimSpace(value) != "" {
+			return strings.TrimSpace(value)
+		}
+	}
+	return ""
+}
+
+func firstNonZeroInt64(values ...int64) int64 {
+	for _, value := range values {
+		if value != 0 {
+			return value
+		}
+	}
+	return 0
+}
+
+func boolValuePtr(value bool) *bool {
+	return &value
+}
+
+func importMapperNames() []string {
+	return []string{"epm", "generic", "atwork"}
 }
 
 func decodeJSON(r *http.Request, out any) error {

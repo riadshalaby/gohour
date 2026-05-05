@@ -8,6 +8,44 @@ Each entry uses this exact structure. Omit fields marked as role-specific when t
 
 ---
 
+### T-004 — implement — 2026-05-05T17:39:24Z
+
+| Field | Value |
+|-------|-------|
+| Agent | codex |
+| Summary | Committed T-004 web import rule matching and override support. |
+| Files Changed | .ai/HANDOFF.md, .ai/TASKS.md, web/server.go, web/server_test.go, web/static/css/components.css, web/static/js/app.js, web/templates/base.html, web/templates/month.html |
+| Validation | `go fmt ./...` PASS; `go test ./web` PASS; `go vet ./...` PASS; `go test ./...` PASS |
+| Commit | `feat(web): match import rules in the web UI` |
+| Next Role | implement |
+
+---
+
+### T-004 — review — 2026-05-05T18:00:00Z
+
+| Field | Value |
+|-------|-------|
+| Agent | claude |
+| Summary | Reviewed T-004 implementation; all acceptance criteria met, round-trip rule-update persistence verified, 12/12 Playwright tests pass, no blocking findings. |
+| Verdict | PASS |
+| Blocking Findings | none |
+| Next Role | implement |
+
+---
+
+### T-004 — implement — 2026-05-05T17:32:10Z
+
+| Field | Value |
+|-------|-------|
+| Agent | codex |
+| Summary | Added rule-aware import preview metadata, import override persistence, and preview controls for mapper, lookup fields, billable mode, and matched-rule updates. |
+| Files Changed | .ai/HANDOFF.md, .ai/TASKS.md, web/server.go, web/server_test.go, web/static/css/components.css, web/static/js/app.js, web/templates/base.html, web/templates/month.html |
+| Validation | `go fmt ./...` PASS; `go test ./web` PASS; `go vet ./...` PASS; `go test ./...` PASS |
+| Commit | `feat(web): match import rules in the web UI` |
+| Next Role | review |
+
+---
+
 ### <TASK_ID> — <ROLE> — <YYYY-MM-DDTHH:MM:SSZ>
 
 | Field | Value |
