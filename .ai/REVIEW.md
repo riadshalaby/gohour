@@ -29,6 +29,65 @@ Reviewed: YYYY-MM-DD
 
 ---
 
+## Task: T-003
+
+### Review Round 1
+
+Status: **complete**
+
+Reviewed: 2026-05-05
+
+#### Findings
+
+- severity: `nit`
+  - file: `web/server.go` — `configSnapshot()` / `cloneConfig()`
+  - description: `cloneConfig` copies the `Rules` slice but `config.Rule` contains only value types and a `*bool` pointer for `Billable`. Callers who mutate `Billable` through the returned pointer would see a shared mutation. In practice this never happens in the current code paths, but a deep clone of `Billable` would be strictly safer. Not a practical risk today.
+  - required fix: no
+
+- severity: `nit`
+  - file: `web/server.go` — `handleAPIRulePatch`
+  - description: After a successful patch, the response looks up the rule by `rule.Name` (which may differ from the path param `name` if the client renamed the rule). This is correct, but it silently allows renaming via PATCH by sending a different `name` in the body. The plan doesn't prohibit this, but it isn't explicitly specified either. Acceptable as-is.
+  - required fix: no
+
+#### Verification
+##### Steps
+1. Re-read `.ai/PLAN.md` T-003 section and all acceptance criteria.
+2. Reviewed all diffs: `web/server.go`, `web/server_test.go`, `web/templates/config.html`, `web/templates/base.html`, `web/static/css/components.css`, `web/static/js/app.js`.
+3. Verified acceptance criteria:
+   - `/config` page renders via `handleConfig` with `config.html` template — ✅
+   - "Config" nav link added to `base.html` — ✅
+   - OnePoint URL editable via `PATCH /api/config` with `validateOnePointURL` — ✅
+   - Rules listable via `GET /api/rules` — ✅
+   - Rules creatable via `POST /api/rules` → 201 Created — ✅
+   - Rules editable via `PATCH /api/rules/{name}` — ✅
+   - Rules deletable via `DELETE /api/rules/{name}` → 204 No Content — ✅
+   - Mutations persist to YAML via `updateConfig()` → `config.WriteConfig()` — ✅
+   - Thread safety via `configMu sync.RWMutex` — ✅
+   - `configSnapshot()` used in import handler instead of `s.cfg` directly — ✅
+4. Verified error handling: duplicate name → 409, not found → 404, bad request → 400, invalid URL → 400.
+5. Verified round-trip test: `TestServer_ConfigAPIsPersistOnePointURLAndRuleCRUD` exercises PATCH config, create/update/list/delete rule, and reads from disk to confirm YAML persistence — matches plan requirement exactly.
+6. Verified `TestServer_ConfigPageRendersCurrentConfigAndNav` confirms `/config` route returns 200 with the "Config" heading.
+7. Ran `go fmt ./...` → PASS
+8. Ran `go vet ./...` → PASS
+9. Ran `go test ./...` → all 11 packages PASS
+10. Ran `npx playwright test` → 12/12 PASS (no regressions from nav change)
+
+##### Findings
+- All acceptance criteria met.
+- Implementation adds a clean `updateConfig(mutator)` abstraction that safely serializes mutations, persists to disk, and updates in-memory state under one lock.
+- JavaScript functions (`openRuleDialog`, `editRuleRow`, `deleteRuleRow`, `handleConfigOnePointSubmit`, `handleRuleSubmit`) all present for full UI interaction.
+
+##### Risks
+- None. All tests pass including full Playwright regression suite.
+
+#### Open Questions
+- None.
+
+#### Verdict
+`PASS`
+
+---
+
 ## Task: T-002
 
 ### Review Round 1

@@ -9,6 +9,7 @@ import (
 	"mime/multipart"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -109,6 +110,142 @@ func TestServer_MonthPageRendersMonthDays(t *testing.T) {
 		if !strings.Contains(text, action) {
 			t.Fatalf("month page missing action %q", action)
 		}
+	}
+}
+
+func TestServer_ConfigPageRendersCurrentConfigAndNav(t *testing.T) {
+	store := openTestStore(t)
+	initialRule := ruleForLocal()
+	initialRule.Name = "default"
+	initialRule.FileTemplate = "*.csv"
+	initialRule.Billable = boolPtr(true)
+	ts := httptest.NewServer(NewServer(store, &fakeClient{}, testConfig([]config.Rule{initialRule})))
+	defer ts.Close()
+
+	resp, err := http.Get(ts.URL + "/config")
+	if err != nil {
+		t.Fatalf("request config page: %v", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		t.Fatalf("expected 200, got %d body=%s", resp.StatusCode, string(body))
+	}
+
+	body, _ := io.ReadAll(resp.Body)
+	text := string(body)
+	for _, needle := range []string{
+		`href="/config"`,
+		`id="config-onepoint-url"`,
+		`id="config-rules-table"`,
+		`default`,
+		`*.csv`,
+		`data-page="config"`,
+	} {
+		if !strings.Contains(text, needle) {
+			t.Fatalf("config page missing %q", needle)
+		}
+	}
+}
+
+func TestServer_ConfigAPIsPersistOnePointURLAndRuleCRUD(t *testing.T) {
+	t.Setenv("GOHOUR_DATA_DIR", t.TempDir())
+
+	store := openTestStore(t)
+	ts := httptest.NewServer(NewServer(store, &fakeClient{}, testConfig(nil)))
+	defer ts.Close()
+
+	patchBody := strings.NewReader(`{"onepointUrl":"https://onepoint.example.test/onepoint/faces/home"}`)
+	patchReq, err := http.NewRequest(http.MethodPatch, ts.URL+"/api/config", patchBody)
+	if err != nil {
+		t.Fatalf("build patch config request: %v", err)
+	}
+	patchReq.Header.Set("Content-Type", "application/json")
+	patchResp, err := http.DefaultClient.Do(patchReq)
+	if err != nil {
+		t.Fatalf("patch config request: %v", err)
+	}
+	defer patchResp.Body.Close()
+	if patchResp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(patchResp.Body)
+		t.Fatalf("expected 200 patch config, got %d body=%s", patchResp.StatusCode, string(body))
+	}
+
+	createBody := strings.NewReader(`{"name":"csv-default","mapper":"generic","fileTemplate":"*.csv","billable":false,"projectId":11,"project":"Project A","activityId":22,"activity":"Activity B","skillId":33,"skill":"Skill C"}`)
+	createResp, err := http.Post(ts.URL+"/api/rules", "application/json", createBody)
+	if err != nil {
+		t.Fatalf("post rule request: %v", err)
+	}
+	defer createResp.Body.Close()
+	if createResp.StatusCode != http.StatusCreated {
+		body, _ := io.ReadAll(createResp.Body)
+		t.Fatalf("expected 201 create rule, got %d body=%s", createResp.StatusCode, string(body))
+	}
+
+	updateBody := strings.NewReader(`{"mapper":"epm","fileTemplate":"epm-*.csv","billable":true,"projectId":44,"project":"Project D","activityId":55,"activity":"Activity E","skillId":66,"skill":"Skill F"}`)
+	updateReq, err := http.NewRequest(http.MethodPatch, ts.URL+"/api/rules/csv-default", updateBody)
+	if err != nil {
+		t.Fatalf("build patch rule request: %v", err)
+	}
+	updateReq.Header.Set("Content-Type", "application/json")
+	updateResp, err := http.DefaultClient.Do(updateReq)
+	if err != nil {
+		t.Fatalf("patch rule request: %v", err)
+	}
+	defer updateResp.Body.Close()
+	if updateResp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(updateResp.Body)
+		t.Fatalf("expected 200 update rule, got %d body=%s", updateResp.StatusCode, string(body))
+	}
+
+	rulesResp, err := http.Get(ts.URL + "/api/rules")
+	if err != nil {
+		t.Fatalf("get rules request: %v", err)
+	}
+	defer rulesResp.Body.Close()
+	if rulesResp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(rulesResp.Body)
+		t.Fatalf("expected 200 get rules, got %d body=%s", rulesResp.StatusCode, string(body))
+	}
+	var rules []rulePayload
+	if err := json.NewDecoder(rulesResp.Body).Decode(&rules); err != nil {
+		t.Fatalf("decode rules response: %v", err)
+	}
+	if len(rules) != 1 || rules[0].Mapper != "epm" || rules[0].FileTemplate != "epm-*.csv" || rules[0].ProjectID != 44 || rules[0].Billable == nil || !*rules[0].Billable {
+		t.Fatalf("unexpected rules payload: %+v", rules)
+	}
+
+	cfgFromDisk, err := config.ValidateYAMLContent(readTestFile(t, config.ConfigPath()))
+	if err != nil {
+		t.Fatalf("validate persisted config: %v", err)
+	}
+	if cfgFromDisk.OnePoint.URL != "https://onepoint.example.test/onepoint/faces/home" {
+		t.Fatalf("unexpected persisted onepoint url: %q", cfgFromDisk.OnePoint.URL)
+	}
+	if len(cfgFromDisk.Rules) != 1 || cfgFromDisk.Rules[0].Mapper != "epm" || cfgFromDisk.Rules[0].ProjectID != 44 {
+		t.Fatalf("unexpected persisted rules: %+v", cfgFromDisk.Rules)
+	}
+
+	deleteReq, err := http.NewRequest(http.MethodDelete, ts.URL+"/api/rules/csv-default", nil)
+	if err != nil {
+		t.Fatalf("build delete rule request: %v", err)
+	}
+	deleteResp, err := http.DefaultClient.Do(deleteReq)
+	if err != nil {
+		t.Fatalf("delete rule request: %v", err)
+	}
+	defer deleteResp.Body.Close()
+	if deleteResp.StatusCode != http.StatusNoContent {
+		body, _ := io.ReadAll(deleteResp.Body)
+		t.Fatalf("expected 204 delete rule, got %d body=%s", deleteResp.StatusCode, string(body))
+	}
+
+	cfgFromDisk, err = config.ValidateYAMLContent(readTestFile(t, config.ConfigPath()))
+	if err != nil {
+		t.Fatalf("validate persisted config after delete: %v", err)
+	}
+	if len(cfgFromDisk.Rules) != 0 {
+		t.Fatalf("expected persisted rules to be empty after delete, got %+v", cfgFromDisk.Rules)
 	}
 }
 
@@ -3047,6 +3184,19 @@ func ruleForLocal() config.Rule {
 		ActivityID: 200,
 		SkillID:    300,
 	}
+}
+
+func boolPtr(value bool) *bool {
+	return &value
+}
+
+func readTestFile(t *testing.T, path string) []byte {
+	t.Helper()
+	content, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read %s: %v", path, err)
+	}
+	return content
 }
 
 func testConfig(rules []config.Rule) config.Config {

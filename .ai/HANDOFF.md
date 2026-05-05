@@ -109,3 +109,41 @@ Each entry uses this exact structure. Omit fields marked as role-specific when t
 | Next Role | implement |
 
 ---
+
+### T-003 — review — 2026-05-05T10:00:00Z
+
+| Field | Value |
+|-------|-------|
+| Agent | claude |
+| Summary | Reviewed T-003 implementation; all acceptance criteria met, round-trip disk persistence verified, 12/12 Playwright tests still pass, no blocking findings. |
+| Verdict | PASS |
+| Blocking Findings | none |
+| Next Role | implement |
+
+---
+
+### T-003 — implement — 2026-05-05T09:14:26Z
+
+| Field | Value |
+|-------|-------|
+| Agent | codex |
+| Summary | Added the web config page and APIs for editing the OnePoint URL and managing import rules with YAML persistence. |
+| Files Changed | .ai/HANDOFF.md, .ai/TASKS.md, web/server.go, web/server_test.go, web/static/css/components.css, web/static/js/app.js, web/templates/base.html, web/templates/config.html |
+| Validation | `go fmt ./...` PASS; `go test ./web` PASS; `go vet ./...` PASS; `go test ./...` PASS |
+| Commit | `feat(web): manage config rules in the web UI` |
+| Next Role | review |
+
+---
+
+### T-003 — implement — 2026-05-05T17:18:56Z
+
+| Field | Value |
+|-------|-------|
+| Agent | codex |
+| Summary | Committed T-003 web config management page and rule CRUD implementation. |
+| Files Changed | .ai/HANDOFF.md, .ai/TASKS.md, web/server.go, web/server_test.go, web/static/css/components.css, web/static/js/app.js, web/templates/base.html, web/templates/config.html |
+| Validation | `go fmt ./...` PASS; `go test ./web` PASS; `go vet ./...` PASS; `go test ./...` PASS |
+| Commit | `feat(web): manage config rules in the web UI` |
+| Next Role | implement |
+
+---

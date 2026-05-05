@@ -819,6 +819,144 @@ async function buildLookupSelects(currentProject, currentActivity, currentSkill)
   return { projectSelect, activitySelect, skillSelect };
 }
 
+function selectedOptionID(select) {
+  if (!select || !select.options.length || select.selectedIndex < 0) return 0;
+  return Number(select.options[select.selectedIndex].dataset.id || '0');
+}
+
+async function replaceRuleLookupSelects(currentProject, currentActivity, currentSkill) {
+  const selects = await buildLookupSelects(currentProject || '', currentActivity || '', currentSkill || '');
+  replaceDialogSelect('rule-project', selects.projectSelect);
+  replaceDialogSelect('rule-activity', selects.activitySelect);
+  replaceDialogSelect('rule-skill', selects.skillSelect);
+}
+
+function setRuleDialogError(message) {
+  const node = document.getElementById('rule-dialog-error');
+  if (!node) return;
+  node.textContent = String(message || '');
+  node.hidden = !message;
+}
+
+async function openRuleDialog(values) {
+  const dialog = document.getElementById('rule-dialog');
+  const form = document.getElementById('rule-form');
+  if (!dialog || !form) return;
+
+  const data = values || {};
+  form.reset();
+  setRuleDialogError('');
+  form.elements.mode.value = data.name ? 'edit' : 'create';
+  form.elements.originalName.value = data.name || '';
+  form.elements.name.value = data.name || '';
+  form.elements.mapper.value = data.mapper || 'epm';
+  form.elements.fileTemplate.value = data.fileTemplate || '';
+  form.elements.billable.value = data.billable === false ? 'false' : 'true';
+
+  const title = document.getElementById('rule-dialog-title');
+  if (title) title.textContent = data.name ? 'Edit rule' : 'Add rule';
+
+  try {
+    await replaceRuleLookupSelects(data.project || '', data.activity || '', data.skill || '');
+  } catch (err) {
+    setRuleDialogError(String(err.message || err));
+    showToast(String(err.message || err), true);
+    return;
+  }
+
+  dialog.showModal();
+}
+
+function closeRuleDialog() {
+  const dialog = document.getElementById('rule-dialog');
+  if (dialog && dialog.open) dialog.close();
+}
+
+function parseRuleRow(row) {
+  return {
+    name: row.dataset.ruleName || '',
+    mapper: row.dataset.mapper || 'epm',
+    fileTemplate: row.dataset.fileTemplate || '',
+    projectId: Number(row.dataset.projectId || '0'),
+    project: row.dataset.project || '',
+    activityId: Number(row.dataset.activityId || '0'),
+    activity: row.dataset.activity || '',
+    skillId: Number(row.dataset.skillId || '0'),
+    skill: row.dataset.skill || '',
+    billable: String(row.dataset.billable || 'true') === 'true',
+  };
+}
+
+async function handleConfigOnePointSubmit(event) {
+  event.preventDefault();
+  const form = event.target;
+  const input = form.querySelector('[name=onepointUrl]');
+  try {
+    await apiFetch('PATCH', '/api/config', { onepointUrl: input ? input.value : '' });
+    showToast('Config saved.', false);
+  } catch (err) {
+    showToast(String(err.message || err), true);
+  }
+}
+
+async function handleRuleSubmit(event) {
+  event.preventDefault();
+  const form = event.target;
+  const projectSelect = form.querySelector('[name=project]');
+  const activitySelect = form.querySelector('[name=activity]');
+  const skillSelect = form.querySelector('[name=skill]');
+  const payload = {
+    name: form.elements.name.value,
+    mapper: form.elements.mapper.value,
+    fileTemplate: form.elements.fileTemplate.value,
+    billable: form.elements.billable.value === 'true',
+    projectId: selectedOptionID(projectSelect),
+    project: projectSelect ? projectSelect.value : '',
+    activityId: selectedOptionID(activitySelect),
+    activity: activitySelect ? activitySelect.value : '',
+    skillId: selectedOptionID(skillSelect),
+    skill: skillSelect ? skillSelect.value : '',
+  };
+  const mode = form.elements.mode.value;
+  const originalName = form.elements.originalName.value;
+  const method = mode === 'edit' ? 'PATCH' : 'POST';
+  const endpoint = mode === 'edit'
+    ? '/api/rules/' + encodeURIComponent(originalName)
+    : '/api/rules';
+
+  try {
+    await apiFetch(method, endpoint, payload);
+    closeRuleDialog();
+    showToast(mode === 'edit' ? 'Rule updated.' : 'Rule created.', false);
+    window.location.reload();
+  } catch (err) {
+    const message = String(err.message || err);
+    setRuleDialogError(message);
+    showToast(message, true);
+  }
+}
+
+function editRuleRow(button) {
+  const row = button.closest('tr');
+  if (!row) return;
+  openRuleDialog(parseRuleRow(row));
+}
+
+function deleteRuleRow(button) {
+  const row = button.closest('tr');
+  if (!row) return;
+  const rule = parseRuleRow(row);
+  openConfirmDialog('Delete rule', 'Delete rule "' + rule.name + '"?', async function() {
+    try {
+      await apiFetch('DELETE', '/api/rules/' + encodeURIComponent(rule.name));
+      showToast('Rule deleted.', false);
+      window.location.reload();
+    } catch (err) {
+      showToast(String(err.message || err), true);
+    }
+  }, 'Delete');
+}
+
 // ── Day row helpers ──
 function parseDayRow(row) {
   return {
