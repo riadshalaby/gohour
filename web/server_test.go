@@ -2001,6 +2001,121 @@ func TestServer_Import_BillableOverrideNonBillable(t *testing.T) {
 	}
 }
 
+func TestServer_Import_EPMRunsReconcile(t *testing.T) {
+	t.Parallel()
+
+	store := openTestStore(t)
+	base := time.Date(2026, 3, 1, 0, 0, 0, 0, time.Local)
+	insertWorklogs(t, store, []worklog.Entry{
+		{
+			StartDateTime: base.Add(9 * time.Hour),
+			EndDateTime:   base.Add(10 * time.Hour),
+			Billable:      60,
+			Description:   "fixed local work",
+			Project:       "Busy",
+			Activity:      "A",
+			Skill:         "S",
+			SourceFormat:  "csv",
+			SourceMapper:  "generic",
+			SourceFile:    "busy.csv",
+		},
+	})
+	client := &fakeClient{}
+	ts := httptest.NewServer(NewServer(store, client, testConfig(nil)))
+	defer ts.Close()
+
+	resp := postImportMultipart(t, ts.URL+"/api/import", map[string]string{
+		"mapper":           "epm",
+		"project":          "P",
+		"activity":         "A",
+		"skill":            "S",
+		"forceOverlapping": "true",
+	}, "EPMExport.csv",
+		"Datum,Von,Bis,Tagessumme,Stunden,Durchgeführte Arbeiten\n"+
+			"01.03.2026,09:00 AM,05:00 PM,\"8,00\",,\n"+
+			"01.03.2026,09:00 AM,05:00 PM,,\"1,00\",EPM task\n",
+	)
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		payload, _ := io.ReadAll(resp.Body)
+		t.Fatalf("expected 200, got %d body=%s", resp.StatusCode, string(payload))
+	}
+
+	var payload importResponse
+	if err := json.NewDecoder(resp.Body).Decode(&payload); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if payload.RowsPersisted != 1 {
+		t.Fatalf("expected one persisted row, got %+v", payload)
+	}
+	if payload.ReconcileWarning != "" {
+		t.Fatalf("expected no reconcile warning, got %q", payload.ReconcileWarning)
+	}
+	if client.filteredCalls == 0 {
+		t.Fatalf("expected reconcile to load remote worklogs")
+	}
+
+	entries, err := store.ListWorklogs()
+	if err != nil {
+		t.Fatalf("list worklogs: %v", err)
+	}
+	epm := findEntryByMapper(entries, "epm")
+	if epm == nil {
+		t.Fatalf("expected imported EPM entry, got %+v", entries)
+	}
+	if got := epm.StartDateTime.Format("15:04"); got != "10:00" {
+		t.Fatalf("expected reconciled EPM start 10:00, got %s entry=%+v", got, *epm)
+	}
+	if got := epm.EndDateTime.Format("15:04"); got != "11:00" {
+		t.Fatalf("expected reconciled EPM end 11:00, got %s entry=%+v", got, *epm)
+	}
+}
+
+func TestServer_Import_GenericDoesNotRunReconcile(t *testing.T) {
+	t.Parallel()
+
+	store := openTestStore(t)
+	client := &fakeClient{}
+	ts := httptest.NewServer(NewServer(store, client, testConfig(nil)))
+	defer ts.Close()
+
+	resp := postImportMultipart(t, ts.URL+"/api/import", map[string]string{
+		"mapper": "generic",
+	}, "import.csv",
+		"description,startdatetime,enddatetime,project,activity,skill\n"+
+			"Task,2026-03-01 09:00,2026-03-01 10:00,P,A,S\n",
+	)
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		payload, _ := io.ReadAll(resp.Body)
+		t.Fatalf("expected 200, got %d body=%s", resp.StatusCode, string(payload))
+	}
+	if client.filteredCalls != 0 {
+		t.Fatalf("expected generic import to skip reconcile, got %d remote calls", client.filteredCalls)
+	}
+}
+
+func TestShouldAutoReconcileImport(t *testing.T) {
+	tests := []struct {
+		name string
+		in   importFormResult
+		want bool
+	}{
+		{name: "epm mapper", in: importFormResult{mapperName: "epm"}, want: true},
+		{name: "generic mapper", in: importFormResult{mapperName: "generic"}, want: false},
+		{name: "atwork mapper", in: importFormResult{mapperName: "atwork"}, want: false},
+		{name: "blank mapper", in: importFormResult{}, want: false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := shouldAutoReconcileImport(tt.in); got != tt.want {
+				t.Fatalf("shouldAutoReconcileImport()=%v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
 func TestServer_ImportPreview_ReturnsClassifiedEntries(t *testing.T) {
 	t.Parallel()
 
@@ -3395,6 +3510,15 @@ func stringSliceContains(values []string, want string) bool {
 		}
 	}
 	return false
+}
+
+func findEntryByMapper(entries []worklog.Entry, mapper string) *worklog.Entry {
+	for i := range entries {
+		if strings.EqualFold(entries[i].SourceMapper, mapper) {
+			return &entries[i]
+		}
+	}
+	return nil
 }
 
 func boolPtr(value bool) *bool {

@@ -8,6 +8,44 @@ Each entry uses this exact structure. Omit fields marked as role-specific when t
 
 ---
 
+### T-005 — implement — 2026-05-05T18:45:00Z
+
+| Field | Value |
+|-------|-------|
+| Agent | claude |
+| Summary | Committed T-005 EPM auto-reconcile implementation. |
+| Files Changed | .ai/HANDOFF.md, .ai/TASKS.md, web/server.go, web/server_test.go |
+| Validation | `go fmt ./...` PASS; `go vet ./...` PASS; `go test ./...` PASS |
+| Commit | cd170f19 feat(web): reconcile EPM imports automatically |
+| Next Role | none |
+
+---
+
+### T-005 — review — 2026-05-05T18:30:00Z
+
+| Field | Value |
+|-------|-------|
+| Agent | claude |
+| Summary | Reviewed T-005 implementation; all acceptance criteria met, EPM/generic/atwork mapper-conditional behavior verified, all tests pass, no blocking findings. |
+| Verdict | PASS |
+| Blocking Findings | none |
+| Next Role | implement |
+
+---
+
+### T-005 — implement — 2026-05-05T17:46:15Z
+
+| Field | Value |
+|-------|-------|
+| Agent | codex |
+| Summary | Made web imports run reconciliation automatically for EPM mapper imports while leaving generic and atwork imports unchanged. |
+| Files Changed | .ai/HANDOFF.md, .ai/TASKS.md, web/server.go, web/server_test.go |
+| Validation | `go fmt ./...` PASS; `go test ./web` PASS; `go vet ./...` PASS; `go test ./...` PASS |
+| Commit | `feat(web): reconcile EPM imports automatically` |
+| Next Role | review |
+
+---
+
 ### T-004 — implement — 2026-05-05T17:39:24Z
 
 | Field | Value |
