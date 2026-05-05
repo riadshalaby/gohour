@@ -1,0 +1,132 @@
+{{ define "page" }}
+<div class="config-page" data-page="config">
+  <div class="page-nav">
+    <div class="month-nav">
+      <span class="nav-current">Config</span>
+    </div>
+  </div>
+
+  <section class="config-section" aria-labelledby="config-onepoint-heading">
+    <div class="config-section-head">
+      <h2 id="config-onepoint-heading">OnePoint</h2>
+    </div>
+    <form id="config-onepoint-form" class="config-inline-form" onsubmit="handleConfigOnePointSubmit(event)">
+      <div class="dialog-field config-grow">
+        <label for="config-onepoint-url">URL</label>
+        <input id="config-onepoint-url" type="url" name="onepointUrl" value="{{ .Config.OnePoint.URL }}" required>
+      </div>
+      <button type="submit" class="btn-primary">Save</button>
+    </form>
+  </section>
+
+  <section class="config-section" aria-labelledby="config-rules-heading">
+    <div class="config-section-head">
+      <h2 id="config-rules-heading">Rules</h2>
+      <button type="button" class="btn-primary" onclick="openRuleDialog()">Add rule</button>
+    </div>
+    <div class="table-wrap">
+      <table id="config-rules-table" aria-label="Import rules">
+        <thead>
+          <tr>
+            <th>Name</th>
+            <th>Mapper</th>
+            <th>Template</th>
+            <th>Project</th>
+            <th>Activity</th>
+            <th>Skill</th>
+            <th>Billable</th>
+            <th>Actions</th>
+          </tr>
+        </thead>
+        <tbody id="config-rules-body">
+          {{ range .Rules }}
+          <tr
+            data-rule-name="{{ .Name }}"
+            data-mapper="{{ .Mapper }}"
+            data-file-template="{{ .FileTemplate }}"
+            data-project-id="{{ .ProjectID }}"
+            data-project="{{ .Project }}"
+            data-activity-id="{{ .ActivityID }}"
+            data-activity="{{ .Activity }}"
+            data-skill-id="{{ .SkillID }}"
+            data-skill="{{ .Skill }}"
+            data-billable="{{ .IsBillable }}">
+            <td data-label="Name">{{ .Name }}</td>
+            <td data-label="Mapper">{{ .Mapper }}</td>
+            <td data-label="Template">{{ .FileTemplate }}</td>
+            <td data-label="Project">{{ .Project }}</td>
+            <td data-label="Activity">{{ .Activity }}</td>
+            <td data-label="Skill">{{ .Skill }}</td>
+            <td data-label="Billable">{{ if .IsBillable }}Yes{{ else }}No{{ end }}</td>
+            <td data-label="Actions" class="actions">
+              <button type="button" class="btn-icon" title="Edit rule" aria-label="Edit rule" onclick="editRuleRow(this)">&#9998;</button>
+              <button type="button" class="btn-danger btn-icon" title="Delete rule" aria-label="Delete rule" onclick="deleteRuleRow(this)">&#128465;</button>
+            </td>
+          </tr>
+          {{ else }}
+          <tr class="config-empty-row"><td colspan="8">No rules</td></tr>
+          {{ end }}
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <dialog id="rule-dialog" aria-labelledby="rule-dialog-title" class="dialog-wide">
+    <form id="rule-form" onsubmit="handleRuleSubmit(event)">
+      <input type="hidden" name="mode" value="create">
+      <input type="hidden" name="originalName" value="">
+      <div class="dialog-header">
+        <h2 id="rule-dialog-title">Add rule</h2>
+      </div>
+      <div class="dialog-body">
+        <div id="rule-dialog-error" class="dialog-error" hidden></div>
+        <div class="dialog-row">
+          <div class="dialog-field">
+            <label for="rule-name">Name</label>
+            <input id="rule-name" name="name" required>
+          </div>
+          <div class="dialog-field">
+            <label for="rule-mapper">Mapper</label>
+            <select id="rule-mapper" name="mapper" required>
+              <option value="epm">epm</option>
+              <option value="generic">generic</option>
+              <option value="atwork">atwork</option>
+            </select>
+          </div>
+        </div>
+        <div class="dialog-field">
+          <label for="rule-file-template">Template</label>
+          <input id="rule-file-template" name="fileTemplate" required>
+        </div>
+        <div class="dialog-row">
+          <div class="dialog-field">
+            <label for="rule-project">Project</label>
+            <select id="rule-project" name="project" required></select>
+          </div>
+          <div class="dialog-field">
+            <label for="rule-activity">Activity</label>
+            <select id="rule-activity" name="activity" required></select>
+          </div>
+        </div>
+        <div class="dialog-row">
+          <div class="dialog-field">
+            <label for="rule-skill">Skill</label>
+            <select id="rule-skill" name="skill" required></select>
+          </div>
+          <div class="dialog-field">
+            <label for="rule-billable">Billable</label>
+            <select id="rule-billable" name="billable" required>
+              <option value="true">Yes</option>
+              <option value="false">No</option>
+            </select>
+          </div>
+        </div>
+      </div>
+      <div class="dialog-footer">
+        <button type="button" onclick="closeRuleDialog()">Cancel</button>
+        <button type="submit" class="btn-primary">Save</button>
+      </div>
+    </form>
+  </dialog>
+</div>
+{{ end }}

@@ -13,6 +13,7 @@ import (
 	"io/fs"
 	"math"
 	"net/http"
+	"net/url"
 	"os"
 	"path/filepath"
 	"sort"
@@ -60,6 +61,8 @@ type Server struct {
 	lookupMu      sync.Mutex
 	lookupSnap    *onepoint.LookupSnapshot
 	lookupFetched bool
+
+	configMu sync.RWMutex
 }
 
 type monthRowView struct {
@@ -112,6 +115,37 @@ type dayAPIResponse struct {
 	RemoteWorkedHours float64    `json:"remoteWorkedHours"`
 	Entries           []EntryRow `json:"entries"`
 	RemoteRefreshedAt string     `json:"remoteRefreshedAt,omitempty"`
+}
+
+type configPageView struct {
+	Title        string
+	CurrentMonth string
+	Day          string
+	AuthErrorMsg string
+	Config       config.Config
+	Rules        []config.Rule
+}
+
+type configAPIResponse struct {
+	OnePointURL string        `json:"onepointUrl"`
+	Rules       []rulePayload `json:"rules"`
+}
+
+type configPatchRequest struct {
+	OnePointURL *string `json:"onepointUrl"`
+}
+
+type rulePayload struct {
+	Name         string `json:"name"`
+	Mapper       string `json:"mapper"`
+	FileTemplate string `json:"fileTemplate"`
+	Billable     *bool  `json:"billable,omitempty"`
+	ProjectID    int64  `json:"projectId"`
+	Project      string `json:"project"`
+	ActivityID   int64  `json:"activityId"`
+	Activity     string `json:"activity"`
+	SkillID      int64  `json:"skillId"`
+	Skill        string `json:"skill"`
 }
 
 type monthAPIResponse struct {
@@ -248,7 +282,11 @@ type lookupResponse struct {
 	Skills     []lookupSkill    `json:"skills"`
 }
 
-var errOnePointUpstream = errors.New("onepoint upstream error")
+var (
+	errOnePointUpstream = errors.New("onepoint upstream error")
+	errRuleDuplicate    = errors.New("rule already exists")
+	errRuleNotFound     = errors.New("rule not found")
+)
 
 type upstreamErrorClient struct {
 	base onepoint.Client
@@ -276,6 +314,7 @@ func NewServer(store *storage.SQLiteStore, client onepoint.Client, cfg config.Co
 	mux.HandleFunc("GET /month", server.handleMonthPicker)
 	mux.HandleFunc("GET /month/{month}", server.handleMonth)
 	mux.HandleFunc("GET /day/{date}", server.handleDay)
+	mux.HandleFunc("GET /config", server.handleConfig)
 
 	// HTMX partial routes (Phase 2)
 	mux.HandleFunc("GET /partials/month/{month}", server.handlePartialMonth)
@@ -290,6 +329,12 @@ func NewServer(store *storage.SQLiteStore, client onepoint.Client, cfg config.Co
 	mux.HandleFunc("GET /api/month/{month}", server.handleAPIMonth)
 	mux.HandleFunc("GET /api/day/{date}", server.handleAPIDay)
 	mux.HandleFunc("GET /api/lookup", server.handleAPILookup)
+	mux.HandleFunc("GET /api/config", server.handleAPIConfig)
+	mux.HandleFunc("PATCH /api/config", server.handleAPIConfigPatch)
+	mux.HandleFunc("GET /api/rules", server.handleAPIRules)
+	mux.HandleFunc("POST /api/rules", server.handleAPIRuleCreate)
+	mux.HandleFunc("PATCH /api/rules/{name}", server.handleAPIRulePatch)
+	mux.HandleFunc("DELETE /api/rules/{name}", server.handleAPIRuleDelete)
 	mux.HandleFunc("POST /api/worklog", server.handleAPIWorklogCreate)
 	mux.HandleFunc("PATCH /api/worklog/{id}", server.handleAPIWorklogPatch)
 	mux.HandleFunc("DELETE /api/worklog/{id}", server.handleAPIWorklogDelete)
@@ -406,6 +451,19 @@ func (s *Server) handleDay(w http.ResponseWriter, r *http.Request) {
 		RemoteRefreshedAt: formatRefreshTime(refreshedAt),
 	}
 	if err := renderTemplate(w, "day.html", view); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+	}
+}
+
+func (s *Server) handleConfig(w http.ResponseWriter, r *http.Request) {
+	cfg := s.configSnapshot()
+	view := configPageView{
+		Title:        "gohour - config",
+		CurrentMonth: time.Now().Format("2006-01"),
+		Config:       cfg,
+		Rules:        cfg.Rules,
+	}
+	if err := renderTemplate(w, "config.html", view); err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 	}
 }
@@ -894,6 +952,143 @@ func (s *Server) handleAPILookup(w http.ResponseWriter, r *http.Request) {
 	}
 
 	writeJSON(w, http.StatusOK, resp)
+}
+
+func (s *Server) handleAPIConfig(w http.ResponseWriter, r *http.Request) {
+	writeJSON(w, http.StatusOK, configResponseFromConfig(s.configSnapshot()))
+}
+
+func (s *Server) handleAPIConfigPatch(w http.ResponseWriter, r *http.Request) {
+	var body configPatchRequest
+	if err := decodeJSON(r, &body); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	if body.OnePointURL == nil {
+		http.Error(w, "onepointUrl is required", http.StatusBadRequest)
+		return
+	}
+	nextURL := strings.TrimSpace(*body.OnePointURL)
+	if err := validateOnePointURL(nextURL); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	cfg, err := s.updateConfig(func(next *config.Config) error {
+		next.OnePoint.URL = nextURL
+		return nil
+	})
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	writeJSON(w, http.StatusOK, configResponseFromConfig(cfg))
+}
+
+func (s *Server) handleAPIRules(w http.ResponseWriter, r *http.Request) {
+	writeJSON(w, http.StatusOK, rulePayloadsFromRules(s.configSnapshot().Rules))
+}
+
+func (s *Server) handleAPIRuleCreate(w http.ResponseWriter, r *http.Request) {
+	var body rulePayload
+	if err := decodeJSON(r, &body); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	rule, err := ruleFromPayload(body, "", true)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	cfg, err := s.updateConfig(func(next *config.Config) error {
+		if findRuleIndex(next.Rules, rule.Name) >= 0 {
+			return errRuleDuplicate
+		}
+		next.Rules = append(next.Rules, rule)
+		return nil
+	})
+	if err != nil {
+		if errors.Is(err, errRuleDuplicate) {
+			http.Error(w, "rule already exists", http.StatusConflict)
+			return
+		}
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	index := findRuleIndex(cfg.Rules, rule.Name)
+	writeJSON(w, http.StatusCreated, rulePayloadFromRule(cfg.Rules[index]))
+}
+
+func (s *Server) handleAPIRulePatch(w http.ResponseWriter, r *http.Request) {
+	name := strings.TrimSpace(r.PathValue("name"))
+	if name == "" {
+		http.Error(w, "rule name is required", http.StatusBadRequest)
+		return
+	}
+	var body rulePayload
+	if err := decodeJSON(r, &body); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	rule, err := ruleFromPayload(body, name, false)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	cfg, err := s.updateConfig(func(next *config.Config) error {
+		index := findRuleIndex(next.Rules, name)
+		if index < 0 {
+			return errRuleNotFound
+		}
+		if !sameRuleName(name, rule.Name) && findRuleIndex(next.Rules, rule.Name) >= 0 {
+			return errRuleDuplicate
+		}
+		next.Rules[index] = rule
+		return nil
+	})
+	if err != nil {
+		switch {
+		case errors.Is(err, errRuleNotFound):
+			http.Error(w, "rule not found", http.StatusNotFound)
+		case errors.Is(err, errRuleDuplicate):
+			http.Error(w, "rule already exists", http.StatusConflict)
+		default:
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+		}
+		return
+	}
+
+	index := findRuleIndex(cfg.Rules, rule.Name)
+	writeJSON(w, http.StatusOK, rulePayloadFromRule(cfg.Rules[index]))
+}
+
+func (s *Server) handleAPIRuleDelete(w http.ResponseWriter, r *http.Request) {
+	name := strings.TrimSpace(r.PathValue("name"))
+	if name == "" {
+		http.Error(w, "rule name is required", http.StatusBadRequest)
+		return
+	}
+
+	_, err := s.updateConfig(func(next *config.Config) error {
+		index := findRuleIndex(next.Rules, name)
+		if index < 0 {
+			return errRuleNotFound
+		}
+		next.Rules = append(next.Rules[:index], next.Rules[index+1:]...)
+		return nil
+	})
+	if err != nil {
+		if errors.Is(err, errRuleNotFound) {
+			http.Error(w, "rule not found", http.StatusNotFound)
+			return
+		}
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
 }
 
 func (s *Server) handleAPIWorklogCreate(w http.ResponseWriter, r *http.Request) {
@@ -1885,7 +2080,7 @@ func (s *Server) parseAndRunImportForm(r *http.Request) (importFormResult, error
 		[]string{tmpPath},
 		"",
 		mapper,
-		s.cfg,
+		s.configSnapshot(),
 		importer.RunOptions{
 			EPMProject:  strings.TrimSpace(r.FormValue("project")),
 			EPMActivity: strings.TrimSpace(r.FormValue("activity")),
@@ -1937,6 +2132,122 @@ func (s *Server) writeMutationConflictIfAny(w http.ResponseWriter, r *http.Reque
 		return true
 	}
 	return false
+}
+
+func (s *Server) configSnapshot() config.Config {
+	s.configMu.RLock()
+	defer s.configMu.RUnlock()
+	return cloneConfig(s.cfg)
+}
+
+func (s *Server) updateConfig(mutator func(*config.Config) error) (config.Config, error) {
+	s.configMu.Lock()
+	defer s.configMu.Unlock()
+
+	next := cloneConfig(s.cfg)
+	if err := mutator(&next); err != nil {
+		return config.Config{}, err
+	}
+	if err := config.WriteConfig(&next); err != nil {
+		return config.Config{}, fmt.Errorf("persist config: %w", err)
+	}
+	s.cfg = next
+	return cloneConfig(s.cfg), nil
+}
+
+func cloneConfig(cfg config.Config) config.Config {
+	cfg.Rules = append([]config.Rule(nil), cfg.Rules...)
+	return cfg
+}
+
+func configResponseFromConfig(cfg config.Config) configAPIResponse {
+	return configAPIResponse{
+		OnePointURL: cfg.OnePoint.URL,
+		Rules:       rulePayloadsFromRules(cfg.Rules),
+	}
+}
+
+func rulePayloadsFromRules(rules []config.Rule) []rulePayload {
+	out := make([]rulePayload, 0, len(rules))
+	for _, rule := range rules {
+		out = append(out, rulePayloadFromRule(rule))
+	}
+	return out
+}
+
+func rulePayloadFromRule(rule config.Rule) rulePayload {
+	return rulePayload{
+		Name:         rule.Name,
+		Mapper:       rule.Mapper,
+		FileTemplate: rule.FileTemplate,
+		Billable:     rule.Billable,
+		ProjectID:    rule.ProjectID,
+		Project:      rule.Project,
+		ActivityID:   rule.ActivityID,
+		Activity:     rule.Activity,
+		SkillID:      rule.SkillID,
+		Skill:        rule.Skill,
+	}
+}
+
+func ruleFromPayload(payload rulePayload, fallbackName string, requireName bool) (config.Rule, error) {
+	name := strings.TrimSpace(payload.Name)
+	if name == "" {
+		name = strings.TrimSpace(fallbackName)
+	}
+	if name == "" && requireName {
+		return config.Rule{}, fmt.Errorf("rule name is required")
+	}
+	mapper := strings.ToLower(strings.TrimSpace(payload.Mapper))
+	if _, err := importer.MapperByName(mapper); err != nil {
+		return config.Rule{}, err
+	}
+	fileTemplate := strings.TrimSpace(payload.FileTemplate)
+	if fileTemplate == "" {
+		return config.Rule{}, fmt.Errorf("fileTemplate is required")
+	}
+	project := strings.TrimSpace(payload.Project)
+	activity := strings.TrimSpace(payload.Activity)
+	skill := strings.TrimSpace(payload.Skill)
+	if project == "" || activity == "" || skill == "" {
+		return config.Rule{}, fmt.Errorf("project, activity, and skill are required")
+	}
+	if payload.ProjectID <= 0 || payload.ActivityID <= 0 || payload.SkillID <= 0 {
+		return config.Rule{}, fmt.Errorf("projectId, activityId, and skillId must be > 0")
+	}
+	return config.Rule{
+		Name:         name,
+		Mapper:       mapper,
+		FileTemplate: fileTemplate,
+		Billable:     payload.Billable,
+		ProjectID:    payload.ProjectID,
+		Project:      project,
+		ActivityID:   payload.ActivityID,
+		Activity:     activity,
+		SkillID:      payload.SkillID,
+		Skill:        skill,
+	}, nil
+}
+
+func findRuleIndex(rules []config.Rule, name string) int {
+	for i, rule := range rules {
+		if sameRuleName(rule.Name, name) {
+			return i
+		}
+	}
+	return -1
+}
+
+func sameRuleName(left, right string) bool {
+	return strings.EqualFold(strings.TrimSpace(left), strings.TrimSpace(right))
+}
+
+func validateOnePointURL(value string) error {
+	parsed, err := url.ParseRequestURI(value)
+	if err != nil || parsed.Scheme == "" || parsed.Host == "" {
+		return fmt.Errorf("onepointUrl must be a valid absolute URL")
+	}
+	return nil
 }
 
 func templateFuncMap() template.FuncMap {

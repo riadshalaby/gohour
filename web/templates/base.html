@@ -32,6 +32,7 @@
         {{ end }}
       </div>
       <div class="nav">
+        <a class="btn" href="/config">Config</a>
         <form action="/month" method="get" aria-label="Navigation" style="display:flex;gap:0.4rem;align-items:center;">
           <input type="month" name="month" value="{{ .CurrentMonth }}" required>
           <button type="submit">Go</button>

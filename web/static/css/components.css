@@ -562,6 +562,49 @@ dialog::backdrop {
   gap: 0.6rem;
 }
 
+/* ── Config page ── */
+.config-page {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-4);
+}
+
+.config-section {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--surface);
+  padding: var(--sp-4);
+}
+
+.config-section-head,
+.config-inline-form {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: var(--sp-3);
+}
+
+.config-section-head {
+  align-items: center;
+  margin-bottom: var(--sp-3);
+}
+
+.config-section-head h2 {
+  margin: 0;
+  font-size: var(--text-md);
+  font-weight: var(--font-semibold);
+}
+
+.config-grow {
+  flex: 1;
+  margin-bottom: 0;
+}
+
+.config-empty-row td {
+  color: var(--muted);
+  text-align: center;
+}
+
 /* ── Action dropdown menu ── */
 .actions-menu {
   position: relative;
