@@ -8,6 +8,31 @@ Each entry uses this exact structure. Omit fields marked as role-specific when t
 
 ---
 
+### T-006 — review — 2026-05-05T19:30:00Z
+
+| Field | Value |
+|-------|-------|
+| Agent | claude |
+| Summary | Reviewed T-006 documentation update; all acceptance criteria met, no stale CLI references found, AGENTS.md correctly reflects current web-UI feature set, no blocking findings. |
+| Verdict | PASS |
+| Blocking Findings | none |
+| Next Role | implement |
+
+---
+
+### T-006 — implement — 2026-05-05T18:50:00Z
+
+| Field | Value |
+|-------|-------|
+| Agent | claude |
+| Summary | Updated README to reflect completed web UI features (config page, rule-matched import, EPM auto-reconcile) and removed stale "moving to web UI" note; updated AGENTS.md Current Status and Submit Command Invariants for the removed CLI commands. |
+| Files Changed | README.md, AGENTS.md |
+| Validation | `go fmt ./...` PASS; `go vet ./...` PASS; `go test ./...` PASS |
+| Commit | `docs: update README and AGENTS.md for v0.4.0 web-UI-first workflow` |
+| Next Role | review |
+
+---
+
 ### T-005 — implement — 2026-05-05T18:45:00Z
 
 | Field | Value |
