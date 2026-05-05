@@ -464,9 +464,30 @@ function summarizeImportOverlaps(overlaps) {
 }
 
 async function submitImportForm(form, options) {
-  const formData = new FormData(form);
-  const preview = await apiFetch('POST', '/api/import-preview', null, { formData: formData });
+  const formData = importPreviewRequestFormData(form);
+  let preview;
+  try {
+    preview = await apiFetch('POST', '/api/import-preview', null, { formData: formData });
+  } catch (err) {
+    preview = await apiFetch('POST', '/api/import-preview', null, { formData: new FormData(form) });
+  }
   openImportPreviewDialog(preview, form, options || {});
+}
+
+function importPreviewRequestFormData(form) {
+  const formData = new FormData();
+  if (!form) return formData;
+
+  const fileInput = form.querySelector('input[name=file]');
+  if (fileInput && fileInput.files && fileInput.files[0]) {
+    formData.append('file', fileInput.files[0]);
+  }
+
+  const mapperInput = form.querySelector('[name=mapper]');
+  if (mapperInput && mapperInput.value) {
+    formData.append('mapper', mapperInput.value);
+  }
+  return formData;
 }
 
 function openImportPreviewDialog(previewData, form, options) {
@@ -486,6 +507,8 @@ function openImportPreviewDialog(previewData, form, options) {
   const fileInput = form ? form.querySelector('input[name=file]') : null;
   const fileName = fileInput && fileInput.files && fileInput.files[0] ? fileInput.files[0].name : '';
   filenameNode.textContent = fileName;
+
+  renderImportPreviewSelection(previewData || {}, form);
 
   body.innerHTML = '';
   let cleanCount = 0;
@@ -557,6 +580,128 @@ function openImportPreviewDialog(previewData, form, options) {
       importButton.focus();
     }
   });
+}
+
+function renderImportPreviewSelection(previewData, form) {
+  const matched = previewData.matchedRule || null;
+  const responseSelection = previewData.selection || {};
+  const selection = matched ? responseSelection : {};
+  const ruleNode = document.getElementById('preview-rule-match');
+  if (ruleNode) {
+    ruleNode.textContent = matched && matched.name
+      ? 'Matched rule: ' + matched.name
+      : 'No matching rule';
+  }
+
+  const mapperSelect = document.getElementById('preview-mapper');
+  if (mapperSelect) {
+    mapperSelect.innerHTML = '';
+    const mappers = Array.isArray(previewData.mappers) && previewData.mappers.length
+      ? previewData.mappers
+      : ['epm', 'generic', 'atwork'];
+    const currentMapper = String(selection.mapper || responseSelection.mapper || importFormValue(form, 'mapper') || 'epm').toLowerCase();
+    for (const mapper of mappers) {
+      const value = String(mapper || '').toLowerCase();
+      const option = document.createElement('option');
+      option.value = value;
+      option.textContent = value;
+      option.selected = value === currentMapper;
+      mapperSelect.appendChild(option);
+    }
+  }
+
+  const lookup = previewData.lookup || _lookup || { projects: [], activities: [], skills: [] };
+  if (previewData.lookup) {
+    _lookup = previewData.lookup;
+  }
+  fillImportOverrideSelects(lookup, selection);
+
+  const billableSelect = document.getElementById('preview-billable');
+  if (billableSelect) {
+    if (selection.billable === true) {
+      billableSelect.value = 'billable';
+    } else if (selection.billable === false) {
+      billableSelect.value = 'non-billable';
+    } else {
+      billableSelect.value = 'auto';
+    }
+  }
+
+  const updateRule = document.getElementById('preview-update-rule');
+  if (updateRule) {
+    updateRule.checked = false;
+    updateRule.disabled = !(matched && matched.name);
+  }
+}
+
+function fillImportOverrideSelects(lookup, selection) {
+  const projectSelect = document.getElementById('preview-project');
+  const activitySelect = document.getElementById('preview-activity');
+  const skillSelect = document.getElementById('preview-skill');
+  if (!projectSelect || !activitySelect || !skillSelect) return;
+
+  const projects = (lookup.projects || []).filter((project) => !project.archived);
+  const activitiesAll = lookup.activities || [];
+  const skillsAll = lookup.skills || [];
+
+  const rebuildSkills = (currentSkill) => {
+    const activityID = selectedOptionID(activitySelect);
+    const skills = skillsAll.filter((skill) => Number(skill.activityId) === activityID);
+    fillImportOverrideSelect(skillSelect, skills, currentSkill || '', (item) => item.id, (item) => item.name);
+  };
+
+  const rebuildActivities = (currentActivity, currentSkill) => {
+    const projectID = selectedOptionID(projectSelect);
+    const activities = activitiesAll.filter((activity) => Number(activity.projectId) === projectID && !activity.locked);
+    fillImportOverrideSelect(activitySelect, activities, currentActivity || '', (item) => item.id, (item) => item.name);
+    rebuildSkills(currentSkill || '');
+  };
+
+  fillImportOverrideSelect(projectSelect, projects, selection.project || '', (item) => item.id, (item) => item.name);
+  rebuildActivities(selection.activity || '', selection.skill || '');
+  projectSelect.onchange = () => rebuildActivities('', '');
+  activitySelect.onchange = () => rebuildSkills('');
+}
+
+function fillImportOverrideSelect(select, items, currentName, getID, getName) {
+  select.innerHTML = '';
+  const empty = document.createElement('option');
+  empty.value = '';
+  empty.textContent = '';
+  empty.dataset.id = '0';
+  select.appendChild(empty);
+
+  const currentNorm = normalizeName(currentName);
+  let found = false;
+  for (const item of items) {
+    const name = getName(item);
+    const option = document.createElement('option');
+    option.value = name;
+    option.textContent = name;
+    option.dataset.name = name;
+    option.dataset.id = String(getID(item));
+    if (currentNorm && normalizeName(name) === currentNorm && !found) {
+      option.selected = true;
+      found = true;
+    }
+    select.appendChild(option);
+  }
+
+  if (!found && currentName) {
+    const option = document.createElement('option');
+    option.value = currentName;
+    option.textContent = currentName + ' (unavailable)';
+    option.dataset.name = currentName;
+    option.dataset.id = '0';
+    option.selected = true;
+    select.appendChild(option);
+  }
+}
+
+function importFormValue(form, name) {
+  if (!form) return '';
+  const input = form.querySelector('[name=' + name + ']');
+  return input ? input.value : '';
 }
 
 function updatePreviewCount() {
@@ -635,6 +780,7 @@ async function confirmImportPreview(modeFlag) {
 
   const formData = new FormData(form);
   formData.append('skipIndices', skipIndices.join(','));
+  appendImportPreviewSelection(formData);
   if (modeFlag) {
     formData.append(modeFlag, 'true');
   }
@@ -705,6 +851,35 @@ async function confirmImportPreview(modeFlag) {
     if (importButton) {
       importButton.disabled = false;
     }
+  }
+}
+
+function appendImportPreviewSelection(formData) {
+  const mapperSelect = document.getElementById('preview-mapper');
+  const projectSelect = document.getElementById('preview-project');
+  const activitySelect = document.getElementById('preview-activity');
+  const skillSelect = document.getElementById('preview-skill');
+  const billableSelect = document.getElementById('preview-billable');
+  const updateRule = document.getElementById('preview-update-rule');
+
+  if (mapperSelect) formData.set('mapper', mapperSelect.value || '');
+  if (projectSelect) {
+    formData.set('project', projectSelect.value || '');
+    formData.set('projectId', String(selectedOptionID(projectSelect)));
+  }
+  if (activitySelect) {
+    formData.set('activity', activitySelect.value || '');
+    formData.set('activityId', String(selectedOptionID(activitySelect)));
+  }
+  if (skillSelect) {
+    formData.set('skill', skillSelect.value || '');
+    formData.set('skillId', String(selectedOptionID(skillSelect)));
+  }
+  if (billableSelect) formData.set('billable', billableSelect.value || 'auto');
+  if (updateRule && updateRule.checked && !updateRule.disabled) {
+    formData.set('updateRule', 'true');
+  } else {
+    formData.delete('updateRule');
   }
 }
 

@@ -2084,6 +2084,168 @@ func TestServer_ImportPreview_ReturnsClassifiedEntries(t *testing.T) {
 	}
 }
 
+func TestServer_ImportPreview_MatchesRuleAndReturnsSelectionData(t *testing.T) {
+	t.Parallel()
+
+	store := openTestStore(t)
+	rule := ruleForLocal()
+	rule.Name = "weekly-hours"
+	rule.Mapper = "generic"
+	rule.FileTemplate = "hours-*.csv"
+	rule.Billable = boolPtr(false)
+	client := &fakeClient{
+		snapshot: lookupSnapshotForImportOverride(),
+	}
+	ts := httptest.NewServer(NewServer(store, client, testConfig([]config.Rule{rule})))
+	defer ts.Close()
+
+	resp := postImportMultipart(t, ts.URL+"/api/import-preview", map[string]string{}, "hours-2026.csv",
+		"description,startdatetime,enddatetime,project,activity,skill\n"+
+			"Task,2026-03-01 09:00,2026-03-01 10:00,FromFile,FromFile,FromFile\n",
+	)
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		payload, _ := io.ReadAll(resp.Body)
+		t.Fatalf("expected 200, got %d body=%s", resp.StatusCode, string(payload))
+	}
+
+	var payload importPreviewResponse
+	if err := json.NewDecoder(resp.Body).Decode(&payload); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if payload.MatchedRule == nil || payload.MatchedRule.Name != "weekly-hours" {
+		t.Fatalf("expected matched weekly-hours rule, got %+v", payload.MatchedRule)
+	}
+	if payload.Selection.Mapper != "generic" || payload.Selection.Project != "P" || payload.Selection.Activity != "A" || payload.Selection.Skill != "S" {
+		t.Fatalf("unexpected prefilled selection: %+v", payload.Selection)
+	}
+	if payload.Selection.Billable == nil || *payload.Selection.Billable {
+		t.Fatalf("expected non-billable selection, got %+v", payload.Selection.Billable)
+	}
+	if !stringSliceContains(payload.Mappers, "epm") || !stringSliceContains(payload.Mappers, "generic") || !stringSliceContains(payload.Mappers, "atwork") {
+		t.Fatalf("expected all import mappers in preview response, got %+v", payload.Mappers)
+	}
+	if payload.Lookup == nil || len(payload.Lookup.Projects) != 1 || payload.Lookup.Projects[0].Name != "Override P" {
+		t.Fatalf("expected lookup data in preview response, got %+v", payload.Lookup)
+	}
+}
+
+func TestServer_ImportPreview_NoRuleReturnsEmptySelection(t *testing.T) {
+	t.Parallel()
+
+	store := openTestStore(t)
+	ts := httptest.NewServer(NewServer(store, &fakeClient{snapshot: lookupSnapshotForImportOverride()}, testConfig(nil)))
+	defer ts.Close()
+
+	resp := postImportMultipart(t, ts.URL+"/api/import-preview", map[string]string{"mapper": "generic"}, "unmatched.csv",
+		"description,startdatetime,enddatetime,project,activity,skill\n"+
+			"Task,2026-03-01 09:00,2026-03-01 10:00,FromFile,FromFile,FromFile\n",
+	)
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		payload, _ := io.ReadAll(resp.Body)
+		t.Fatalf("expected 200, got %d body=%s", resp.StatusCode, string(payload))
+	}
+
+	var payload importPreviewResponse
+	if err := json.NewDecoder(resp.Body).Decode(&payload); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if payload.MatchedRule != nil {
+		t.Fatalf("expected no matched rule, got %+v", payload.MatchedRule)
+	}
+	if payload.Selection.Project != "" || payload.Selection.Activity != "" || payload.Selection.Skill != "" {
+		t.Fatalf("expected empty project/activity/skill selection, got %+v", payload.Selection)
+	}
+	if payload.Selection.Mapper != "generic" {
+		t.Fatalf("expected requested mapper to be retained, got %+v", payload.Selection)
+	}
+}
+
+func TestServer_Import_AppliesOverrides(t *testing.T) {
+	t.Parallel()
+
+	store := openTestStore(t)
+	ts := httptest.NewServer(NewServer(store, &fakeClient{}, testConfig(nil)))
+	defer ts.Close()
+
+	resp := postImportMultipart(t, ts.URL+"/api/import", map[string]string{
+		"mapper":   "generic",
+		"project":  "Override P",
+		"activity": "Override A",
+		"skill":    "Override S",
+		"billable": "non-billable",
+	}, "import.csv",
+		"description,startdatetime,enddatetime,project,activity,skill\n"+
+			"Task,2026-03-01 09:00,2026-03-01 10:00,FromFile,FromFile,FromFile\n",
+	)
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		payload, _ := io.ReadAll(resp.Body)
+		t.Fatalf("expected 200, got %d body=%s", resp.StatusCode, string(payload))
+	}
+
+	entries, err := store.ListWorklogs()
+	if err != nil {
+		t.Fatalf("list worklogs: %v", err)
+	}
+	if len(entries) != 1 {
+		t.Fatalf("expected one imported entry, got %d", len(entries))
+	}
+	entry := entries[0]
+	if entry.Project != "Override P" || entry.Activity != "Override A" || entry.Skill != "Override S" || entry.Billable != 0 {
+		t.Fatalf("expected override fields on imported entry, got %+v", entry)
+	}
+}
+
+func TestServer_Import_UpdateRulePersistsOverrides(t *testing.T) {
+	t.Setenv("GOHOUR_DATA_DIR", t.TempDir())
+
+	store := openTestStore(t)
+	rule := ruleForLocal()
+	rule.Name = "weekly-hours"
+	rule.Mapper = "generic"
+	rule.FileTemplate = "hours-*.csv"
+	rule.Billable = boolPtr(true)
+	ts := httptest.NewServer(NewServer(store, &fakeClient{}, testConfig([]config.Rule{rule})))
+	defer ts.Close()
+
+	resp := postImportMultipart(t, ts.URL+"/api/import", map[string]string{
+		"mapper":     "generic",
+		"project":    "Override P",
+		"projectId":  "401",
+		"activity":   "Override A",
+		"activityId": "402",
+		"skill":      "Override S",
+		"skillId":    "403",
+		"billable":   "non-billable",
+		"updateRule": "true",
+	}, "hours-2026.csv",
+		"description,startdatetime,enddatetime,project,activity,skill\n"+
+			"Task,2026-03-01 09:00,2026-03-01 10:00,FromFile,FromFile,FromFile\n",
+	)
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		payload, _ := io.ReadAll(resp.Body)
+		t.Fatalf("expected 200, got %d body=%s", resp.StatusCode, string(payload))
+	}
+
+	cfgFromDisk, err := config.ValidateYAMLContent(readTestFile(t, config.ConfigPath()))
+	if err != nil {
+		t.Fatalf("validate persisted config: %v", err)
+	}
+	if len(cfgFromDisk.Rules) != 1 {
+		t.Fatalf("expected one persisted rule, got %+v", cfgFromDisk.Rules)
+	}
+	persisted := cfgFromDisk.Rules[0]
+	if persisted.Project != "Override P" || persisted.ProjectID != 401 || persisted.Activity != "Override A" || persisted.ActivityID != 402 || persisted.Skill != "Override S" || persisted.SkillID != 403 {
+		t.Fatalf("expected persisted override IDs and labels, got %+v", persisted)
+	}
+	if persisted.Billable == nil || *persisted.Billable {
+		t.Fatalf("expected persisted non-billable rule, got %+v", persisted.Billable)
+	}
+}
+
 func TestServer_Import_SkipIndices(t *testing.T) {
 	t.Parallel()
 
@@ -3184,6 +3346,55 @@ func ruleForLocal() config.Rule {
 		ActivityID: 200,
 		SkillID:    300,
 	}
+}
+
+func postImportMultipart(t *testing.T, target string, fields map[string]string, filename string, content string) *http.Response {
+	t.Helper()
+
+	var body bytes.Buffer
+	writer := multipart.NewWriter(&body)
+	part, err := writer.CreateFormFile("file", filename)
+	if err != nil {
+		t.Fatalf("create form file: %v", err)
+	}
+	_, _ = part.Write([]byte(content))
+	for key, value := range fields {
+		if err := writer.WriteField(key, value); err != nil {
+			t.Fatalf("write field %s: %v", key, err)
+		}
+	}
+	if err := writer.Close(); err != nil {
+		t.Fatalf("close multipart writer: %v", err)
+	}
+
+	resp, err := http.Post(target, writer.FormDataContentType(), &body)
+	if err != nil {
+		t.Fatalf("multipart request: %v", err)
+	}
+	return resp
+}
+
+func lookupSnapshotForImportOverride() onepoint.LookupSnapshot {
+	return onepoint.LookupSnapshot{
+		Projects: []onepoint.Project{
+			{ID: 401, Name: "Override P", Archived: "0"},
+		},
+		Activities: []onepoint.Activity{
+			{ID: 402, Name: "Override A", ProjectNodeID: 401},
+		},
+		Skills: []onepoint.Skill{
+			{SkillID: 403, Name: "Override S", ActivityID: 402},
+		},
+	}
+}
+
+func stringSliceContains(values []string, want string) bool {
+	for _, value := range values {
+		if value == want {
+			return true
+		}
+	}
+	return false
 }
 
 func boolPtr(value bool) *bool {
