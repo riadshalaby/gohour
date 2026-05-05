@@ -29,6 +29,59 @@ Reviewed: YYYY-MM-DD
 
 ---
 
+## Task: T-005
+
+### Review Round 1
+
+Status: **complete**
+
+Reviewed: 2026-05-05
+
+#### Findings
+
+- severity: `nit`
+  - file: `web/server.go` — `handleAPIImport` auto-reconcile block
+  - description: `worklogRange` is called with `toInsert` (entries after dedup/overlap filtering) rather than the full `result.Entries`. If an entire day's entries are all duplicates and none are inserted, that day won't be included in the reconcile range. In practice this is safe — if all entries were duplicates, they were already locally present and reconcile was already run for those days. No user-visible impact.
+  - required fix: no
+
+- severity: `nit`
+  - file: `web/server_test.go`
+  - description: No integration test for `atwork` mapper (confirming no remote call). The `TestShouldAutoReconcileImport` unit test covers the atwork case at the function level, which is sufficient given the simplicity of `shouldAutoReconcileImport`. An additional integration test would be redundant.
+  - required fix: no
+
+#### Verification
+##### Steps
+1. Re-read `.ai/PLAN.md` T-005 section and acceptance criteria.
+2. Reviewed all diffs: `web/server.go`, `web/server_test.go` only.
+3. Verified acceptance criteria:
+   - EPM imports trigger reconcile unconditionally — `shouldAutoReconcileImport` returns true for "epm" — ✅
+   - Generic imports do NOT trigger reconcile — ✅
+   - Atwork imports do NOT trigger reconcile — covered by `TestShouldAutoReconcileImport/atwork_mapper` — ✅
+   - No config toggle — no config field consulted, purely mapper-driven — ✅
+   - Tests verify mapper-conditional behavior — 3 tests: EPM integration, generic integration, unit table test — ✅
+4. Verified `mapperName` is now stored in `importFormResult` (added in this diff) to enable the mapper check at reconcile time.
+5. Verified `worklogRange` correctly extracts min/max day from `toInsert` entries.
+6. Verified `reconcileWarning` is propagated to the response (consistent with T-001 intent).
+7. Ran `go fmt ./...` → PASS
+8. Ran `go vet ./...` → PASS
+9. Ran `go test ./...` → all 11 packages PASS
+10. All 3 new tests pass: `TestServer_Import_EPMRunsReconcile`, `TestServer_Import_GenericDoesNotRunReconcile`, `TestShouldAutoReconcileImport` (4 sub-tests).
+
+##### Findings
+- Implementation is minimal and correct: two new functions (`shouldAutoReconcileImport`, `worklogRange`), one field added to `importFormResult`, one block added to `handleAPIImport`.
+- Reuses the existing `autoReconcileImportedRange` infrastructure from before T-001 removed the config-guarded call.
+
+##### Risks
+- None. All tests pass.
+
+#### Open Questions
+- None.
+
+#### Verdict
+`PASS`
+
+---
+
 ## Task: T-004
 
 ### Review Round 1

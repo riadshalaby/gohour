@@ -210,6 +210,7 @@ type importPreviewResponse struct {
 type importFormResult struct {
 	tmpPath     string
 	result      *importer.Result
+	mapperName  string
 	matchedRule config.Rule
 	selection   rulePayload
 	updateRule  bool
@@ -1341,6 +1342,13 @@ func (s *Server) handleAPIImport(w http.ResponseWriter, r *http.Request) {
 	}
 
 	reconcileWarning := ""
+	if shouldAutoReconcileImport(formResult) && inserted > 0 {
+		if from, to, ok := worklogRange(toInsert); ok {
+			if _, err := s.autoReconcileImportedRange(r.Context(), from, to); err != nil {
+				reconcileWarning = err.Error()
+			}
+		}
+	}
 
 	s.invalidateLocalCache()
 	writeJSON(w, http.StatusOK, importResponse{
@@ -2129,10 +2137,33 @@ func (s *Server) parseAndRunImportForm(r *http.Request) (importFormResult, error
 	return importFormResult{
 		tmpPath:     tmpPath,
 		result:      result,
+		mapperName:  mapperName,
 		matchedRule: matchedRule,
 		selection:   selection,
 		updateRule:  parseBoolFormValue(r.FormValue("updateRule")),
 	}, nil
+}
+
+func shouldAutoReconcileImport(result importFormResult) bool {
+	return strings.EqualFold(strings.TrimSpace(result.mapperName), "epm")
+}
+
+func worklogRange(entries []worklog.Entry) (time.Time, time.Time, bool) {
+	if len(entries) == 0 {
+		return time.Time{}, time.Time{}, false
+	}
+	minDay := timeutil.StartOfDay(entries[0].StartDateTime)
+	maxDay := minDay
+	for _, entry := range entries[1:] {
+		day := timeutil.StartOfDay(entry.StartDateTime)
+		if day.Before(minDay) {
+			minDay = day
+		}
+		if day.After(maxDay) {
+			maxDay = day
+		}
+	}
+	return minDay, maxDay, true
 }
 
 func importSelectionFromForm(r *http.Request, mapperName string, matchedRule config.Rule) rulePayload {
