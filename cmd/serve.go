@@ -26,19 +26,24 @@ var (
 
 var serveCmd = &cobra.Command{
 	Use:   "serve",
-	Short: "Start local interactive web UI for local/remote review and submit",
-	Long: `Start a local HTTP server with monthly and daily overview pages.
+	Short: "Start the local interactive web UI",
+	Long: `Start a localhost HTTP server backed by the fixed gohour data directory.
 
-The UI supports in-place remote refresh, local import/edit/delete actions, and day/month submit
-with dry-run mode while comparing local SQLite entries against current OnePoint entries.`,
+The UI reads ~/.gohour/config.yaml, stores local worklogs in ~/.gohour/gohour.db, and
+uses ~/.gohour/onepoint-auth-state.json for OnePoint browser-login state. It supports
+month/day review, local import/edit/delete actions, remote refresh, and day/month submit.`,
 	Example: `
-  # Start local server on default port
+  # Start the local web UI on the default port
   gohour serve
 
-  # Start on a custom port
+	# Start on a custom port
   gohour serve --port 9090
 `,
 	RunE: func(cmd *cobra.Command, args []string) error {
+		if err := initConfig(); err != nil {
+			return err
+		}
+
 		cfg, err := config.LoadAndValidate()
 		if err != nil {
 			return err

@@ -71,3 +71,41 @@ Each entry uses this exact structure. Omit fields marked as role-specific when t
 | Next Role | implement |
 
 ---
+
+### T-002 — review — 2026-05-05T08:00:00Z
+
+| Field | Value |
+|-------|-------|
+| Agent | claude |
+| Summary | Reviewed T-002 implementation; all acceptance criteria met, 12/12 Playwright tests pass, go build/vet/test clean, no blocking findings. |
+| Verdict | PASS |
+| Blocking Findings | none |
+| Next Role | implement |
+
+---
+
+### T-002 — implement — 2026-05-05T05:09:23Z
+
+| Field | Value |
+|-------|-------|
+| Agent | codex |
+| Summary | Removed the deprecated CLI commands, kept serve/version as the command surface, and moved E2E seeding to the web import API under fixed data paths. |
+| Files Changed | .ai/HANDOFF.md, .ai/TASKS.md, AGENTS.md, README.md, cmd/auth.go, cmd/auth_helpers.go, cmd/auth_helpers_test.go, cmd/auth_login.go, cmd/auth_login_test.go, cmd/auth_show_cookies.go, cmd/config.go, cmd/config_create.go, cmd/config_create_test.go, cmd/config_delete_command.go, cmd/config_edit.go, cmd/config_edit_test.go, cmd/config_rule.go, cmd/config_rule_add.go, cmd/config_rule_add_test.go, cmd/config_show.go, cmd/delete.go, cmd/delete_test.go, cmd/export.go, cmd/import.go, cmd/import_test.go, cmd/reconcile.go, cmd/root.go, cmd/serve.go, cmd/serve_auth_helpers.go, cmd/serve_browser_login.go, cmd/serve_e2e_stub.go, cmd/serve_test.go, cmd/submit.go, cmd/submit_test.go, e2e/fixtures/config.yaml, e2e/fixtures/gohour-test.yaml, e2e/global-setup.ts, e2e/playwright.config.ts, e2e/run-server.sh |
+| Validation | `go fmt ./...` PASS; `go test ./cmd/...` PASS; `go build ./...` PASS (sandbox stat-cache warning); `go vet ./...` PASS; `go test ./...` PASS; `PLAYWRIGHT_BROWSERS_PATH=/tmp/gohour-playwright-browsers npx playwright install chromium` PASS; `PLAYWRIGHT_BROWSERS_PATH=/tmp/gohour-playwright-browsers npx playwright test` PASS |
+| Commit | `feat(cli): focus gohour on the web UI` |
+| Next Role | review |
+
+---
+
+### T-002 — implement — 2026-05-05T05:31:29Z
+
+| Field | Value |
+|-------|-------|
+| Agent | codex |
+| Summary | Committed T-002 CLI command removal and E2E startup updates. |
+| Files Changed | .ai/HANDOFF.md, .ai/TASKS.md, AGENTS.md, README.md, cmd/auth.go, cmd/auth_helpers.go, cmd/auth_helpers_test.go, cmd/auth_login.go, cmd/auth_login_test.go, cmd/auth_show_cookies.go, cmd/config.go, cmd/config_create.go, cmd/config_create_test.go, cmd/config_delete_command.go, cmd/config_edit.go, cmd/config_edit_test.go, cmd/config_rule.go, cmd/config_rule_add.go, cmd/config_rule_add_test.go, cmd/config_show.go, cmd/delete.go, cmd/delete_test.go, cmd/export.go, cmd/import.go, cmd/import_test.go, cmd/reconcile.go, cmd/root.go, cmd/serve.go, cmd/serve_auth_helpers.go, cmd/serve_browser_login.go, cmd/serve_e2e_stub.go, cmd/serve_test.go, cmd/submit.go, cmd/submit_test.go, e2e/fixtures/config.yaml, e2e/fixtures/gohour-test.yaml, e2e/global-setup.ts, e2e/playwright.config.ts, e2e/run-server.sh |
+| Validation | `go fmt ./...` PASS; `go test ./cmd/...` PASS; `go build ./...` PASS (sandbox stat-cache warning); `go vet ./...` PASS; `go test ./...` PASS; `PLAYWRIGHT_BROWSERS_PATH=/tmp/gohour-playwright-browsers npx playwright test` PASS |
+| Commit | `feat(cli): focus gohour on the web UI` |
+| Next Role | implement |
+
+---

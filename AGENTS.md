@@ -7,7 +7,7 @@
 - Core purpose: import time-tracking files, normalize/store worklogs in SQLite, reconcile overlaps, compare local vs. OnePoint, submit to OnePoint, and export reports.
 
 ## Current Status 
-- Implemented commands include: `config`, `import`, `reconcile`, `submit`, `serve`, `export`, `delete`, `auth`, `version`.
+- Implemented commands include: `serve`, `version`.
 - `serve` now exposes an interactive UI (not read-only in practice):
   - month/day compare views (local vs. remote),
   - local worklog create/update/delete,
@@ -18,7 +18,7 @@
 - Day/month views show worked and billable totals for both local and remote.
 
 ## Architecture Layers
-- CLI flow: `cmd` -> `importer` / `reconcile` / `storage` / `submitter` / `onepoint` / `output`
+- CLI flow: `cmd/serve` -> `web` -> `storage` + `onepoint` + `submitter`
 - Web flow: `cmd/serve` -> `web` -> `storage` + `onepoint` + `submitter`
 - Shared utilities: `internal/classify`, `internal/timeutil`
 
