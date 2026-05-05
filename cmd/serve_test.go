@@ -4,11 +4,35 @@ import (
 	"context"
 	"net/http"
 	"net/http/httptest"
+	"sort"
 	"testing"
 	"time"
 
 	"github.com/riadshalaby/gohour/config"
 )
+
+func TestRootCommandSurfaceOnlyExposesServeAndVersion(t *testing.T) {
+	t.Parallel()
+
+	got := make([]string, 0, len(rootCmd.Commands()))
+	for _, command := range rootCmd.Commands() {
+		if command.Hidden {
+			continue
+		}
+		got = append(got, command.Name())
+	}
+	sort.Strings(got)
+
+	want := []string{"serve", "version"}
+	if len(got) != len(want) {
+		t.Fatalf("expected commands %v, got %v", want, got)
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Fatalf("expected commands %v, got %v", want, got)
+		}
+	}
+}
 
 func TestDefaultServeMonthBoundsUsesCurrentMonth(t *testing.T) {
 	t.Parallel()

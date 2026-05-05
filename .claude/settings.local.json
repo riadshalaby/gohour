@@ -17,7 +17,9 @@
       "mcp__aide__*",
       "Bash(grep -E \"\\\\.go$\")",
       "Bash(grep -rn \"rootCmd.AddCommand\\\\|var.*Cmd.*=.*&cobra.Command\" /Users/riadshalaby/localrepos/gohour/cmd/*.go)",
-      "Bash(wc -l /Users/riadshalaby/localrepos/gohour/e2e/tests/*.spec.ts)"
+      "Bash(wc -l /Users/riadshalaby/localrepos/gohour/e2e/tests/*.spec.ts)",
+      "Bash(PLAYWRIGHT_BROWSERS_PATH=/tmp/gohour-playwright-browsers npx playwright test --reporter=list)",
+      "Bash(ls cmd/*.go)"
     ]
   }
 }

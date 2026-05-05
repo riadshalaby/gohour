@@ -16,46 +16,31 @@ limitations under the License.
 package cmd
 
 import (
-	"github.com/spf13/viper"
 	"os"
 
 	"github.com/riadshalaby/gohour/config"
 	"github.com/spf13/cobra"
+	"github.com/spf13/viper"
 )
-
-var cfgFile string
 
 // rootCmd represents the base command when called without any subcommands
 var rootCmd = &cobra.Command{
 	Use:   "gohour",
-	Short: "Import, reconcile, submit, and export worklogs from multiple source formats.",
+	Short: "Run the local gohour web UI for time-tracking review and submission.",
 	Long: `
 **********************************************
 *              GO HOUR GO                    *
 **********************************************
 
-This CLI imports source files (Excel, CSV), normalizes records into a local SQLite database,
-exports normalized worklogs to CSV or Excel, and can submit local worklogs to OnePoint.
-
-Supported input formats:
-- Excel: .xlsx, .xlsm, .xls
-- CSV: .csv
+gohour stores its local data under ~/.gohour and provides a browser UI for importing,
+editing, comparing, and submitting worklogs.
 `,
 	Example: `
-  # Create configuration file
-  gohour config create
+  # Start the local web UI
+  gohour serve
 
-  # Import source files
-  gohour import -i EPMExportRZ202601.xlsx -i EPMExportSZ202601.xlsx
-
-  # Reconcile simulated EPM timings against all other sources
-  gohour reconcile
-
-  # Submit local worklogs to OnePoint
-  gohour submit
-
-  # Export rows
-  gohour export --output ./worklogs.csv
+  # Print the installed version
+  gohour version
 `,
 }
 
@@ -69,34 +54,21 @@ func Execute() {
 }
 
 func init() {
-	cobra.OnInitialize(initConfig)
-
 	config.SetDefaults()
-
-	// Optional: Validate configuration
-	rootCmd.PreRunE = func(cmd *cobra.Command, args []string) error {
-		if !requiresConfig(cmd) {
-			return nil
-		}
-
-		_, err := config.LoadAndValidate()
-		return err
-	}
-}
-
-func requiresConfig(cmd *cobra.Command) bool {
-	return cmd != nil && cmd.Name() == "import"
 }
 
 // initConfig migrates legacy paths once, then reads the fixed config file.
-func initConfig() {
-	cobra.CheckErr(config.RunMigration())
+func initConfig() error {
+	if err := config.RunMigration(); err != nil {
+		return err
+	}
 
 	viper.SetConfigFile(config.ConfigPath())
 	viper.SetConfigType("yaml")
 	viper.AutomaticEnv() // read in environment variables that match
 
 	if err := viper.ReadInConfig(); err != nil {
-		cobra.CheckErr(err)
+		return err
 	}
+	return nil
 }

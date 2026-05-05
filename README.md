@@ -1,466 +1,101 @@
 # gohour
 
-`gohour` is a Go CLI for importing time-tracking source files, normalizing records into a local SQLite database, and exporting normalized worklogs.
+`gohour` is a local web UI for importing time-tracking files, reviewing local worklogs against OnePoint, editing local entries, and submitting day or month batches to OnePoint.
 
 ## Features
 
-- CLI built with Cobra and Viper
-- Config file support (`onepoint.url`, `rules`)
-- Input formats: Excel (`.xlsx`, `.xlsm`, `.xls`) and CSV (`.csv`)
-- Mapper-based normalization pipeline (`epm`, `generic`, `atwork`)
-- SQLite persistence with duplicate protection
-- Export normalized worklogs to CSV or Excel
-- Submit local SQLite worklogs to OnePoint REST
-- Local web UI for month/day review, import preview, edit, copy-from-remote, and submit
-- Submit safety checks: duplicate detection, overlap warnings/prompts, locked-day skip
-- Submit update propagation: billable/comment edits on synced entries are written back to remote
-- `gohour version` command for release/build identification
+- Local browser UI for month/day review, import preview, local edit/delete, copy-from-remote, and submit workflows
+- SQLite-backed worklog storage
+- OnePoint lookup, comparison, and submit integration
+- Import support for EPM-style Excel files, generic CSV, and atwork TSV exports
+- Fixed data directory under `$HOME/.gohour`
 
-> **Recommended workflow:** `gohour import` loads files locally, then `gohour serve` opens a browser UI to review local vs. remote hours and submit. Login happens automatically when needed - a browser window will open.
+## Commands
 
-## Requirements
-
-- Go 1.25+
-
-## Install
-
-### Via `go install` (recommended)
+The CLI surface is intentionally small:
 
 ```bash
-go install github.com/riadshalaby/gohour@latest
+gohour serve
+gohour version
 ```
 
-The binary is placed in `$GOPATH/bin` (or `$GOBIN` if set). Ensure that
-directory is in your `PATH`.
+`gohour serve` starts the local web UI. `gohour version` prints the build version.
 
-## Build
+## Quick Start
 
-Build from source:
-
-```bash
-go build -o gohour .
-```
-
-Or clone the repository first:
-
-```bash
-git clone https://github.com/riadshalaby/gohour.git
-cd gohour
-go build -o gohour .
-```
-
-Multi-platform artifacts + checksums:
-
-```bash
-./scripts/build-all.sh dist vX.Y.Z
-```
-
-Release helper (tag + assets upload via `gh release create`):
-
-```bash
-./scripts/release.sh vX.Y.Z dist
-```
-
-## Quick Start (3 Steps)
-
-If you installed `gohour` via `go install`, do this first:
-
-1. Ensure your Go bin directory is on `PATH`.
-2. Run `gohour version` to confirm the binary is available.
-
-If you built locally instead, replace `gohour` with `./gohour` in the commands below.
-
-To get started:
-
-1. Create config and add one import rule:
-
-```bash
-gohour config create
-gohour config rule add
-```
-
-2. Import your local worklog file(s) into SQLite:
-
-```bash
-gohour import -i <your-file.xlsx>
-```
-
-3. Review and submit from the local browser UI:
+Create or migrate the app data, then open the UI:
 
 ```bash
 gohour serve
 ```
 
-`auth login` is not a required manual step; login is triggered automatically when needed.
+The first run uses `$HOME/.gohour/config.yaml`. If older files are found in the current directory or home directory, gohour prompts to migrate them into `$HOME/.gohour`.
 
-## Configuration
+## Data Files
 
-Create a default config file:
-
-```bash
-gohour config create
-```
-
-Or with `go run`:
-
-```bash
-go run . config create
-```
-
-Default data file locations:
+Default paths:
 
 - Config: `$HOME/.gohour/config.yaml`
 - SQLite database: `$HOME/.gohour/gohour.db`
 - OnePoint auth state: `$HOME/.gohour/onepoint-auth-state.json`
 
-On first run, gohour checks for older `.gohour.yaml` / `gohour.db` files in the current directory, then `$HOME/.gohour.yaml`, and prompts whether to move them into `$HOME/.gohour/` or start fresh.
+For automated tests or isolated runs, set `GOHOUR_DATA_DIR` to use a different directory.
 
-Show active config:
+## Configuration
 
-```bash
-gohour config show
-```
-
-Edit config in your terminal editor (`$VISUAL`, then `$EDITOR`, fallback `vi`):
-
-```bash
-gohour config edit
-```
-If no config exists yet, `config edit` creates one with an example template first, then opens it.
-After closing the editor, the file is validated as gohour YAML config.
-
-Add one rule interactively from OnePoint (project/activity/skill selection):
-
-```bash
-gohour config rule add
-```
-
-Optional flags:
-- `--url`: override OnePoint URL from config for this run (full home URL)
-- `--state-file`: custom auth state file (default `$HOME/.gohour/onepoint-auth-state.json`)
-- `--include-archived-projects`: include archived projects in selection
-- `--include-locked-activities`: include locked activities in selection
-
-During `config rule add`, mapper is selected interactively from available mappers.
-
-Delete active config:
-
-```bash
-gohour config delete
-```
-
-Example config:
+The config file contains the OnePoint home URL and import rules:
 
 ```yaml
 onepoint:
   url: "https://onepoint.virtual7.io/onepoint/faces/home"
 
 rules:
-  - name: "rz"
-    mapper: "epm"
-    file_template: "EPMExportRZ*.xlsx"
-    project_id: 432904811
-    project: "MySpecial RZ Project"
-    activity_id: 436142369
-    activity: "Delivery"
-    skill_id: 44498948
-    skill: "Go"
-  - name: "atwork-travel"
-    mapper: "atwork"
-    file_template: "excel-export-atwork*.csv"
-    billable: false
-    project_id: 432904811
-    project: "MySpecial RZ Project"
-    activity_id: 436142369
-    activity: "Delivery"
-    skill_id: 44498948
-    skill: "Go"
+  - name: "generic-local"
+    mapper: "generic"
+    file_template: "*.csv"
+    project_id: 100
+    project: "P"
+    activity_id: 200
+    activity: "A"
+    skill_id: 300
+    skill: "S"
 ```
 
-Each rule supports an optional `billable` field (default: `true`). When set to `false`, all entries
-imported via that rule get `Billable=0` (entry is imported but not counted as billable time).
+Rules map imported files to project, activity, and skill values. Rule management is moving into the web UI in this development cycle.
 
-`gohour config create` creates a standard config with `rules: []` (no demo rule).
+## Web UI
 
-## Import
+The web UI supports:
 
-Import one or more files into SQLite:
+- month and day views with local vs. remote totals
+- import preview and import execution
+- local worklog create, update, and delete
+- day and month submit with dry-run preview
+- remote refresh, remote delete, and remote-to-local copy/sync actions
+
+OnePoint login opens a browser automatically when a valid auth state is missing or expired.
+
+## Build and Test
 
 ```bash
-gohour import -i examples/EPMExportRZ202601.xlsx
-gohour import -i examples/EPMExportRZ202601.xlsx -i examples/EPMExportSZ202601.xlsx
+go build ./...
+go fmt ./...
+go vet ./...
+go test ./...
 ```
 
-Flags:
-
-- `-i, --input` (required, repeatable): input file path
-- `-f, --format` (optional): `csv` or `excel` (auto-detected from file extension if omitted)
-- `-m, --mapper` (optional): fallback mapper when no rule matches (`epm` default, `generic`, or `atwork`)
-- `--project` (optional): explicit project for EPM import (overrides rule)
-- `--activity` (optional): explicit activity for EPM import (overrides rule)
-- `--skill` (optional): explicit skill for EPM import (overrides rule)
-- `--reconcile` (optional): `auto` (default, uses config), `on`, or `off`
-- `--db` (optional): SQLite file path (default `./gohour.db`)
-
-The legacy `import.auto_reconcile_after_import` setting is no longer used.
-If a file matches a `rules` entry by `file_template`, that rule's `mapper` is used for importing that file.
-For EPM-mapped files, `project/activity/skill` must come from a matching `rules` entry or explicit `--project/--activity/--skill`.
-If no rule matches and no explicit values are provided, import fails.
-Use optional flags like `--mapper`, `--format`, `--project`, `--activity`, `--skill`, or `--reconcile` only when needed.
-
-## Export
-
-Export normalized records from SQLite:
-
-```bash
-gohour export --output ./worklogs.csv
-gohour export --output ./worklogs.xlsx
-```
-
-Export daily summaries:
-- `StartTime`: start time of the first worklog entry of the day
-- `EndTime`: end time of the last worklog entry of the day
-- `WorkedHours`: sum of `(EndDateTime - StartDateTime)` per worklog of the day
-- `BillableHours`: sum of billable values of the day
-- `BreakHours`: gaps without worklog coverage between `StartTime` and `EndTime`
-
-For daily summary export, use the optional `--mode daily` flag.
-
-Flags:
-
-- `-o, --output` (required): output file path
-- `-f, --format` (optional): `csv` or `excel` (auto-detected from output extension if omitted)
-- `--mode` (optional): `raw` (default) or `daily`
-- `--db` (optional): SQLite file path (default `./gohour.db`)
-
-## Serve (Recommended Review + Submit Workflow)
-
-Run the local web UI for month/day review, edits, import, and submit actions:
-
-```bash
-gohour serve
-```
-
-If no valid OnePoint session is available, `serve` opens a browser login flow automatically before starting.
-
-Month view includes:
-- `Submit month`
-- direct `Previous` / `Next` navigation
-- `Actions` menu with `Refresh remote`, `Import file`, `Copy from remote`, `Delete all local`, and `Delete all remote`
-- inline delta indicators next to remote worked/billable totals:
-  - green when local and remote match
-  - orange when a delta exists
-- visible `Remote last refresh` timestamp
-- `Delete all remote` shows deleted/locked-day status in the modal status surface
-
-Day view includes:
-- `Submit day` using the same submit dialog as month submit
-- `Refresh remote` without full-page reload
-- local add/edit/delete with overlap warning + "save anyway" flow
-- status badges: `local`, `synced`, `conflict`, `remote`
-- visible `Remote last refresh` timestamp
-- keyboard navigation: `←` / `→` to move to previous/next day
-- icon action buttons for local entry edit/delete
-
-Submit dialog behavior:
-- one dialog for day/month submit
-- optional `Dry run` toggle (sends `dry_run=1`, no remote writes)
-- same result renderer for dry-run and real submit (server-rendered HTMX fragment)
-
-Mobile behavior:
-- month/day tables collapse into card layouts on narrow screens
-- sticky bottom action bar shows primary actions (submit/add/import)
-
-Remote auth degradation behavior:
-- non-refresh day/month partial updates (for example after local add/edit/delete/import) degrade to local-only rendering if OnePoint is temporarily unavailable
-- explicit `Refresh remote` keeps fail-closed behavior and surfaces an error toast/banner
-
-Important OnePoint UI note:
-- If a OnePoint browser tab/window was already open while gohour changed worklogs (for example import/delete/submit), the OnePoint UI can show stale totals or stale day values.
-- If that happens, close the open OnePoint window/tab and open/login again to refresh the displayed values.
-
-Audit log:
-- Remote-write operations from the web UI append JSON lines to `$HOME/.gohour/gohour-audit.log`
-- Logged operations include day/month submit and month remote delete (attempts, outcomes, counts, and locked-day info)
-
-Main flags:
-
-- `--port` (optional): HTTP port (default `8080`)
-- `--no-open` (optional): do not auto-open browser tab
-
-## Browser Smoke Tests
-
-Browser smoke coverage now lives in the standalone `e2e/` Playwright subproject.
-
-Run the suite:
-
-```bash
-cd e2e
-npm install
-npx playwright install chromium
-npx playwright test
-```
-
-The Playwright `webServer` config auto-starts the pre-built `../gohour` binary against a seeded temporary SQLite database, so no manual server management is required for the default flow.
-
-## Submit To OnePoint
-
-Submit normalized worklogs from SQLite to OnePoint:
-
-```bash
-gohour submit
-```
-
-Use optional flags like `--dry-run`, `--from`, `--to`, `--timeout`, `--url`, and `--state-file` only when needed.
-
-Required prerequisites:
-
-- Session cookies are managed automatically; a browser window opens if login is needed
-- Reachable OnePoint endpoint (`onepoint.url` in config or `--url`)
-
-What submit does:
-
-- Reads local rows from SQLite.
-- Resolves `project/activity/skill` names to OnePoint IDs:
-  - first from `rules` IDs in config,
-  - fallback via OnePoint lookup APIs.
-- Groups local rows by day.
-- For each day:
-  - loads existing remote day worklogs (`getFilteredWorklogs` day range),
-  - skips the full day when any existing entry is locked (`Locked != 0`),
-  - skips local duplicates (same `StartTime`, `FinishTime`, `ProjectID`, `ActivityID`, `SkillID`),
-  - treats equivalent entries with changed billable/comment as updates (writes local value to remote),
-  - detects local-vs-existing overlaps and handles them:
-    - `--dry-run`: warning only, no prompt,
-    - normal mode: interactive choice per day (`w/s/W/S/a`),
-  - persists the merged payload via `persistWorklogs` (only when entries remain to add).
-
-Dry-run output includes:
-- detailed per-entry output (`ready`, `duplicate`, `overlap`) and per-day summary
-- summary with skipped locked days and overlap warnings
-
-Main flags:
-
-- `--db` (optional): SQLite path (default `./gohour.db`)
-- `--from` / `--to` (optional): day range filter, format `YYYY-MM-DD`
-- `--state-file` (optional): auth state JSON path
-- `--url` (optional): override OnePoint home URL for this run
-- `--timeout` (optional): timeout per API operation (default `60s`)
-- `--dry-run` (optional): no API writes
-- `--include-archived-projects` (optional): allow archived project fallback resolution
-- `--include-locked-activities` (optional): allow locked activity fallback resolution
-
-## Reconcile (Verify + Correct)
-
-After importing mixed sources (for example `epm` plus `generic`) on the same day, you can run an explicit reconciliation step:
-
-```bash
-gohour reconcile
-```
-
-What it does:
-
-- Verifies overlaps that involve EPM entries.
-- Repositions only EPM entries so they no longer overlap with other worklogs on the same day.
-- Persists corrected start/end times back to SQLite.
-
-This is useful because EPM task times are simulated during import and may collide with precise times from other sources.
-
-## Delete Data / DB
-
-Destructive cleanup command (always deletes the complete SQLite database file):
-
-```bash
-gohour delete
-```
-
-Notes:
-- The command asks for interactive confirmation.
-- Type exactly `Y` to confirm deletion.
-
-## OnePoint Authentication (Microsoft SSO)
-
-`gohour` can trigger browser login automatically when needed.
-Automatic login is used by:
-
-- `gohour submit`
-- `gohour serve`
-- `gohour config rule add`
-
-If no valid session cookie exists, a headed browser opens, you complete Microsoft login, and auth state is saved automatically.
-The URL comes from `onepoint.url` in config (`$HOME/.gohour/config.yaml`) and defaults to:
-`https://onepoint.virtual7.io/onepoint/faces/home`.
-You can override it with `--url` on the corresponding command.
-
-Manual override login command:
-
-```bash
-gohour auth login
-```
-
-This command explicitly opens login and saves auth state to:
-
-- `$HOME/.gohour/onepoint-auth-state.json` (default)
-
-Show cookie header for direct API/debug usage:
-
-```bash
-gohour auth show-cookies
-```
-
-Expected output format:
-
-```text
-JSESSIONID=<...>; _WL_AUTHCOOKIE_JSESSIONID=<...>
-```
-
-Notes:
-- Login opens a visible Chrome/Chromium browser window from inside `gohour`.
-- By default, each login run uses a fresh temporary browser profile to avoid profile-lock issues.
-- Use `--profile-dir` only if you explicitly want a reusable browser profile.
-- Use `--browser-bin` if your browser executable is not auto-detected.
-- Use `--timeout` to increase waiting time for MFA/conditional-access flows.
-- Use `--debug-cookies` to print detected cookie names/domains while waiting.
-- Session cookies expire periodically; the next `submit`, `serve`, or `config rule add` run re-triggers login automatically.
-
-## Normalized SQLite Schema
-
-Table: `worklogs`
-
-- `start_datetime` (`TEXT`)
-- `end_datetime` (`TEXT`)
-- `billable` (`INTEGER`) -> billable minutes
-- `description` (`TEXT`)
-- `project` (`TEXT`)
-- `activity` (`TEXT`)
-- `skill` (`TEXT`)
-- `source_format` (`TEXT`)
-- `source_mapper` (`TEXT`)
-- `source_file` (`TEXT`)
-
-A unique constraint prevents duplicate imports of the same normalized row.
+The Playwright suite in `e2e/` starts the pre-built `gohour` binary with an isolated `GOHOUR_DATA_DIR` and seeds data through the web import API.
 
 ## Mappers
 
-- `epm`: for EPM-like exports with columns such as date/time, hours, and description.
-  - Uses source-day `Von`/`Bis` as the original day window.
-  - Builds sequential worklogs for the day.
-  - If `Tagessumme` is present, computes a single break (`(Bis - Von) - Tagessumme`) and inserts it near the middle of the billable work progression.
-- `generic`: for already structured files with explicit start/end and optional billable value.
-- `atwork`: for UTF-16 tab-separated CSV exports from the atwork time-tracking app.
-  - Reads only the "Einträge" section (stops at "Gesamt" summary row).
-  - Parses `Beginn`/`Ende` as datetimes, `Dauer` as German decimal hours.
-  - Description is built from `Notiz` (with `Projekt`/`Aufgabe` as context prefix).
-  - `Project`/`Activity`/`Skill` come from the matching rule config (like EPM).
-
-## Notes
-
-- REST submission is available via `gohour submit`.
+- `epm`: EPM-like exports with date/time, hours, and description columns
+- `generic`: CSV with explicit `description,startdatetime,enddatetime,project,activity,skill`
+- `atwork`: UTF-16 tab-separated CSV exports from the atwork time-tracking app
 
 ## Version
 
-Print current build version:
+Release builds embed version metadata with:
 
 ```bash
-gohour version
+go build -ldflags "-X github.com/riadshalaby/gohour/cmd.Version=vX.Y.Z" .
 ```

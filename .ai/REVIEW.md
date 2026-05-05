@@ -29,6 +29,59 @@ Reviewed: YYYY-MM-DD
 
 ---
 
+## Task: T-002
+
+### Review Round 1
+
+Status: **complete**
+
+Reviewed: 2026-05-05
+
+#### Findings
+
+- severity: `nit`
+  - file: `cmd/root.go`
+  - description: `cobra.OnInitialize(initConfig)` was removed; `initConfig()` is now called directly inside `serveCmd.RunE`. This is a clean design improvement (config only loads when needed), but it's a quiet behavior change from the T-001 implementation. Not a problem since `version` correctly doesn't load config, and serve is the only command that uses it.
+  - required fix: no
+
+- severity: `nit`
+  - file: `cmd/serve.go` Example block
+  - description: The tab character inside the Example literal (`\t# Start on a custom port`) is inconsistent with the leading spaces in the first example line. Minor formatting nit.
+  - required fix: no
+
+#### Verification
+##### Steps
+1. Re-read `.ai/PLAN.md` T-002 section and acceptance criteria.
+2. Inspected `git status --short` — confirmed 22 files deleted, 4 modified, 3 new (serve_auth_helpers.go, serve_browser_login.go, e2e/fixtures/config.yaml).
+3. Verified new files `cmd/serve_auth_helpers.go` and `cmd/serve_browser_login.go` — correctly extract the auth/browser-login logic that was previously in the deleted `cmd/auth_helpers.go` / `cmd/auth_login.go`, now scoped to the serve command only.
+4. Verified `cmd/` contains exactly: `root.go`, `serve.go`, `serve_auth_helpers.go`, `serve_browser_login.go`, `serve_e2e_stub.go`, `serve_test.go`, `version.go` — no leftover CLI command files.
+5. Verified `e2e/run-server.sh` — no `--configFile`/`--db` flags, uses `GOHOUR_DATA_DIR`, copies `config.yaml`, no import CLI call.
+6. Verified `e2e/global-setup.ts` — seeds via `POST /api/import` (server already started in Playwright 1.58 before globalSetup runs).
+7. Verified `e2e/playwright.config.ts` — `GOHOUR_DATA_DIR` set, `gohour.db` naming consistent.
+8. Verified `AGENTS.md` — implemented commands updated to `serve`, `version`.
+9. Ran `go fmt ./...` → PASS
+10. Ran `go vet ./...` → PASS
+11. Ran `go build ./...` → PASS
+12. Ran `go test ./...` → all 11 packages PASS
+13. Ran `go test ./cmd/... -v` — `TestRootCommandSurfaceOnlyExposesServeAndVersion` PASS
+14. Ran `PLAYWRIGHT_BROWSERS_PATH=/tmp/gohour-playwright-browsers npx playwright test` → 12/12 PASS in 6.1s
+
+##### Findings
+- All acceptance criteria met.
+- Auth logic correctly extracted to serve-scoped files rather than deleted entirely — the serve command still needs browser login for OnePoint session management.
+- E2E seeding approach (API-based) works correctly with Playwright 1.58 webServer-before-globalSetup ordering.
+
+##### Risks
+- None. All tests pass, including full E2E suite.
+
+#### Open Questions
+- None.
+
+#### Verdict
+`PASS`
+
+---
+
 ## Task: T-001
 
 ### Review Round 1

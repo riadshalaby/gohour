@@ -49,7 +49,7 @@ func resolveOnePointURLs(urlOverride string) (string, string, string, error) {
 	rawURL := strings.TrimSpace(urlOverride)
 	if rawURL == "" {
 		if strings.TrimSpace(viper.ConfigFileUsed()) == "" {
-			return "", "", "", errors.New("no config file loaded; set `onepoint.url` in config or pass --url")
+			return "", "", "", errors.New("no config file loaded; set `onepoint.url` in ~/.gohour/config.yaml")
 		}
 		cfg, err := config.LoadAndValidate()
 		if err != nil {
@@ -98,14 +98,6 @@ func ensureAuthenticatedWithStateFile(urlOverride, stateFilePath string) (cookie
 
 	fmt.Println("Not logged in to OnePoint. Opening browser for login...")
 	cookieHeader, err = runBrowserLogin(baseURL, homeURL, host, stateFile, 10*time.Minute, false)
-	return
-}
-
-// ensureAuthenticated returns a valid session cookie header, triggering an
-// interactive browser login automatically if the auth state is missing or
-// incomplete.
-func ensureAuthenticated(urlOverride, stateFilePath string) (cookieHeader, baseURL, homeURL, host string, err error) {
-	cookieHeader, baseURL, homeURL, host, _, err = ensureAuthenticatedWithStateFile(urlOverride, stateFilePath)
 	return
 }
 

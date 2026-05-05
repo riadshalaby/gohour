@@ -17,80 +17,7 @@ import (
 	"github.com/chromedp/cdproto/network"
 	"github.com/chromedp/cdproto/storage"
 	"github.com/chromedp/chromedp"
-	"github.com/spf13/cobra"
 )
-
-var (
-	authLoginURL          string
-	authLoginStateFile    string
-	authLoginProfileDir   string
-	authLoginSkipVerify   bool
-	authLoginBrowserBin   string
-	authLoginTimeout      time.Duration
-	authLoginDebugCookies bool
-)
-
-var authLoginCmd = &cobra.Command{
-	Use:   "login",
-	Short: "Start interactive browser login and save authenticated state.",
-	Long: `Open a visible browser for Microsoft SSO login and save auth state as JSON.
-
-The command validates that OnePoint session cookies are present. By default, it also verifies
-the session with a test API call (list projects).`,
-	Example: `
-  # Open browser, log in manually, save auth state, verify API access
-  gohour auth login
-`,
-	RunE: func(cmd *cobra.Command, args []string) error {
-		stateFile, err := resolveDefaultAuthStatePath(authLoginStateFile)
-		if err != nil {
-			return err
-		}
-
-		baseURL, homeURL, host, err := resolveOnePointURLs(authLoginURL)
-		if err != nil {
-			return err
-		}
-		cookieHeader, err := runBrowserLoginWithOptions(
-			baseURL,
-			homeURL,
-			host,
-			stateFile,
-			authLoginTimeout,
-			authLoginDebugCookies,
-			authLoginProfileDir,
-			authLoginBrowserBin,
-		)
-		if err != nil {
-			return err
-		}
-		if authLoginSkipVerify {
-			return nil
-		}
-
-		client, err := onepoint.NewClient(onepoint.ClientConfig{
-			BaseURL:        baseURL,
-			RefererURL:     homeURL,
-			SessionCookies: cookieHeader,
-			UserAgent:      "gohour-auth/1.0",
-		})
-		if err != nil {
-			return err
-		}
-
-		verifyCtx, verifyCancel := context.WithTimeout(context.Background(), 30*time.Second)
-		defer verifyCancel()
-
-		projects, err := client.ListProjects(verifyCtx)
-		if err != nil {
-			return fmt.Errorf("auth verification failed (ListProjects): %w", err)
-		}
-
-		fmt.Printf("Auth state saved: %s\n", stateFile)
-		fmt.Printf("Auth verification successful. Projects visible: %d\n", len(projects))
-		return nil
-	},
-}
 
 type authStateFile struct {
 	Cookies []authStateCookie `json:"cookies"`
@@ -406,16 +333,4 @@ func onepointCookieDomainMatches(cookieDomain, targetHost string) bool {
 	cookieDomain = strings.TrimPrefix(strings.ToLower(strings.TrimSpace(cookieDomain)), ".")
 	targetHost = strings.TrimPrefix(strings.ToLower(strings.TrimSpace(targetHost)), ".")
 	return cookieDomain == targetHost || strings.HasSuffix(targetHost, "."+cookieDomain)
-}
-
-func init() {
-	authCmd.AddCommand(authLoginCmd)
-
-	authLoginCmd.Flags().StringVar(&authLoginURL, "url", "", "Override OnePoint URL from config (full home URL)")
-	authLoginCmd.Flags().StringVar(&authLoginStateFile, "state-file", "", "Path to save auth state JSON (default: $HOME/.gohour/onepoint-auth-state.json)")
-	authLoginCmd.Flags().StringVar(&authLoginProfileDir, "profile-dir", "", "Browser profile directory (optional; default is a fresh temporary profile per run)")
-	authLoginCmd.Flags().StringVar(&authLoginBrowserBin, "browser-bin", "", "Optional browser binary path (Chrome/Chromium)")
-	authLoginCmd.Flags().DurationVar(&authLoginTimeout, "timeout", 10*time.Minute, "Maximum wait time for successful browser login")
-	authLoginCmd.Flags().BoolVar(&authLoginDebugCookies, "debug-cookies", false, "Print cookie names/domains while waiting for login detection")
-	authLoginCmd.Flags().BoolVar(&authLoginSkipVerify, "skip-verify", false, "Skip OnePoint API verification after saving auth state")
 }

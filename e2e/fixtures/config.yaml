@@ -1,9 +1,6 @@
 onepoint:
   url: "https://onepoint.example.invalid/onepoint/faces/home"
 
-import:
-  auto_reconcile_after_import: false
-
 rules:
   - name: "generic-local"
     mapper: "generic"
