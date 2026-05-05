@@ -8,6 +8,19 @@ Each entry uses this exact structure. Omit fields marked as role-specific when t
 
 ---
 
+### T-006 — implement — 2026-05-05T19:35:00Z
+
+| Field | Value |
+|-------|-------|
+| Agent | claude |
+| Summary | Committed T-006 documentation rewrite for v0.4.0 web-UI-first workflow. |
+| Files Changed | .ai/HANDOFF.md, .ai/TASKS.md, README.md, AGENTS.md |
+| Validation | `go fmt ./...` PASS; `go vet ./...` PASS; `go test ./...` PASS |
+| Commit | 25aaec8f docs: update README and AGENTS.md for v0.4.0 web-UI-first workflow |
+| Next Role | none |
+
+---
+
 ### T-006 — review — 2026-05-05T19:30:00Z
 
 | Field | Value |
@@ -246,5 +259,14 @@ Each entry uses this exact structure. Omit fields marked as role-specific when t
 | Validation | `go fmt ./...` PASS; `go test ./web` PASS; `go vet ./...` PASS; `go test ./...` PASS |
 | Commit | `feat(web): manage config rules in the web UI` |
 | Next Role | implement |
+
+---
+
+### Cycle closed — 0.4.0 — 2026-05-05T18:31:28Z
+
+| Field | Value |
+|-------|-------|
+| Summary | All tasks done; cycle closed |
+| Version | 0.4.0 |
 
 ---
