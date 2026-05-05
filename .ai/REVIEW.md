@@ -29,6 +29,66 @@ Reviewed: YYYY-MM-DD
 
 ---
 
+## Task: T-006
+
+### Review Round 1
+
+Status: **complete**
+
+Reviewed: 2026-05-05
+
+#### Findings
+
+- severity: `nit`
+  - file: `README.md`
+  - description: The "Requirements" (Go version) and "Install" sections present in the original `main` README were removed during T-002 and not restored by T-006. These are convenient for new users but the plan's "Keep" list for those sections referred to content that T-002 removed as part of CLI cleanup. T-006 was delivered as an additive update on top of T-002's rewrite, which was already reviewed and accepted.
+  - required fix: no (the T-002 rewrite was already approved)
+
+- severity: `nit`
+  - file: `README.md`
+  - description: "Normalized SQLite Schema" and "Notes" sections also present in original `main` were removed in T-002. Same context as above.
+  - required fix: no
+
+#### Verification
+##### Steps
+1. Re-read `.ai/PLAN.md` T-006 section and acceptance criteria.
+2. Reviewed all diffs: `README.md` (3 hunks), `AGENTS.md` (2 sections).
+3. Verified README diff correctly adds:
+   - Config page description replacing "moving to web UI" placeholder — ✅
+   - Import bullet updated to mention rule matching and per-field override — ✅
+   - Config page bullet in Web UI list — ✅
+   - EPM auto-reconcile note — ✅
+4. Verified current README state satisfies all TASKS.md acceptance criteria:
+   - Web-UI-first workflow (Features, Quick Start, Web UI sections) — ✅
+   - Two CLI commands only (Commands section: `serve`, `version`) — ✅
+   - `~/.gohour/` layout (Data Files section) — ✅
+   - Migration from older versions (Quick Start section) — ✅
+   - No references to removed commands: `grep` found zero stale mentions of auth/config-cmd/delete/export/import-cmd/reconcile/submit CLI commands — ✅
+5. Verified AGENTS.md diff correctly:
+   - Updates "Current Status" to reflect all T-003/T-004/T-005 features — ✅
+   - Removes CLI-specific overlap interactive prompt reference (no longer applicable) — ✅
+   - Removes `--dry-run` flag framing (now general web UI behavior) — ✅
+6. Cross-checked that T-002 commit (19e75f3c) is where Requirements, Install, SQLite Schema, Notes sections were removed — confirmed. That commit's README rewrite was reviewed and accepted during T-002 review.
+7. Ran `go fmt ./...` → PASS
+8. Ran `go vet ./...` → PASS
+9. Ran `go test ./...` → all 11 packages PASS
+
+##### Findings
+- All TASKS.md acceptance criteria are met.
+- T-006 diff is narrow and correct: additive documentation of T-003/T-004/T-005 features.
+- No broken references in README or AGENTS.md.
+
+##### Risks
+- None.
+
+#### Open Questions
+- None.
+
+#### Verdict
+`PASS`
+
+---
+
 ## Task: T-005
 
 ### Review Round 1

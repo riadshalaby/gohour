@@ -61,17 +61,20 @@ rules:
     skill: "S"
 ```
 
-Rules map imported files to project, activity, and skill values. Rule management is moving into the web UI in this development cycle.
+Rules map imported files to project, activity, and skill values. Add and manage rules from the `/config` page in the web UI.
 
 ## Web UI
 
 The web UI supports:
 
 - month and day views with local vs. remote totals
-- import preview and import execution
+- import preview and import execution, with automatic rule matching and per-field override
 - local worklog create, update, and delete
 - day and month submit with dry-run preview
 - remote refresh, remote delete, and remote-to-local copy/sync actions
+- config page for OnePoint URL and import rule CRUD at `/config`
+
+EPM imports automatically trigger reconciliation after a successful import.
 
 OnePoint login opens a browser automatically when a valid auth state is missing or expired.
 

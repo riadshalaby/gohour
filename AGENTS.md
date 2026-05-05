@@ -7,14 +7,16 @@
 - Core purpose: import time-tracking files, normalize/store worklogs in SQLite, reconcile overlaps, compare local vs. OnePoint, submit to OnePoint, and export reports.
 
 ## Current Status 
-- Implemented commands include: `serve`, `version`.
-- `serve` now exposes an interactive UI (not read-only in practice):
+- Implemented commands: `serve`, `version`.
+- `serve` exposes an interactive web UI at `localhost:<port>` with:
   - month/day compare views (local vs. remote),
   - local worklog create/update/delete,
-  - import preview + import execution,
+  - import preview + import execution with automatic rule matching and per-field override,
+  - EPM imports automatically trigger reconciliation after a successful import,
   - day/month submit + dry-run preview,
-  - month-level local delete, remote delete, remote-to-local copy/sync actions.
-- Import UI supports `billable` mode selection and conflict-aware preview (clean/duplicate/overlap).
+  - month-level local delete, remote delete, remote-to-local copy/sync actions,
+  - config page at `/config` for OnePoint URL and import rule CRUD.
+- Import UI supports `billable` mode selection, conflict-aware preview (clean/duplicate/overlap), and "update rule" persistence of overrides.
 - Day/month views show worked and billable totals for both local and remote.
 
 ## Architecture Layers
@@ -26,8 +28,8 @@
 - If a remote day contains any locked entry, skip the full day.
 - Duplicate detection compares only: `StartTime`, `FinishTime`, `ProjectID`, `ActivityID`, `SkillID`.
 - If duplicate key matches but billable/comment differ, treat it as an update candidate (not a duplicate skip).
-- Overlaps are handled interactively in normal CLI mode (`w`/`s`/`W`/`S`/`a`).
-- `--dry-run` still loads remote day worklogs, reports locked/duplicate/overlap outcomes, and performs no persist call.
+- Overlaps should be resolved via reconciliation before submitting; the web UI dry-run preview surfaces overlap outcomes.
+- Dry-run loads remote day worklogs, reports locked/duplicate/overlap outcomes, and performs no persist call.
 
 ## Coding Rules
 - Return errors; never panic.
