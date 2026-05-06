@@ -8,6 +8,32 @@ Each entry uses this exact structure. Omit fields marked as role-specific when t
 
 ---
 
+### T-001 — implement — 2026-05-06T07:29:50Z
+
+| Field | Value |
+|-------|-------|
+| Agent | codex |
+| Summary | Adopted a release-please-managed version literal, added release-please manifest/config/workflow files, and covered version literal format with a focused Go test. |
+| Files Changed | cmd/version.go, cmd/version_test.go, release-please-config.json, .release-please-manifest.json, .github/workflows/release-please.yml, .ai/TASKS.md, .ai/HANDOFF.md |
+| Validation | `go test ./cmd/ -run TestVersionLiteralFormat -v` PASS; `go test ./cmd/...` PASS; `go fmt ./...` PASS; `go vet ./...` PASS; `go test ./...` PASS; `GOMODCACHE=/private/tmp/gohour-gomodcache GOCACHE=/private/tmp/gohour-gocache go build -o /tmp/gohour-local .` PASS; `/tmp/gohour-local version` printed `gohour 0.4.1`; `jq empty release-please-config.json .release-please-manifest.json` PASS |
+| Commit | `ci: adopt release-please for version + changelog management` |
+| Next Role | review |
+
+---
+
+### T-001 — review — 2026-05-06T08:32:02Z
+
+| Field | Value |
+|-------|-------|
+| Agent | claude |
+| Summary | Reviewed T-001: release-please workflow + manifest + config landed, `cmd/version.go` carries the `x-release-please-version` annotation as `const`, `cmd/version_test.go` validates semver-or-dev. All acceptance criteria met; documented two informational notes (one nit on comment wording, one out-of-scope ldflag carryover that T-003 will clean up). |
+| Files Changed | .ai/REVIEW.md, .ai/TASKS.md, .ai/HANDOFF.md |
+| Verdict | PASS_WITH_NOTES |
+| Blocking Findings | none |
+| Next Role | implement |
+
+---
+
 ### <TASK_ID> — <ROLE> — <YYYY-MM-DDTHH:MM:SSZ>
 
 | Field | Value |

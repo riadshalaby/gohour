@@ -6,9 +6,11 @@ import (
 	"github.com/spf13/cobra"
 )
 
-// Version is set at build time via:
-// go build -ldflags "-X github.com/riadshalaby/gohour/cmd.Version=vX.Y.Z"
-var Version = "dev"
+// Version is updated by release-please when a release PR is merged.
+// The line below carries the release-please annotation; do not edit by hand
+// outside of release-please PRs. Local development builds keep the source-tree
+// version literal.
+const Version = "0.4.1" // x-release-please-version
 
 var versionCmd = &cobra.Command{
 	Use:   "version",
