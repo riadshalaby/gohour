@@ -48,3 +48,44 @@ Reviewed: 2026-05-06
 
 #### Verdict
 `PASS_WITH_NOTES`
+
+---
+
+## Task: T-002 — Add goreleaser workflow producing release artifacts
+
+### Review Round 1
+
+Status: **complete**
+
+Reviewed: 2026-05-06
+
+#### Findings
+- (nit) `.goreleaser.yaml:60` — the inline comment `# release-please owns the release notes` that appeared in the plan's spec for `changelog.disable: true` was omitted. The behavior is identical without it; purely a documentation nit.
+
+#### Required Fixes
+- None.
+
+#### Verification
+##### Steps
+- `ruby -e 'require "yaml"; ARGV.each { |path| YAML.load_file(path) }; puts "yaml ok"' .goreleaser.yaml .github/workflows/goreleaser.yml` — valid YAML on both files.
+- `go fmt ./...` — clean (no output).
+- `go vet ./...` — clean (no output).
+- `go test ./...` — all packages PASS (no Go code changed; run for hygiene).
+- `goreleaser check` — skipped (not installed locally; plan explicitly permits this).
+- File inspection:
+  - `.goreleaser.yaml` — `version: 2`, builds: linux/darwin/windows × amd64/arm64, `CGO_ENABLED=0`, `-trimpath`, `-s -w` ldflags, archive template with `x86_64` alias for amd64, windows zip override, `checksum.name_template: SHA256SUMS`, `release.mode: replace`, `changelog.disable: true` ✓
+  - `.github/workflows/goreleaser.yml` — triggers on `v*` tag pushes, `fetch-depth: 0`, `go-version: "1.25"` (matches `go.mod`), `goreleaser-action@v6` with `version: "~> v2"`, `GITHUB_TOKEN` env var, `contents: write` permission ✓
+  - `LICENSE` file exists — goreleaser `files: LICENSE*` will bundle it correctly ✓
+- Plan-vs-implementation diff review: both specified files created; content matches plan specification exactly except for the nit above.
+
+##### Findings
+- All acceptance criteria for T-002 satisfied.
+
+##### Risks
+- `goreleaser check` was not run locally. The first real execution will be on a `v*` tag push. The config mirrors the goreleaser v2 schema closely and YAML is syntactically valid, so the risk is low.
+
+#### Open Questions
+- None.
+
+#### Verdict
+`PASS`
