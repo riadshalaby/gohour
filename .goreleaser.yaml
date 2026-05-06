@@ -1,0 +1,60 @@
+version: 2
+
+project_name: gohour
+
+before:
+  hooks:
+    - go mod tidy
+
+builds:
+  - id: gohour
+    binary: gohour
+    main: .
+    env:
+      - CGO_ENABLED=0
+    goos:
+      - linux
+      - darwin
+      - windows
+    goarch:
+      - amd64
+      - arm64
+    flags:
+      - -trimpath
+    ldflags:
+      - -s -w
+
+archives:
+  - id: gohour
+    builds:
+      - gohour
+    name_template: >-
+      {{ .ProjectName }}_
+      {{- .Version }}_
+      {{- .Os }}_
+      {{- if eq .Arch "amd64" }}x86_64
+      {{- else }}{{ .Arch }}{{ end }}
+    format_overrides:
+      - goos: windows
+        format: zip
+    files:
+      - LICENSE*
+      - README.md
+
+checksum:
+  name_template: SHA256SUMS
+
+release:
+  github:
+    owner: riadshalaby
+    name: gohour
+  draft: false
+  prerelease: auto
+  mode: replace
+  name_template: "{{ .Tag }}"
+
+snapshot:
+  name_template: "{{ incpatch .Version }}-snapshot"
+
+changelog:
+  disable: true
