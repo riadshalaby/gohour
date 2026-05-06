@@ -89,3 +89,44 @@ Reviewed: 2026-05-06
 
 #### Verdict
 `PASS`
+
+---
+
+## Task: T-003 — Remove obsolete release scripts and refresh release docs
+
+### Review Round 1
+
+Status: **complete**
+
+Reviewed: 2026-05-06
+
+#### Findings
+- (nit) `ROADMAP.md` was modified (references to `scripts/` and `-ldflags` replaced with generic language) but is not listed as a target file in the T-003 plan. The changes are correct and consistent with the task goal; flagging only because the plan did not call for it. No functional or accuracy concern.
+
+#### Required Fixes
+- None.
+
+#### Verification
+##### Steps
+- `rg -n "scripts/build-all|scripts/release|build-all\.sh|release\.sh|-X github.com/riadshalaby/gohour/cmd.Version|ldflags" .` (excluding `.ai/PLAN.md`, `.ai/HANDOFF.md`, `.ai/REVIEW.md`) — no hits.
+- `go fmt ./...` — clean.
+- `go vet ./...` — clean.
+- `go test ./...` — all packages PASS.
+- `git status` — `scripts/build-all.sh` and `scripts/release.sh` both deleted (`D`); `README.md`, `AGENTS.md`, `ROADMAP.md` modified.
+- File inspection:
+  - `README.md` — `## Install` section present with `go install github.com/riadshalaby/gohour@latest` and prebuilt-binary alternative ✓; `## Build and Test` simplified to `go build ./... && go test ./...` with note about version literal ✓; `## Releasing` section added with release-please + goreleaser flow ✓; no references to `scripts/` or `-ldflags` ✓
+  - `AGENTS.md` `Release Rules` — updated to describe release-please + goreleaser; manual tag + script references removed ✓
+  - `ROADMAP.md` — references to `scripts/build-all.sh`, `scripts/release.sh`, and `-ldflags` replaced with generic language; no new scope introduced ✓
+- Plan-vs-implementation diff review: all five plan-specified actions (delete scripts, add Install section, replace Build/Release sections, update AGENTS.md Release Rules) completed. One unspecified file (`ROADMAP.md`) modified with appropriate cleanup.
+
+##### Findings
+- All acceptance criteria for T-003 satisfied.
+
+##### Risks
+- None.
+
+#### Open Questions
+- None.
+
+#### Verdict
+`PASS`
