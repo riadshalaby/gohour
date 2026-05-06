@@ -6,28 +6,28 @@ Versioning principle: the cycle version reflects user-facing changes only. Build
 
 ## Fix 1 — Version + release tooling refactor (no user-facing version bump)
 
-Problem: `gohour version` prints `dev` whenever the binary is built without `-ldflags` (i.e., any local `go build`, any `go install`). Release artifacts are built by hand-maintained shell scripts under `scripts/`. The cycle workflow already emits a `Release-As: x.y.z` footer, which is a release-please convention that we have not yet adopted.
+Problem: `gohour version` prints `dev` whenever the binary is built without linker-time version overrides (i.e., any local `go build`, any `go install`). Release artifacts are built by hand-maintained shell tooling. The cycle workflow already emits a `Release-As: x.y.z` footer, which is a release-please convention that we have not yet adopted.
 
 Decision:
 - Adopt **Google release-please** to manage releases:
-  - release-please reads Conventional Commits on `main`, opens release PRs, manages the changelog, and writes the version into a tracked Go file so `go build` and `go install github.com/riadshalaby/gohour@latest` both report the correct version without `-ldflags`.
+  - release-please reads Conventional Commits on `main`, opens release PRs, manages the changelog, and writes the version into a tracked Go file so `go build` and `go install github.com/riadshalaby/gohour@latest` both report the correct version without linker-time overrides.
   - The existing `Release-As: x.y.z` footer in `aide cycle end` is honored by release-please as an explicit version override.
-- Add a **goreleaser** GitHub Actions workflow triggered by release-please tags to produce the same matrix of binaries (`darwin/linux/windows` × `amd64/arm64`) plus `SHA256SUMS` that the local scripts produce today.
-- Once release-please + goreleaser are in place, **delete `scripts/build-all.sh` and `scripts/release.sh`**. Removal is conditional on the CI replacement actually existing in the same cycle — not before.
-- Replace the `cmd/version.go` `var Version = "dev"` mechanism with a value sourced from a release-please-managed file. The `-ldflags` override path may stay as a fallback or be removed; planner decides based on what release-please writes.
+- Add a **goreleaser** GitHub Actions workflow triggered by release-please tags to produce the release binary matrix (`darwin/linux/windows` × `amd64/arm64`) plus `SHA256SUMS`.
+- Once release-please + goreleaser are in place, delete the obsolete local release shell tooling. Removal is conditional on the CI replacement actually existing in the same cycle, not before.
+- Replace the `cmd/version.go` `var Version = "dev"` mechanism with a value sourced from a release-please-managed file. The old linker override path may stay as a fallback or be removed; planner decides based on what release-please writes.
 - Update `README.md`:
   - Add an **Install** section with `go install github.com/riadshalaby/gohour@latest` as the primary path.
-  - Mention prebuilt binaries as the alternative; do not document the removed `scripts/` paths.
+  - Mention prebuilt binaries as the alternative; do not document the removed shell tooling paths.
   - Update the **Build and Test** / release-tooling sections to describe the release-please + goreleaser flow instead of the deleted shell scripts.
-- Update `AGENTS.md` **Release Rules** section to describe the release-please + goreleaser workflow and remove references to the deleted scripts.
+- Update `AGENTS.md` **Release Rules** section to describe the release-please + goreleaser workflow and remove references to the deleted shell tooling.
 
 Acceptance criteria:
 - `go build ./... && ./gohour version` on a clean checkout of a tagged commit prints the tag (e.g., `gohour v0.4.1`), not `dev`.
 - `go install github.com/riadshalaby/gohour@latest` followed by `gohour version` prints the installed module version.
 - A release-please workflow exists in `.github/workflows/` and runs on pushes to `main`.
-- A goreleaser workflow (or equivalent matrix workflow) exists in `.github/workflows/` and is triggered by release-please tags; it produces the same artifact set as the current scripts.
-- `scripts/build-all.sh` and `scripts/release.sh` are removed.
-- `README.md` documents `go install` as the primary install path and no longer references the deleted scripts.
+- A goreleaser workflow (or equivalent matrix workflow) exists in `.github/workflows/` and is triggered by release-please tags; it produces the release artifact set.
+- The obsolete local release shell tooling is removed.
+- `README.md` documents `go install` as the primary install path and no longer references the deleted release scripts.
 - `AGENTS.md` Release Rules section reflects the new workflow.
 
 Out of scope:

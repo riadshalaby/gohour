@@ -8,6 +8,45 @@ Each entry uses this exact structure. Omit fields marked as role-specific when t
 
 ---
 
+### T-003 — review — 2026-05-06T14:15:00Z
+
+| Field | Value |
+|-------|-------|
+| Agent | claude |
+| Summary | Reviewed T-003: scripts deleted, README has Install/Build/Releasing sections, AGENTS.md Release Rules updated; no residual script or ldflags references in tracked files; all Go tests pass. |
+| Files Changed | .ai/REVIEW.md, .ai/TASKS.md, .ai/HANDOFF.md |
+| Verdict | PASS |
+| Blocking Findings | none |
+| Next Role | implement |
+
+---
+
+### T-003 — implement — 2026-05-06T14:06:07Z
+
+| Field | Value |
+|-------|-------|
+| Agent | codex |
+| Summary | Removed obsolete local release scripts and refreshed release documentation for the release-please plus GoReleaser workflow. |
+| Files Changed | README.md, AGENTS.md, ROADMAP.md, scripts/build-all.sh, scripts/release.sh, .ai/TASKS.md, .ai/HANDOFF.md |
+| Validation | `rg -n "scripts/build-all\|scripts/release\|build-all\\.sh\|release\\.sh\|-X github.com/riadshalaby/gohour/cmd.Version\|ldflags" .` no hits; `go fmt ./...` PASS; `go vet ./...` PASS; `go test ./...` PASS |
+| Commit | `docs(release): replace shell-script release flow with release-please + goreleaser` |
+| Next Role | review |
+
+---
+
+### T-002 — implement — 2026-05-06T13:42:27Z
+
+| Field | Value |
+|-------|-------|
+| Agent | codex |
+| Summary | Marked T-002 done and created the approved task commit. |
+| Files Changed | .ai/TASKS.md, .ai/HANDOFF.md, .ai/REVIEW.md, .goreleaser.yaml, .github/workflows/goreleaser.yml |
+| Validation | Review verdict PASS; task commit created from reviewed changes. |
+| Commit | `c40e862e ci: add goreleaser workflow for tagged release artifacts` |
+| Next Role | implement |
+
+---
+
 ### T-002 — review — 2026-05-06T09:00:00Z
 
 | Field | Value |

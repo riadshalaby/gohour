@@ -42,13 +42,11 @@
 ## Release Rules
 - Never release directly from a feature branch.
 - A feature is releasable only after it is merged into `main` via PR and required checks/tests pass.
-- Create tag `vX.Y.Z` on the corresponding merge commit in `main` (no unrelated extra commit between merge and tag).
-- Build release artifacts from the tagged commit with embedded version metadata:
-  - `go build -ldflags "-X github.com/riadshalaby/gohour/cmd.Version=vX.Y.Z" ...`
-- Publish GitHub release with:
-  - consistent notes format: "Changes since `<previous-tag>`",
-  - distribution binaries for `darwin/linux/windows` on `amd64/arm64`,
-  - `SHA256SUMS`.
+- Releases are produced by release-please:
+  - Conventional Commits on `main` drive automated release PRs that update `cmd/version.go` and `CHANGELOG.md`.
+  - Merging a release PR creates the `vX.Y.Z` tag.
+- The `goreleaser` workflow runs on `vX.Y.Z` tag pushes and attaches `darwin/linux/windows` binaries on `amd64/arm64` plus `SHA256SUMS` to the GitHub release.
+- To pin the next release version explicitly (for example when closing a planned cycle), include `Release-As: x.y.z` in a commit footer on `main`. The `aide cycle end` workflow already emits this footer.
 
 ## Session Workflow
 - Keep entries concise and timestamped in UTC.
