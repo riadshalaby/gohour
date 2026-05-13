@@ -233,3 +233,56 @@ None.
 #### Verdict
 
 `PASS`
+
+---
+
+## Task: T-006 — Pre-fill import dialog from matched rule on file selection
+
+### Review Round 1
+
+Reviewed: 2026-05-13
+
+#### Findings
+
+- (nit) `web/static/js/app.js` — `applyImportFormSelection` falls back to the `_lookup` global when `payload.lookup` is absent. This follows the exact same pattern in `renderImportPreviewSelection`, so it is idiomatic for this codebase. Not a required fix.
+- (nit) `populateImportSelects` refactored from inline cascade logic to `fillImportSelectionSelects`. The old code used `addEventListener('change', …)`; the new code uses `projectSelect.onchange = …` (assignment). Because `applyImportFormSelection` later calls `fillImportSelectionSelects` again on file-pick, the second call safely overwrites via `onchange =`. No correctness issue.
+- (nit) The e2e test's unmatched-file path uses a `.txt` extension — clean, explicit way to exercise the no-match path. Deliberate design choice.
+
+#### Required Fixes
+
+None.
+
+#### Verification
+
+##### Steps
+
+- `go fmt ./...` — clean (no output).
+- `go vet ./...` — clean (no output).
+- `go test ./...` — all 10 packages PASS.
+- `(cd e2e && npm run test)` — **13/13 PASS**, including the new `Import dialog prefills fields and shows matched rule on file pick` test.
+- Template inspection:
+  - `web/templates/month.html` — `<p id="month-import-rule-match" class="muted import-rule-match" aria-live="polite">` inserted immediately after `<div class="dialog-body import-fields">` ✓; `name=` attributes match what `applyImportFormSelection` queries ✓
+  - `web/templates/base.html` — no changes; `#preview-rule-match` element unchanged and still populated by `renderImportPreviewSelection` ✓
+- JS inspection:
+  - `openImportDialog`: clears banner before `showModal()` ✓; `change` listener on file input guarded by `data-prefillBound` to prevent duplicates ✓
+  - `prefillImportFormFromFile`: XHR to `/api/import/rule-match?filename=…`, handles fetch errors gracefully, sets banner to `Matched rule: <name>` or `No rule matched — using defaults` ✓
+  - `applyImportFormSelection`: applies mapper, project/activity/skill cascade via `fillImportSelectionSelects`, billable ✓
+  - `fillImportOverrideSelects` delegates to `fillImportSelectionSelects` with `allowEmpty: true` — preview dialog retains empty option ✓
+  - `populateImportSelects` delegates with `allowEmpty: false` — month dialog auto-selects first item, matches original behavior ✓
+  - `fillImportSelectionSelect`: `allowEmpty` gate correctly handles placeholder and `selectedIndex = 0` fallback ✓
+- `apiFetch` confirmed at line 162 — established helper ✓; `_lookup` global at line 8 — module-level cache, consistent with existing usage ✓
+- e2e fixture (`e2e/fixtures/config.yaml`) — `generic-local` rule: `mapper: generic`, `file_template: "*.csv"`, `billable: false`, `project: P`, `activity: A`, `skill: S` — matches all new e2e assertions ✓
+- `AGENTS.md` `Current Status` updated to mention prefill behavior ✓
+- Plan-vs-implementation diff: all five plan-specified file groups touched; no scope creep. `fillImportSelectionSelects` / `fillImportSelectionSelect` are a clean generalization — exactly what the plan called for.
+
+##### Findings
+
+- All acceptance criteria for T-006 satisfied.
+
+##### Risks
+
+- `data-prefillBound` guard is per-element (survives dialog open/close cycles). On full page reload the DOM resets naturally. No risk for the current SPA pattern.
+
+#### Verdict
+
+`PASS`

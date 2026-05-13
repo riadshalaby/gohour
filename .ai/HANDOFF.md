@@ -8,6 +8,19 @@ Each entry uses this exact structure. Omit fields marked as role-specific when t
 
 ---
 
+### T-006 — review — 2026-05-13T00:01:00Z
+
+| Field | Value |
+|-------|-------|
+| Agent | claude |
+| Summary | Reviewed T-006: banner element added, file-pick XHR prefill wired with one-time listener guard, `fillImportSelectionSelects` generalisation avoids duplication, e2e fixture rule confirmed, 13/13 e2e and all Go tests pass. All acceptance criteria met; three nits, none requiring a fix. |
+| Files Changed | .ai/REVIEW.md, .ai/TASKS.md, .ai/HANDOFF.md |
+| Verdict | PASS |
+| Blocking Findings | none |
+| Next Role | implement |
+
+---
+
 ### T-005 — implement — 2026-05-13T18:08:40Z
 
 | Field | Value |
@@ -225,6 +238,32 @@ Each entry uses this exact structure. Omit fields marked as role-specific when t
 | Agent | claude |
 | Summary | Refined `ROADMAP.md` (release-please + goreleaser for Fix 1; explicit billable, prefill+banner XHR, divergence-aware Update-Rule affordance, top-level Import button for Fix 2) and produced eight `ready_for_implement` tasks in `.ai/TASKS.md` with a step-by-step `.ai/PLAN.md`. |
 | Files Changed | ROADMAP.md, .ai/PLAN.md, .ai/TASKS.md, .ai/HANDOFF.md |
+| Next Role | implement |
+
+---
+
+### T-006 — implement — 2026-05-13T19:24:01Z
+
+| Field | Value |
+|-------|-------|
+| Agent | codex |
+| Summary | Pre-filled the month import dialog from filename rule matching and added e2e coverage for matched and unmatched file picks. |
+| Files Changed | web/templates/month.html, web/static/js/app.js, e2e/tests/import.spec.ts, e2e/fixtures/config.yaml, AGENTS.md, .ai/TASKS.md, .ai/HANDOFF.md |
+| Validation | `go build -o gohour .` PASS; `npm run test` in `e2e/` PASS; `go fmt ./...` PASS; `go vet ./...` PASS; `go test ./...` PASS |
+| Commit | `feat(web): pre-fill import dialog from matched rule on file selection` |
+| Next Role | review |
+
+---
+
+### T-006 — implement — 2026-05-13T19:29:56Z
+
+| Field | Value |
+|-------|-------|
+| Agent | codex |
+| Summary | Marked T-006 done and created the approved task commit. |
+| Files Changed | .ai/TASKS.md, .ai/HANDOFF.md, .ai/REVIEW.md, AGENTS.md, e2e/fixtures/config.yaml, e2e/tests/import.spec.ts, web/static/js/app.js, web/templates/month.html |
+| Validation | Review verdict PASS; task commit created from reviewed changes. |
+| Commit | `feat(web): pre-fill import dialog from matched rule on file selection` |
 | Next Role | implement |
 
 ---

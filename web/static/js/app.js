@@ -337,68 +337,12 @@ async function getLookup(refresh) {
 
 async function populateImportSelects(form) {
   const lookup = await getLookup();
-  const projects = (lookup.projects || []).filter((project) => !project.archived);
-  const activitiesAll = lookup.activities || [];
-  const skillsAll = lookup.skills || [];
-
   const projectSel = form.querySelector('[name=project]');
   const activitySel = form.querySelector('[name=activity]');
   const skillSel = form.querySelector('[name=skill]');
   if (!projectSel || !activitySel || !skillSel) return;
 
-  const selectedNumericID = (select) => {
-    if (!select || !select.options.length || select.selectedIndex < 0) {
-      return NaN;
-    }
-    const option = select.options[select.selectedIndex];
-    return Number(option.dataset.id || '');
-  };
-  const fillImportSelect = (select, items, getID, getName) => {
-    select.innerHTML = '';
-    if (!items.length) {
-      const option = document.createElement('option');
-      option.value = '';
-      option.textContent = 'No options';
-      option.disabled = true;
-      option.selected = true;
-      select.appendChild(option);
-      return;
-    }
-    for (const item of items) {
-      const option = document.createElement('option');
-      option.value = String(getName(item));
-      option.textContent = getName(item);
-      option.dataset.name = getName(item);
-      option.dataset.id = String(getID(item));
-      select.appendChild(option);
-    }
-    select.selectedIndex = 0;
-  };
-
-  const rebuildSkills = () => {
-    const activityID = selectedNumericID(activitySel);
-    fillImportSelect(
-      skillSel,
-      skillsAll.filter((skill) => Number(skill.activityId) === activityID),
-      (skill) => skill.id,
-      (skill) => skill.name,
-    );
-  };
-  const rebuildActivities = () => {
-    const projectID = selectedNumericID(projectSel);
-    fillImportSelect(
-      activitySel,
-      activitiesAll.filter((activity) => Number(activity.projectId) === projectID && !activity.locked),
-      (activity) => activity.id,
-      (activity) => activity.name,
-    );
-    rebuildSkills();
-  };
-
-  fillImportSelect(projectSel, projects, (project) => project.id, (project) => project.name);
-  rebuildActivities();
-  projectSel.addEventListener('change', rebuildActivities);
-  activitySel.addEventListener('change', rebuildSkills);
+  fillImportSelectionSelects(lookup, {}, projectSel, activitySel, skillSel, { allowEmpty: false });
 }
 
 async function openImportDialog(dialogID, formID) {
@@ -417,7 +361,16 @@ async function openImportDialog(dialogID, formID) {
       return;
     }
   }
+  const banner = document.getElementById('month-import-rule-match');
+  if (banner) banner.textContent = '';
   dialog.showModal();
+  const fileInput = form.querySelector('input[type=file][name=file]');
+  if (fileInput && !fileInput.dataset.prefillBound) {
+    fileInput.addEventListener('change', () => {
+      void prefillImportFormFromFile(form);
+    });
+    fileInput.dataset.prefillBound = '1';
+  }
 }
 
 function closeImportDialog(dialogID) {
@@ -451,6 +404,61 @@ function clearImportFormStatus(form) {
   const statusNode = form.querySelector('.import-form-status');
   if (statusNode) {
     statusNode.textContent = '';
+  }
+}
+
+async function prefillImportFormFromFile(form) {
+  if (!form) return;
+  const fileInput = form.querySelector('input[type=file][name=file]');
+  const banner = document.getElementById('month-import-rule-match');
+  if (!fileInput || !fileInput.files || !fileInput.files[0]) {
+    if (banner) banner.textContent = '';
+    return;
+  }
+
+  const filename = fileInput.files[0].name;
+  let payload;
+  try {
+    payload = await apiFetch('GET', '/api/import/rule-match?filename=' + encodeURIComponent(filename));
+  } catch (err) {
+    if (banner) {
+      banner.textContent = 'Unable to match rule: ' + String(err.message || err);
+    }
+    return;
+  }
+
+  const matched = payload.matchedRule || null;
+  if (banner) {
+    banner.textContent = matched && matched.name
+      ? 'Matched rule: ' + matched.name
+      : 'No rule matched — using defaults';
+  }
+  applyImportFormSelection(form, payload);
+}
+
+function applyImportFormSelection(form, payload) {
+  if (!form || !payload) return;
+  const selection = payload.selection || {};
+  const lookup = payload.lookup || _lookup || { projects: [], activities: [], skills: [] };
+  if (payload.lookup) {
+    _lookup = payload.lookup;
+  }
+
+  const mapperSelect = form.querySelector('[name=mapper]');
+  if (mapperSelect && selection.mapper) {
+    mapperSelect.value = String(selection.mapper).toLowerCase();
+  }
+
+  const projectSelect = form.querySelector('[name=project]');
+  const activitySelect = form.querySelector('[name=activity]');
+  const skillSelect = form.querySelector('[name=skill]');
+  if (projectSelect && activitySelect && skillSelect) {
+    fillImportSelectionSelects(lookup, selection, projectSelect, activitySelect, skillSelect, { allowEmpty: false });
+  }
+
+  const billableSelect = form.querySelector('[name=billable]');
+  if (billableSelect) {
+    billableSelect.value = selection.billable === false ? 'non-billable' : 'billable';
   }
 }
 
@@ -634,6 +642,12 @@ function fillImportOverrideSelects(lookup, selection) {
   const skillSelect = document.getElementById('preview-skill');
   if (!projectSelect || !activitySelect || !skillSelect) return;
 
+  fillImportSelectionSelects(lookup, selection, projectSelect, activitySelect, skillSelect, { allowEmpty: true });
+}
+
+function fillImportSelectionSelects(lookup, selection, projectSelect, activitySelect, skillSelect, options) {
+  if (!projectSelect || !activitySelect || !skillSelect) return;
+  const allowEmpty = !options || options.allowEmpty !== false;
   const projects = (lookup.projects || []).filter((project) => !project.archived);
   const activitiesAll = lookup.activities || [];
   const skillsAll = lookup.skills || [];
@@ -641,29 +655,40 @@ function fillImportOverrideSelects(lookup, selection) {
   const rebuildSkills = (currentSkill) => {
     const activityID = selectedOptionID(activitySelect);
     const skills = skillsAll.filter((skill) => Number(skill.activityId) === activityID);
-    fillImportOverrideSelect(skillSelect, skills, currentSkill || '', (item) => item.id, (item) => item.name);
+    fillImportSelectionSelect(skillSelect, skills, currentSkill || '', (item) => item.id, (item) => item.name, allowEmpty);
   };
 
   const rebuildActivities = (currentActivity, currentSkill) => {
     const projectID = selectedOptionID(projectSelect);
     const activities = activitiesAll.filter((activity) => Number(activity.projectId) === projectID && !activity.locked);
-    fillImportOverrideSelect(activitySelect, activities, currentActivity || '', (item) => item.id, (item) => item.name);
+    fillImportSelectionSelect(activitySelect, activities, currentActivity || '', (item) => item.id, (item) => item.name, allowEmpty);
     rebuildSkills(currentSkill || '');
   };
 
-  fillImportOverrideSelect(projectSelect, projects, selection.project || '', (item) => item.id, (item) => item.name);
+  fillImportSelectionSelect(projectSelect, projects, selection.project || '', (item) => item.id, (item) => item.name, allowEmpty);
   rebuildActivities(selection.activity || '', selection.skill || '');
   projectSelect.onchange = () => rebuildActivities('', '');
   activitySelect.onchange = () => rebuildSkills('');
 }
 
-function fillImportOverrideSelect(select, items, currentName, getID, getName) {
+function fillImportSelectionSelect(select, items, currentName, getID, getName, allowEmpty) {
   select.innerHTML = '';
-  const empty = document.createElement('option');
-  empty.value = '';
-  empty.textContent = '';
-  empty.dataset.id = '0';
-  select.appendChild(empty);
+  if (allowEmpty) {
+    const empty = document.createElement('option');
+    empty.value = '';
+    empty.textContent = '';
+    empty.dataset.id = '0';
+    select.appendChild(empty);
+  } else if (!items.length) {
+    const option = document.createElement('option');
+    option.value = '';
+    option.textContent = 'No options';
+    option.dataset.id = '0';
+    option.disabled = true;
+    option.selected = true;
+    select.appendChild(option);
+    return;
+  }
 
   const currentNorm = normalizeName(currentName);
   let found = false;
@@ -689,6 +714,9 @@ function fillImportOverrideSelect(select, items, currentName, getID, getName) {
     option.dataset.id = '0';
     option.selected = true;
     select.appendChild(option);
+  }
+  if (!allowEmpty && select.selectedIndex < 0 && select.options.length) {
+    select.selectedIndex = 0;
   }
 }
 
