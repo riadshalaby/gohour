@@ -19,7 +19,13 @@
       "Bash(grep -rn \"rootCmd.AddCommand\\\\|var.*Cmd.*=.*&cobra.Command\" /Users/riadshalaby/localrepos/gohour/cmd/*.go)",
       "Bash(wc -l /Users/riadshalaby/localrepos/gohour/e2e/tests/*.spec.ts)",
       "Bash(PLAYWRIGHT_BROWSERS_PATH=/tmp/gohour-playwright-browsers npx playwright test --reporter=list)",
-      "Bash(ls cmd/*.go)"
+      "Bash(ls cmd/*.go)",
+      "Bash(python3 *)",
+      "Bash(command -v yq)",
+      "Bash(yq . .github/workflows/release-please.yml)",
+      "Bash(ruby -ryaml -e \"YAML.load_file\\('.github/workflows/release-please.yml'\\); puts 'YAML OK'\")",
+      "Bash(ruby *)",
+      "Bash(npm run *)"
     ]
   }
 }

@@ -169,10 +169,13 @@
               <option value="non-billable">Non-billable</option>
             </select>
           </div>
-          <label class="checkbox-field">
-            <input id="preview-update-rule" type="checkbox">
-            <span>Update matched rule</span>
-          </label>
+          <div id="preview-update-rule-wrapper" class="update-rule-wrapper" hidden>
+            <label class="checkbox-field highlight">
+              <input id="preview-update-rule" type="checkbox">
+              <span>Update matched rule with these overrides</span>
+            </label>
+            <p class="muted update-rule-hint">You changed values from the matched rule. Untick to import without saving.</p>
+          </div>
         </div>
       </section>
       <div class="table-wrap" style="max-height:400px;overflow-y:auto;overflow-x:auto;">

@@ -93,10 +93,14 @@ document.addEventListener('alpine:init', () => {
     form: null,
     options: null,
     entries: [],
+    matchedRule: null,
+    baseline: null,
     reset() {
       this.form = null;
       this.options = null;
       this.entries = [];
+      this.matchedRule = null;
+      this.baseline = null;
     },
   });
 
@@ -365,11 +369,10 @@ async function openImportDialog(dialogID, formID) {
   if (banner) banner.textContent = '';
   dialog.showModal();
   const fileInput = form.querySelector('input[type=file][name=file]');
-  if (fileInput && !fileInput.dataset.prefillBound) {
-    fileInput.addEventListener('change', () => {
+  if (fileInput) {
+    fileInput.onchange = () => {
       void prefillImportFormFromFile(form);
-    });
-    fileInput.dataset.prefillBound = '1';
+    };
   }
 }
 
@@ -510,6 +513,16 @@ function openImportPreviewDialog(previewData, form, options) {
   previewState.form = form;
   previewState.options = options || {};
   previewState.entries = Array.isArray(previewData.entries) ? previewData.entries : [];
+  previewState.matchedRule = previewData.matchedRule || null;
+  previewState.baseline = {
+    mapper: String((previewData.selection && previewData.selection.mapper) || '').toLowerCase(),
+    project: String((previewData.selection && previewData.selection.project) || ''),
+    activity: String((previewData.selection && previewData.selection.activity) || ''),
+    skill: String((previewData.selection && previewData.selection.skill) || ''),
+    billable: previewData.selection && typeof previewData.selection.billable === 'boolean'
+      ? previewData.selection.billable
+      : null,
+  };
   setImportPreviewStatus('', false);
 
   const fileInput = form ? form.querySelector('input[name=file]') : null;
@@ -632,8 +645,11 @@ function renderImportPreviewSelection(previewData, form) {
   const updateRule = document.getElementById('preview-update-rule');
   if (updateRule) {
     updateRule.checked = false;
-    updateRule.disabled = !(matched && matched.name);
+    delete updateRule.dataset.userToggled;
+    updateRule.disabled = true;
   }
+  bindImportPreviewAffordanceControls();
+  refreshUpdateRuleAffordance();
 }
 
 function fillImportOverrideSelects(lookup, selection) {
@@ -642,12 +658,18 @@ function fillImportOverrideSelects(lookup, selection) {
   const skillSelect = document.getElementById('preview-skill');
   if (!projectSelect || !activitySelect || !skillSelect) return;
 
-  fillImportSelectionSelects(lookup, selection, projectSelect, activitySelect, skillSelect, { allowEmpty: true });
+  fillImportSelectionSelects(lookup, selection, projectSelect, activitySelect, skillSelect, {
+    allowEmpty: true,
+    onChange: refreshUpdateRuleAffordance,
+  });
 }
 
 function fillImportSelectionSelects(lookup, selection, projectSelect, activitySelect, skillSelect, options) {
   if (!projectSelect || !activitySelect || !skillSelect) return;
   const allowEmpty = !options || options.allowEmpty !== false;
+  const notifyChange = options && typeof options.onChange === 'function'
+    ? options.onChange
+    : function() {};
   const projects = (lookup.projects || []).filter((project) => !project.archived);
   const activitiesAll = lookup.activities || [];
   const skillsAll = lookup.skills || [];
@@ -667,8 +689,80 @@ function fillImportSelectionSelects(lookup, selection, projectSelect, activitySe
 
   fillImportSelectionSelect(projectSelect, projects, selection.project || '', (item) => item.id, (item) => item.name, allowEmpty);
   rebuildActivities(selection.activity || '', selection.skill || '');
-  projectSelect.onchange = () => rebuildActivities('', '');
-  activitySelect.onchange = () => rebuildSkills('');
+  projectSelect.onchange = () => {
+    rebuildActivities('', '');
+    notifyChange();
+  };
+  activitySelect.onchange = () => {
+    rebuildSkills('');
+    notifyChange();
+  };
+  skillSelect.onchange = notifyChange;
+}
+
+function bindImportPreviewAffordanceControls() {
+  const mapperSelect = document.getElementById('preview-mapper');
+  const billableSelect = document.getElementById('preview-billable');
+  const updateRule = document.getElementById('preview-update-rule');
+  if (mapperSelect && !mapperSelect.dataset.updateRuleBound) {
+    mapperSelect.addEventListener('change', refreshUpdateRuleAffordance);
+    mapperSelect.dataset.updateRuleBound = '1';
+  }
+  if (billableSelect && !billableSelect.dataset.updateRuleBound) {
+    billableSelect.addEventListener('change', refreshUpdateRuleAffordance);
+    billableSelect.dataset.updateRuleBound = '1';
+  }
+  if (updateRule && !updateRule.dataset.bound) {
+    updateRule.addEventListener('change', (event) => {
+      event.target.dataset.userToggled = '1';
+    });
+    updateRule.dataset.bound = '1';
+  }
+}
+
+// Tracks whether preview fields now differ from the matched rule that seeded them.
+function importPreviewHasOverrides() {
+  const state = importPreviewStore();
+  if (!state || !state.baseline || !state.matchedRule) return false;
+
+  const mapper = String(document.getElementById('preview-mapper')?.value || '').toLowerCase();
+  const project = String(document.getElementById('preview-project')?.value || '');
+  const activity = String(document.getElementById('preview-activity')?.value || '');
+  const skill = String(document.getElementById('preview-skill')?.value || '');
+  const billableValue = String(document.getElementById('preview-billable')?.value || '');
+  const billable = billableValue === 'billable' ? true : billableValue === 'non-billable' ? false : null;
+
+  return (
+    mapper !== state.baseline.mapper ||
+    project !== state.baseline.project ||
+    activity !== state.baseline.activity ||
+    skill !== state.baseline.skill ||
+    billable !== state.baseline.billable
+  );
+}
+
+function refreshUpdateRuleAffordance() {
+  const wrapper = document.getElementById('preview-update-rule-wrapper');
+  const checkbox = document.getElementById('preview-update-rule');
+  if (!wrapper || !checkbox) return;
+  const state = importPreviewStore();
+  if (!state || !state.matchedRule) {
+    wrapper.hidden = true;
+    checkbox.checked = false;
+    checkbox.disabled = true;
+    return;
+  }
+
+  const diverged = importPreviewHasOverrides();
+  wrapper.hidden = !diverged;
+  checkbox.disabled = !diverged;
+  if (diverged && !checkbox.dataset.userToggled) {
+    checkbox.checked = true;
+  }
+  if (!diverged) {
+    checkbox.checked = false;
+    delete checkbox.dataset.userToggled;
+  }
 }
 
 function fillImportSelectionSelect(select, items, currentName, getID, getName, allowEmpty) {

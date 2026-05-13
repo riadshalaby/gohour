@@ -16,7 +16,8 @@
   - day/month submit + dry-run preview,
   - month-level local delete, remote delete, remote-to-local copy/sync actions,
   - config page at `/config` for OnePoint URL and import rule CRUD.
-- Import UI requires an explicit `billable`/`non-billable` choice (no implicit "auto"), with conflict-aware preview (clean/duplicate/overlap), and "update rule" persistence of overrides.
+- Import UI requires an explicit `billable`/`non-billable` choice (no implicit "auto"), with conflict-aware preview (clean/duplicate/overlap).
+- "Update matched rule" appears automatically on the preview dialog when a matched rule's pre-fill is overridden, persisting the change on import.
 - Day/month views show worked and billable totals for both local and remote.
 
 ## Architecture Layers

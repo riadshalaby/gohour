@@ -574,6 +574,22 @@ dialog::backdrop {
   margin: 0 0 0.65rem;
 }
 
+.update-rule-wrapper {
+  margin-top: 0.5rem;
+  padding: 0.5rem 0.75rem;
+  border-left: 3px solid var(--accent, #1f6feb);
+  background: var(--surface-muted, rgba(31, 111, 235, 0.06));
+}
+
+.update-rule-wrapper .checkbox-field.highlight {
+  font-weight: 600;
+}
+
+.update-rule-wrapper .update-rule-hint {
+  margin: 0.25rem 0 0;
+  font-size: 0.85em;
+}
+
 .import-preview-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
