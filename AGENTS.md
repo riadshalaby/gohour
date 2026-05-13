@@ -11,7 +11,7 @@
 - `serve` exposes an interactive web UI at `localhost:<port>` with:
   - month/day compare views (local vs. remote),
   - local worklog create/update/delete,
-  - import preview + import execution with automatic rule matching and per-field override,
+  - import dialog pre-fills mapper/project/activity/skill/billable from matched rule on file pick, with per-field override on the preview dialog,
   - EPM imports automatically trigger reconciliation after a successful import,
   - day/month submit + dry-run preview,
   - month-level local delete, remote delete, remote-to-local copy/sync actions,

@@ -5,6 +5,7 @@ rules:
   - name: "generic-local"
     mapper: "generic"
     file_template: "*.csv"
+    billable: false
     project_id: 100
     project: "P"
     activity_id: 200
