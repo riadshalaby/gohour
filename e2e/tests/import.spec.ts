@@ -16,8 +16,7 @@ test('Import file flow', async ({ page }, testInfo) => {
 
   await page.goto('/month/2025-01');
 
-  await page.getByRole('button', { name: /actions/i }).click();
-  await page.getByRole('menuitem', { name: 'Import file' }).click();
+  await page.getByRole('button', { name: 'Import file' }).first().click();
 
   await expect(page.locator('#month-import-dialog')).toHaveAttribute('open', '');
   await expect(page.locator('#month-import-billable option')).toHaveCount(2);
@@ -60,8 +59,7 @@ test('Import dialog prefills fields and shows matched rule on file pick', async 
   );
 
   await page.goto('/month/2025-01');
-  await page.getByRole('button', { name: /actions/i }).click();
-  await page.getByRole('menuitem', { name: 'Import file' }).click();
+  await page.getByRole('button', { name: 'Import file' }).first().click();
 
   await expect(page.locator('#month-import-dialog')).toHaveAttribute('open', '');
   await page.setInputFiles('#month-import-file', csvPath);
@@ -91,8 +89,7 @@ test('Update matched rule affordance hidden until override', async ({ page }, te
   );
 
   await page.goto('/month/2025-01');
-  await page.getByRole('button', { name: /actions/i }).click();
-  await page.getByRole('menuitem', { name: 'Import file' }).click();
+  await page.getByRole('button', { name: 'Import file' }).first().click();
   await expect(page.locator('#month-import-dialog')).toHaveAttribute('open', '');
   await page.setInputFiles('#month-import-file', csvPath);
   await expect(page.locator('#month-import-rule-match')).toContainText('Matched rule: generic-local');

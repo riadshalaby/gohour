@@ -345,3 +345,50 @@ None.
 #### Verdict
 
 `PASS`
+
+---
+
+## Task: T-008 — Promote Import to a top-level button on the month view
+
+### Review Round 1
+
+Reviewed: 2026-05-13
+
+#### Findings
+
+- No issues found. The change is minimal and precisely scoped.
+
+#### Required Fixes
+
+None.
+
+#### Verification
+
+##### Steps
+
+- `go fmt ./...` — clean (no output).
+- `go vet ./...` — clean (no output).
+- `go test ./...` — all 10 packages PASS.
+- `(cd e2e && npm run test)` — **14/14 PASS**; all three import tests now click the top-level `Import file` button via `.first()`.
+- Template inspection:
+  - `web/templates/month.html` line 14 — `<button type="button" onclick="openImportDialog(…)">Import file</button>` added immediately after the Submit month button ✓
+  - Line 57-58 — `<div class="menu-separator"></div>` and the `Import file` `role="menuitem"` entry removed from the Actions dropdown ✓
+  - Line 247 — sticky-bar `Import file` button unchanged ✓
+  - Remaining `menu-separator` at line 42 sits between other dropdown actions and is correct; no orphaned separators ✓
+- e2e inspection:
+  - All three import tests (`Import file flow`, `Import dialog prefills fields…`, `Update matched rule affordance…`) updated from `Actions → Import file` menuitem to `getByRole('button', { name: 'Import file' }).first()` ✓
+  - `.first()` correctly disambiguates the header button from the sticky-bar button ✓
+- `AGENTS.md` `Current Status` updated to mention "top-level Submit and Import buttons on the month view" ✓
+- Plan-vs-implementation diff: all three plan-specified file groups touched; no scope creep.
+
+##### Findings
+
+- All acceptance criteria for T-008 satisfied.
+
+##### Risks
+
+- None.
+
+#### Verdict
+
+`PASS`

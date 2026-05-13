@@ -11,6 +11,7 @@
 
   <!-- Primary actions -->
   <button type="button" class="btn-primary" onclick="openSubmitAction('month', '{{ .CurrentMonth }}')">Submit month</button>
+  <button type="button" onclick="openImportDialog('month-import-dialog', 'month-import-form')">Import file</button>
 
   <!-- Actions dropdown (Alpine.js x-data, Phase 2.5) -->
   <div x-data="{ open: false }" class="actions-menu" @click.outside="open = false" @keydown.escape="open = false">
@@ -56,8 +57,6 @@
           function() { deleteMonthEntries('{{ .CurrentMonth }}'); },
           'Delete'
         )">Delete all local</button>
-      <div class="menu-separator"></div>
-      <button type="button" role="menuitem" onclick="openImportDialog('month-import-dialog', 'month-import-form')">Import file</button>
     </div>
   </div>
 
