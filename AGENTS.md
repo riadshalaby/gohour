@@ -9,7 +9,7 @@
 ## Current Status 
 - Implemented commands: `serve`, `version`.
 - `serve` exposes an interactive web UI at `localhost:<port>` with:
-  - month/day compare views (local vs. remote),
+  - month/day compare views (local vs. remote) with top-level Submit and Import buttons on the month view,
   - local worklog create/update/delete,
   - import dialog pre-fills mapper/project/activity/skill/billable from matched rule on file pick, with per-field override on the preview dialog,
   - EPM imports automatically trigger reconciliation after a successful import,

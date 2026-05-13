@@ -8,6 +8,32 @@ Each entry uses this exact structure. Omit fields marked as role-specific when t
 
 ---
 
+### T-008 — implement — 2026-05-13T20:00:00Z
+
+| Field | Value |
+|-------|-------|
+| Agent | claude |
+| Summary | Marked T-008 done and created the approved task commit. |
+| Files Changed | .ai/TASKS.md, .ai/HANDOFF.md, AGENTS.md, e2e/tests/import.spec.ts, web/templates/month.html |
+| Validation | Review verdict PASS; task commit created from reviewed changes. |
+| Commit | `feat(web): add top-level Import file button to the month view header` |
+| Next Role | none |
+
+---
+
+### T-008 — review — 2026-05-13T00:03:00Z
+
+| Field | Value |
+|-------|-------|
+| Agent | claude |
+| Summary | Reviewed T-008: top-level Import button added to header, menuitem + separator removed from dropdown, sticky-bar unchanged, all three import e2e tests updated to click the new button, 14/14 PASS. No issues found. |
+| Files Changed | .ai/REVIEW.md, .ai/TASKS.md, .ai/HANDOFF.md |
+| Verdict | PASS |
+| Blocking Findings | none |
+| Next Role | implement |
+
+---
+
 ### T-007 — review — 2026-05-13T00:02:00Z
 
 | Field | Value |
@@ -278,6 +304,19 @@ Each entry uses this exact structure. Omit fields marked as role-specific when t
 | Validation | Review verdict PASS; task commit created from reviewed changes. |
 | Commit | `feat(web): pre-fill import dialog from matched rule on file selection` |
 | Next Role | implement |
+
+---
+
+### T-008 — implement — 2026-05-13T19:55:00Z
+
+| Field | Value |
+|-------|-------|
+| Agent | claude |
+| Summary | Promoted Import to a top-level button beside Submit month on the month view; removed the Import file entry and its preceding separator from the Actions dropdown; updated all three e2e import tests to click the top-level button; updated AGENTS.md Current Status. |
+| Files Changed | web/templates/month.html, e2e/tests/import.spec.ts, AGENTS.md, .ai/TASKS.md, .ai/HANDOFF.md |
+| Validation | `go build -o gohour .` PASS; `npm run test` in `e2e/` 14/14 PASS; `go fmt ./...` PASS; `go vet ./...` PASS; `go test ./...` PASS |
+| Commit | `feat(web): add top-level Import file button to the month view header` |
+| Next Role | review |
 
 ---
 
