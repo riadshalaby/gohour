@@ -286,3 +286,62 @@ None.
 #### Verdict
 
 `PASS`
+
+---
+
+## Task: T-007 — Surface "Update matched rule" affordance on field divergence
+
+### Review Round 1
+
+Reviewed: 2026-05-13
+
+#### Findings
+
+- (nit) `web/static/js/app.js` — T-007 proactively resolved the T-006 review nit: the `data-prefillBound` / `addEventListener` pattern in `openImportDialog` was replaced with a plain `fileInput.onchange = …` assignment. Cleaner and simpler; documenting as a beneficial cleanup.
+- (nit) `bindImportPreviewAffordanceControls` uses `data-updateRuleBound` to guard mapper and billable `addEventListener` calls, and a separate `data.bound` flag for the checkbox. Both guards are correct; the different attribute names are not a bug but slightly inconsistent naming. Not a required fix.
+- (nit) `importPreviewHasOverrides` reads `project`, `activity`, `skill` via `.value` on the select elements, which returns the display name. `baseline.project` etc. are also display names from `previewData.selection.project`. Consistent. Documenting for traceability.
+
+#### Required Fixes
+
+None.
+
+#### Verification
+
+##### Steps
+
+- `go fmt ./...` — clean (no output).
+- `go vet ./...` — clean (no output).
+- `go test ./...` — all 10 packages PASS.
+- `(cd e2e && npm run test)` — **14/14 PASS**, including the new `Update matched rule affordance hidden until override` test (test #10).
+- Template inspection:
+  - `web/templates/base.html` — `<div id="preview-update-rule-wrapper" class="update-rule-wrapper" hidden>` wraps the checkbox + hint; checkbox `id="preview-update-rule"` preserved ✓
+- CSS inspection:
+  - `web/static/css/components.css` — `.update-rule-wrapper`, `.checkbox-field.highlight`, `.update-rule-hint` rules added; no existing rules broken ✓
+- JS inspection:
+  - Alpine store extended with `matchedRule` / `baseline` fields and reset in `reset()` ✓
+  - `openImportPreviewDialog`: captures `previewState.matchedRule` and `previewState.baseline` (mapper/project/activity/skill/billable) from `previewData` ✓
+  - `renderImportPreviewSelection`: resets checkbox with `delete userToggled`, forces `disabled = true`, calls `bindImportPreviewAffordanceControls()` then `refreshUpdateRuleAffordance()` ✓
+  - `fillImportOverrideSelects`: passes `onChange: refreshUpdateRuleAffordance` to `fillImportSelectionSelects` — project/activity/skill cascade changes trigger re-evaluation ✓
+  - `fillImportSelectionSelects`: `options.onChange` wired into project/activity/skill `onchange` handlers ✓
+  - `bindImportPreviewAffordanceControls`: one-time mapper + billable listeners guard prevents duplicates; checkbox user-toggle listener records `userToggled` ✓
+  - `importPreviewHasOverrides`: compares all five fields (mapper/project/activity/skill/billable) against baseline ✓
+  - `refreshUpdateRuleAffordance`: hides wrapper when no rule or no divergence; shows + disables when diverged but only auto-checks when `userToggled` is absent; clears state on no-divergence ✓
+- e2e test logic validated:
+  - Initial state after preview open: wrapper hidden, checkbox disabled ✓
+  - Select `billable` (diverges from rule's `non-billable` baseline): wrapper visible, checkbox auto-checked and enabled ✓
+  - Manual uncheck → `userToggled = '1'` set
+  - Further change (mapper → `epm`): wrapper still visible, checkbox stays unchecked (user intent respected) ✓
+- `AGENTS.md` `Current Status` split into two bullets (explicit billable + update-rule affordance) ✓
+- Plan-vs-implementation diff: all five plan-specified file groups touched; proactive cleanup of `prefillBound` guard (no scope creep, only simplification).
+
+##### Findings
+
+- All acceptance criteria for T-007 satisfied.
+
+##### Risks
+
+- None.
+
+#### Verdict
+
+`PASS`

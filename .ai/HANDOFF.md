@@ -8,6 +8,19 @@ Each entry uses this exact structure. Omit fields marked as role-specific when t
 
 ---
 
+### T-007 — review — 2026-05-13T00:02:00Z
+
+| Field | Value |
+|-------|-------|
+| Agent | claude |
+| Summary | Reviewed T-007: wrapper + CSS added, baseline snapshot captured on preview open, divergence checker compares all five fields, auto-check with user-toggle-respect logic correct, e2e validates full flow including manual untick, 14/14 e2e and all Go tests pass. All acceptance criteria met; three nits, none requiring a fix. |
+| Files Changed | .ai/REVIEW.md, .ai/TASKS.md, .ai/HANDOFF.md |
+| Verdict | PASS |
+| Blocking Findings | none |
+| Next Role | implement |
+
+---
+
 ### T-006 — review — 2026-05-13T00:01:00Z
 
 | Field | Value |
@@ -267,3 +280,27 @@ Each entry uses this exact structure. Omit fields marked as role-specific when t
 | Next Role | implement |
 
 ---
+
+### T-007 — implement — 2026-05-13T19:50:00Z
+
+| Field | Value |
+|-------|-------|
+| Agent | claude |
+| Summary | Marked T-007 done and created the approved task commit. |
+| Files Changed | .ai/TASKS.md, .ai/HANDOFF.md, .ai/REVIEW.md, AGENTS.md, e2e/tests/import.spec.ts, web/static/css/components.css, web/static/js/app.js, web/templates/base.html |
+| Validation | Review verdict PASS; task commit created from reviewed changes. |
+| Commit | `fix(web): surface "Update matched rule" affordance on field override` |
+| Next Role | implement |
+
+---
+
+### T-007 — implement — 2026-05-13T19:43:38Z
+
+| Field | Value |
+|-------|-------|
+| Agent | codex |
+| Summary | Surfaced the Update matched rule affordance only when matched-rule preview fields diverge and covered auto-check plus manual untick behavior. |
+| Files Changed | web/templates/base.html, web/static/js/app.js, web/static/css/components.css, e2e/tests/import.spec.ts, AGENTS.md, .ai/TASKS.md, .ai/HANDOFF.md |
+| Validation | `go build -o gohour .` PASS; `npm run test` in `e2e/` PASS; `go fmt ./...` PASS; `go vet ./...` PASS; `go test ./...` PASS |
+| Commit | `fix(web): surface "Update matched rule" affordance on field override` |
+| Next Role | review |

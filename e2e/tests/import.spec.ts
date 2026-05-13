@@ -77,3 +77,39 @@ test('Import dialog prefills fields and shows matched rule on file pick', async 
   await expect(page.locator('#month-import-mapper')).toHaveValue('epm');
   await expect(page.locator('#month-import-billable')).toHaveValue('billable');
 });
+
+test('Update matched rule affordance hidden until override', async ({ page }, testInfo) => {
+  const csvPath = testInfo.outputPath('rule-update.csv');
+  await writeFile(
+    csvPath,
+    [
+      'description,startdatetime,enddatetime,project,activity,skill',
+      'override check,2025-01-16 09:00,2025-01-16 10:00,P,A,S',
+      '',
+    ].join('\n'),
+    'utf8',
+  );
+
+  await page.goto('/month/2025-01');
+  await page.getByRole('button', { name: /actions/i }).click();
+  await page.getByRole('menuitem', { name: 'Import file' }).click();
+  await expect(page.locator('#month-import-dialog')).toHaveAttribute('open', '');
+  await page.setInputFiles('#month-import-file', csvPath);
+  await expect(page.locator('#month-import-rule-match')).toContainText('Matched rule: generic-local');
+  await page.getByRole('button', { name: 'Upload' }).click();
+
+  await expect(page.locator('#preview-import-btn')).toBeVisible();
+  await expect(page.locator('#preview-rule-match')).toContainText('Matched rule: generic-local');
+  await expect(page.locator('#preview-update-rule-wrapper')).toBeHidden();
+  await expect(page.locator('#preview-update-rule')).toBeDisabled();
+
+  await page.locator('#preview-billable').selectOption('billable');
+  await expect(page.locator('#preview-update-rule-wrapper')).toBeVisible();
+  await expect(page.locator('#preview-update-rule')).toBeChecked();
+  await expect(page.locator('#preview-update-rule')).toBeEnabled();
+
+  await page.locator('#preview-update-rule').uncheck();
+  await page.locator('#preview-mapper').selectOption('epm');
+  await expect(page.locator('#preview-update-rule-wrapper')).toBeVisible();
+  await expect(page.locator('#preview-update-rule')).not.toBeChecked();
+});
