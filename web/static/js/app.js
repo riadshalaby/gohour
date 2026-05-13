@@ -618,13 +618,7 @@ function renderImportPreviewSelection(previewData, form) {
 
   const billableSelect = document.getElementById('preview-billable');
   if (billableSelect) {
-    if (selection.billable === true) {
-      billableSelect.value = 'billable';
-    } else if (selection.billable === false) {
-      billableSelect.value = 'non-billable';
-    } else {
-      billableSelect.value = 'auto';
-    }
+    billableSelect.value = selection.billable === false ? 'non-billable' : 'billable';
   }
 
   const updateRule = document.getElementById('preview-update-rule');
@@ -875,7 +869,7 @@ function appendImportPreviewSelection(formData) {
     formData.set('skill', skillSelect.value || '');
     formData.set('skillId', String(selectedOptionID(skillSelect)));
   }
-  if (billableSelect) formData.set('billable', billableSelect.value || 'auto');
+  if (billableSelect) formData.set('billable', billableSelect.value || 'billable');
   if (updateRule && updateRule.checked && !updateRule.disabled) {
     formData.set('updateRule', 'true');
   } else {

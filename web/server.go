@@ -2141,7 +2141,10 @@ func (s *Server) parseAndRunImportForm(r *http.Request) (importFormResult, error
 		return importFormResult{}, err
 	}
 	mapperName = mapper.Name()
-	selection := importSelectionFromForm(r, mapperName, matchedRule)
+	selection, err := importSelectionFromForm(r, mapperName, matchedRule)
+	if err != nil {
+		return importFormResult{}, err
+	}
 
 	tmp, err := os.CreateTemp("", tempUploadPattern(header.Filename))
 	if err != nil {
@@ -2209,7 +2212,7 @@ func worklogRange(entries []worklog.Entry) (time.Time, time.Time, bool) {
 	return minDay, maxDay, true
 }
 
-func importSelectionFromForm(r *http.Request, mapperName string, matchedRule config.Rule) rulePayload {
+func importSelectionFromForm(r *http.Request, mapperName string, matchedRule config.Rule) (rulePayload, error) {
 	selection := rulePayloadFromRule(matchedRule)
 	selection.Mapper = firstNonEmptyString(strings.TrimSpace(r.FormValue("mapper")), selection.Mapper, mapperName)
 	selection.Mapper = strings.ToLower(strings.TrimSpace(selection.Mapper))
@@ -2219,13 +2222,20 @@ func importSelectionFromForm(r *http.Request, mapperName string, matchedRule con
 	selection.ProjectID = firstNonZeroInt64(parseInt64FormValue(r.FormValue("projectId")), selection.ProjectID)
 	selection.ActivityID = firstNonZeroInt64(parseInt64FormValue(r.FormValue("activityId")), selection.ActivityID)
 	selection.SkillID = firstNonZeroInt64(parseInt64FormValue(r.FormValue("skillId")), selection.SkillID)
-	switch strings.TrimSpace(r.FormValue("billable")) {
+	billableValue := strings.ToLower(strings.TrimSpace(r.FormValue("billable")))
+	switch billableValue {
 	case "billable":
 		selection.Billable = boolValuePtr(true)
 	case "non-billable":
 		selection.Billable = boolValuePtr(false)
+	case "":
+		if selection.Billable == nil {
+			selection.Billable = boolValuePtr(true)
+		}
+	default:
+		return rulePayload{}, fmt.Errorf("invalid billable value: %q (expected billable or non-billable)", billableValue)
 	}
-	return selection
+	return selection, nil
 }
 
 func applyImportSelection(entries []worklog.Entry, selection rulePayload) {

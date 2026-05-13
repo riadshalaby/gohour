@@ -180,3 +180,56 @@ None.
 #### Verdict
 
 `PASS`
+
+---
+
+## Task: T-005 — Remove the "Auto" billable option from import flow
+
+### Review Round 1
+
+Reviewed: 2026-05-13
+
+#### Findings
+
+- (nit) `web/server.go` — `importSelectionFromForm` now applies `strings.ToLower` before the switch, making the guard case-insensitive. The plan only mentioned `strings.TrimSpace`; the extra `ToLower` is a beneficial defensive addition. Not a required fix; documenting for traceability.
+- (nit) `web/templates/base.html` — the original template had `<option value="auto">Auto</option>` as the *first* option (implicit default). Removing it and adding `selected` to the `billable` option is correct and matches the plan exactly.
+- (nit) `TestServer_ImportPreview_NoRuleReturnsEmptySelection` — the plan noted this test might need a billable-assertion update. It does not assert on `Billable` at all, so no update was needed. The test continues to pass. Documenting for traceability.
+
+#### Required Fixes
+
+None.
+
+#### Verification
+
+##### Steps
+
+- `go test ./web/ -run "TestServer_ImportPreview_DefaultsBillableTrueWhenNoRule|TestServer_ImportPreview_RejectsAutoBillable" -v` — both PASS.
+- `go test ./web/ -run TestServer_ImportPreview -v` — all five ImportPreview tests PASS (including pre-existing ones; no regressions).
+- `go fmt ./...` — clean (no output).
+- `go vet ./...` — clean (no output).
+- `go test ./...` — all 10 packages PASS.
+- `(cd e2e && npm run test)` — 12/12 PASS, including `Import file flow` which now asserts `#month-import-billable option` count = 2.
+- Template inspection:
+  - `web/templates/month.html` — `auto` option removed; `billable` is the only `selected` default; selector has exactly 2 options ✓
+  - `web/templates/base.html` — `auto` option removed; `billable` is the only `selected` default; selector has exactly 2 options ✓
+- JS inspection:
+  - `renderImportPreviewSelection`: 3-case if/else replaced with ternary `selection.billable === false ? 'non-billable' : 'billable'` ✓
+  - `appendImportPreviewSelection`: fallback changed from `|| 'auto'` to `|| 'billable'` ✓
+- Server inspection:
+  - `importSelectionFromForm`: signature changed to `(rulePayload, error)`; `billable=auto` triggers `default` branch returning `fmt.Errorf`; empty billable with `nil` matched-rule defaults to `boolValuePtr(true)` ✓
+  - `parseAndRunImportForm`: error is propagated; callers (`handleAPIImport`, `handleAPIImportPreview`) both surface it as HTTP 400 ✓
+- `AGENTS.md` `Current Status` updated to reflect explicit-only billable choice ✓
+- Residual `auto` scan: `rg -n "auto" web/templates/month.html web/templates/base.html web/static/js/app.js` — only match is a CSS `overflow:auto` style attribute; no billable-related `auto` references remain ✓
+- Plan-vs-implementation diff: all seven plan-specified files modified; no scope creep.
+
+##### Findings
+
+- All acceptance criteria for T-005 satisfied.
+
+##### Risks
+
+- None.
+
+#### Verdict
+
+`PASS`
