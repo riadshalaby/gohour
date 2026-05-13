@@ -130,3 +130,53 @@ Reviewed: 2026-05-06
 
 #### Verdict
 `PASS`
+
+---
+
+## Task: T-004 — Add `GET /api/import/rule-match` endpoint
+
+### Review Round 1
+
+Status: **complete**
+
+Reviewed: 2026-05-13
+
+#### Findings
+
+- (nit) `web/server.go:1466,1473` — `rulePayloadFromRule(matched)` is called twice when a match is found: once to build `selection` and again to build `matchedPayload`. Both produce identical struct values. Not a correctness issue; a local variable could eliminate the duplicate call. No fix required.
+- (nit) Plan Step 4 referenced non-existent helpers `s.loadConfig()` and `s.lookupSnapshotResponse()`. The implementation correctly used `s.configSnapshot()` and the `s.loadLookupSnapshot()` + `lookupResponseFromSnapshot()` pair, which is the established pattern in `handleAPIImportPreview`. Beneficial deviation; documenting for traceability.
+
+#### Required Fixes
+
+None.
+
+#### Verification
+
+##### Steps
+
+- `go test ./web/ -run TestServer_ImportRuleMatch -v` — all three new tests PASS (`TestServer_ImportRuleMatch_ReturnsMatchedRule`, `TestServer_ImportRuleMatch_NoMatchReturnsEmptySelection`, `TestServer_ImportRuleMatch_RequiresFilename`).
+- `go fmt ./...` — clean (no output).
+- `go vet ./...` — clean (no output).
+- `go test ./...` — all packages PASS (cmd, config, importer, internal/timeutil, onepoint, output, reconcile, storage, submitter, web).
+- Code inspection:
+  - `importRuleMatchResponse` struct added near `importPreviewResponse` ✓
+  - Route `GET /api/import/rule-match` registered in `NewServer` mux before `POST /api/import-preview` ✓
+  - Handler uses `s.configSnapshot()` (thread-safe config read) ✓
+  - `importer.MatchRuleByTemplate` called with `cfg.Rules`; returns empty `config.Rule{}` on no-match; `FileTemplate != ""` guard correctly distinguishes no-match from match ✓
+  - Lookup failure handled silently: `lookup` initialized to `&lookupResponse{}`, populated only on success — matches plan intent ✓
+  - Mapper list uses `importMapperNames()` helper (consistent with `handleAPIImportPreview`) ✓
+  - Handler doc comment present at line 1456 ✓
+  - No changes outside `web/server.go` and `web/server_test.go` ✓
+- Plan-vs-implementation diff review: all acceptance criteria met; no scope creep.
+
+##### Findings
+
+- All acceptance criteria for T-004 satisfied.
+
+##### Risks
+
+- Lookup failures produce an empty `lookup` field rather than surfacing an error to the caller. This is intentional per the plan. Callers (future T-006 JS) should treat an empty lookup gracefully.
+
+#### Verdict
+
+`PASS`

@@ -8,6 +8,58 @@ Each entry uses this exact structure. Omit fields marked as role-specific when t
 
 ---
 
+### T-004 — implement — 2026-05-13T17:59:01Z
+
+| Field | Value |
+|-------|-------|
+| Agent | codex |
+| Summary | Marked T-004 done and created the approved task commit. |
+| Files Changed | .ai/TASKS.md, .ai/HANDOFF.md, .ai/REVIEW.md, web/server.go, web/server_test.go |
+| Validation | Review verdict PASS; task commit created from reviewed changes. |
+| Commit | `feat(api): expose GET /api/import/rule-match for file-pick prefill` |
+| Next Role | implement |
+
+---
+
+### T-004 — review — 2026-05-13T18:10:00Z
+
+| Field | Value |
+|-------|-------|
+| Agent | claude |
+| Summary | Reviewed T-004: three new tests pass, all validations clean, implementation matches plan intent using established codebase patterns. |
+| Files Changed | .ai/REVIEW.md, .ai/TASKS.md, .ai/HANDOFF.md |
+| Verdict | PASS |
+| Blocking Findings | none |
+| Next Role | implement |
+
+---
+
+### T-003 — implement — 2026-05-06T14:24:41Z
+
+| Field | Value |
+|-------|-------|
+| Agent | codex |
+| Summary | Marked T-003 done and created the approved task commit. |
+| Files Changed | .ai/TASKS.md, .ai/HANDOFF.md, .ai/REVIEW.md, README.md, AGENTS.md, ROADMAP.md, scripts/build-all.sh, scripts/release.sh |
+| Validation | Review verdict PASS; task commit created from reviewed changes. |
+| Commit | `8dd28f3e docs(release): replace shell-script release flow with release-please + goreleaser` |
+| Next Role | implement |
+
+---
+
+### T-004 — implement — 2026-05-13T17:53:03Z
+
+| Field | Value |
+|-------|-------|
+| Agent | codex |
+| Summary | Added a filename-only import rule-match API endpoint that returns matched rule data, resolved selection defaults, mapper names, and lookup data for file-pick prefill. |
+| Files Changed | web/server.go, web/server_test.go, .ai/TASKS.md, .ai/HANDOFF.md |
+| Validation | `go test ./web/ -run TestServer_ImportRuleMatch -v` PASS; `go fmt ./...` PASS; `go test ./web/...` PASS; `go vet ./...` PASS; `go test ./...` PASS |
+| Commit | `feat(api): expose GET /api/import/rule-match for file-pick prefill` |
+| Next Role | review |
+
+---
+
 ### T-003 — review — 2026-05-06T14:15:00Z
 
 | Field | Value |
