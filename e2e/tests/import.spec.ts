@@ -20,6 +20,7 @@ test('Import file flow', async ({ page }, testInfo) => {
   await page.getByRole('menuitem', { name: 'Import file' }).click();
 
   await expect(page.locator('#month-import-dialog')).toHaveAttribute('open', '');
+  await expect(page.locator('#month-import-billable option')).toHaveCount(2);
   await expect(page.locator('#month-import-project option')).toHaveCount(1);
 
   await page.selectOption('#month-import-mapper', 'generic');

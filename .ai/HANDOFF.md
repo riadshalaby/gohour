@@ -8,6 +8,32 @@ Each entry uses this exact structure. Omit fields marked as role-specific when t
 
 ---
 
+### T-005 — implement — 2026-05-13T18:08:40Z
+
+| Field | Value |
+|-------|-------|
+| Agent | codex |
+| Summary | Marked T-005 done and created the approved task commit. |
+| Files Changed | .ai/TASKS.md, .ai/HANDOFF.md, .ai/REVIEW.md, AGENTS.md, e2e/tests/import.spec.ts, web/server.go, web/server_test.go, web/static/js/app.js, web/templates/base.html, web/templates/month.html |
+| Validation | Review verdict PASS; task commit created from reviewed changes. |
+| Commit | `fix(web): remove confusing "Auto" billable option from import dialog` |
+| Next Role | implement |
+
+---
+
+### T-005 — implement — 2026-05-13T18:04:33Z
+
+| Field | Value |
+|-------|-------|
+| Agent | codex |
+| Summary | Removed the import billable auto mode so import dialogs expose only explicit billable and non-billable choices, with server validation and default billable selection. |
+| Files Changed | web/server.go, web/server_test.go, web/templates/month.html, web/templates/base.html, web/static/js/app.js, e2e/tests/import.spec.ts, AGENTS.md, .ai/TASKS.md, .ai/HANDOFF.md |
+| Validation | `go test ./web/ -run 'TestServer_ImportPreview_DefaultsBillableTrueWhenNoRule\|TestServer_ImportPreview_RejectsAutoBillable' -v` PASS; `go fmt ./...` PASS; `go test ./web/...` PASS; `npm run test` in `e2e/` failed in sandbox due Chromium Mach port permission, then PASS outside sandbox; `go vet ./...` PASS; `go test ./...` PASS |
+| Commit | `fix(web): remove confusing "Auto" billable option from import dialog` |
+| Next Role | review |
+
+---
+
 ### T-004 — implement — 2026-05-13T17:59:01Z
 
 | Field | Value |
@@ -176,6 +202,19 @@ Each entry uses this exact structure. Omit fields marked as role-specific when t
 | Verdict | PASS \| PASS_WITH_NOTES \| FAIL (review only) |
 | Blocking Findings | Numbered list or "none" (review only) |
 | Next Role | plan \| implement \| review \| none |
+
+---
+
+### T-005 — review — 2026-05-13T00:00:00Z
+
+| Field | Value |
+|-------|-------|
+| Agent | claude |
+| Summary | Reviewed T-005: "Auto" billable option removed from both import dialogs, server rejects `billable=auto` with 400, default is `billable=true`, e2e and all Go tests pass. All acceptance criteria met; three nits documented, none requiring a fix. |
+| Files Changed | .ai/REVIEW.md, .ai/TASKS.md, .ai/HANDOFF.md |
+| Verdict | PASS |
+| Blocking Findings | none |
+| Next Role | implement |
 
 ---
 

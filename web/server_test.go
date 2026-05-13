@@ -2277,6 +2277,49 @@ func TestServer_ImportPreview_NoRuleReturnsEmptySelection(t *testing.T) {
 	}
 }
 
+func TestServer_ImportPreview_DefaultsBillableTrueWhenNoRule(t *testing.T) {
+	t.Parallel()
+
+	store := openTestStore(t)
+	ts := httptest.NewServer(NewServer(store, &fakeClient{snapshot: lookupSnapshotForImportOverride()}, testConfig(nil)))
+	defer ts.Close()
+
+	resp := postImportMultipart(t, ts.URL+"/api/import-preview", map[string]string{"mapper": "generic"}, "unmatched.csv",
+		"description,startdatetime,enddatetime,project,activity,skill\n"+
+			"Task,2026-03-01 09:00,2026-03-01 10:00,FromFile,FromFile,FromFile\n",
+	)
+	defer resp.Body.Close()
+
+	var payload importPreviewResponse
+	if err := json.NewDecoder(resp.Body).Decode(&payload); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if payload.Selection.Billable == nil || !*payload.Selection.Billable {
+		t.Fatalf("expected default billable=true selection when no rule matches, got %+v", payload.Selection.Billable)
+	}
+}
+
+func TestServer_ImportPreview_RejectsAutoBillable(t *testing.T) {
+	t.Parallel()
+
+	store := openTestStore(t)
+	ts := httptest.NewServer(NewServer(store, &fakeClient{snapshot: lookupSnapshotForImportOverride()}, testConfig(nil)))
+	defer ts.Close()
+
+	resp := postImportMultipart(t, ts.URL+"/api/import-preview", map[string]string{
+		"mapper":   "generic",
+		"billable": "auto",
+	}, "unmatched.csv",
+		"description,startdatetime,enddatetime,project,activity,skill\n"+
+			"Task,2026-03-01 09:00,2026-03-01 10:00,FromFile,FromFile,FromFile\n",
+	)
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusBadRequest {
+		t.Fatalf("expected 400 for billable=auto, got %d", resp.StatusCode)
+	}
+}
+
 func TestServer_ImportRuleMatch_ReturnsMatchedRule(t *testing.T) {
 	t.Parallel()
 
