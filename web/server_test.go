@@ -2277,6 +2277,94 @@ func TestServer_ImportPreview_NoRuleReturnsEmptySelection(t *testing.T) {
 	}
 }
 
+func TestServer_ImportRuleMatch_ReturnsMatchedRule(t *testing.T) {
+	t.Parallel()
+
+	store := openTestStore(t)
+	rule := ruleForLocal()
+	rule.Name = "weekly-hours"
+	rule.Mapper = "generic"
+	rule.FileTemplate = "hours-*.csv"
+	rule.Billable = boolPtr(false)
+	client := &fakeClient{snapshot: lookupSnapshotForImportOverride()}
+	ts := httptest.NewServer(NewServer(store, client, testConfig([]config.Rule{rule})))
+	defer ts.Close()
+
+	resp, err := http.Get(ts.URL + "/api/import/rule-match?filename=hours-2026.csv")
+	if err != nil {
+		t.Fatalf("get rule-match: %v", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("expected 200, got %d", resp.StatusCode)
+	}
+
+	var payload importRuleMatchResponse
+	if err := json.NewDecoder(resp.Body).Decode(&payload); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if payload.MatchedRule == nil || payload.MatchedRule.Name != "weekly-hours" {
+		t.Fatalf("expected matched weekly-hours rule, got %+v", payload.MatchedRule)
+	}
+	if payload.Selection.Mapper != "generic" || payload.Selection.Project != "P" {
+		t.Fatalf("unexpected selection: %+v", payload.Selection)
+	}
+	if payload.Selection.Billable == nil || *payload.Selection.Billable {
+		t.Fatalf("expected non-billable selection, got %+v", payload.Selection.Billable)
+	}
+	if payload.Lookup == nil || len(payload.Lookup.Projects) == 0 {
+		t.Fatalf("expected lookup data, got %+v", payload.Lookup)
+	}
+	if !stringSliceContains(payload.Mappers, "epm") {
+		t.Fatalf("expected mappers list, got %+v", payload.Mappers)
+	}
+}
+
+func TestServer_ImportRuleMatch_NoMatchReturnsEmptySelection(t *testing.T) {
+	t.Parallel()
+
+	store := openTestStore(t)
+	ts := httptest.NewServer(NewServer(store, &fakeClient{snapshot: lookupSnapshotForImportOverride()}, testConfig(nil)))
+	defer ts.Close()
+
+	resp, err := http.Get(ts.URL + "/api/import/rule-match?filename=unmatched.csv")
+	if err != nil {
+		t.Fatalf("get rule-match: %v", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("expected 200, got %d", resp.StatusCode)
+	}
+
+	var payload importRuleMatchResponse
+	if err := json.NewDecoder(resp.Body).Decode(&payload); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if payload.MatchedRule != nil {
+		t.Fatalf("expected no matched rule, got %+v", payload.MatchedRule)
+	}
+	if payload.Selection.Project != "" || payload.Selection.Activity != "" || payload.Selection.Skill != "" {
+		t.Fatalf("expected empty project/activity/skill selection, got %+v", payload.Selection)
+	}
+}
+
+func TestServer_ImportRuleMatch_RequiresFilename(t *testing.T) {
+	t.Parallel()
+
+	store := openTestStore(t)
+	ts := httptest.NewServer(NewServer(store, &fakeClient{}, testConfig(nil)))
+	defer ts.Close()
+
+	resp, err := http.Get(ts.URL + "/api/import/rule-match")
+	if err != nil {
+		t.Fatalf("get rule-match: %v", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusBadRequest {
+		t.Fatalf("expected 400 for missing filename, got %d", resp.StatusCode)
+	}
+}
+
 func TestServer_Import_AppliesOverrides(t *testing.T) {
 	t.Parallel()
 

@@ -207,6 +207,13 @@ type importPreviewResponse struct {
 	Lookup      *lookupResponse      `json:"lookup,omitempty"`
 }
 
+type importRuleMatchResponse struct {
+	MatchedRule *rulePayload    `json:"matchedRule,omitempty"`
+	Selection   rulePayload     `json:"selection"`
+	Mappers     []string        `json:"mappers"`
+	Lookup      *lookupResponse `json:"lookup,omitempty"`
+}
+
 type importFormResult struct {
 	tmpPath     string
 	result      *importer.Result
@@ -347,6 +354,7 @@ func NewServer(store *storage.SQLiteStore, client onepoint.Client, cfg config.Co
 	mux.HandleFunc("PATCH /api/worklog/{id}", server.handleAPIWorklogPatch)
 	mux.HandleFunc("DELETE /api/worklog/{id}", server.handleAPIWorklogDelete)
 	mux.HandleFunc("POST /api/import", server.handleAPIImport)
+	mux.HandleFunc("GET /api/import/rule-match", server.handleAPIImportRuleMatch)
 	mux.HandleFunc("POST /api/import-preview", server.handleAPIImportPreview)
 	mux.HandleFunc("POST /api/submit/day/{date}", server.handleAPISubmitDay)
 	mux.HandleFunc("POST /api/submit/month/{month}", server.handleAPISubmitMonth)
@@ -1443,6 +1451,41 @@ func (s *Server) handleAPIImportPreview(w http.ResponseWriter, r *http.Request) 
 	}
 
 	writeJSON(w, http.StatusOK, response)
+}
+
+// handleAPIImportRuleMatch resolves filename-only import defaults for file-pick prefill.
+func (s *Server) handleAPIImportRuleMatch(w http.ResponseWriter, r *http.Request) {
+	filename := strings.TrimSpace(r.URL.Query().Get("filename"))
+	if filename == "" {
+		http.Error(w, "filename query parameter is required", http.StatusBadRequest)
+		return
+	}
+
+	cfg := s.configSnapshot()
+	matched := importer.MatchRuleByTemplate(filename, cfg.Rules)
+	selection := rulePayloadFromRule(matched)
+	if strings.TrimSpace(selection.Mapper) == "" {
+		selection.Mapper = "epm"
+	}
+
+	var matchedPayload *rulePayload
+	if matched.FileTemplate != "" {
+		mp := rulePayloadFromRule(matched)
+		matchedPayload = &mp
+	}
+
+	lookup := &lookupResponse{}
+	if snapshot, err := s.loadLookupSnapshot(r.Context(), false); err == nil {
+		resp := lookupResponseFromSnapshot(snapshot)
+		lookup = &resp
+	}
+
+	writeJSON(w, http.StatusOK, importRuleMatchResponse{
+		MatchedRule: matchedPayload,
+		Selection:   selection,
+		Mappers:     importMapperNames(),
+		Lookup:      lookup,
+	})
 }
 
 func (s *Server) handleAPIDeleteMonthWorklogs(w http.ResponseWriter, r *http.Request) {
