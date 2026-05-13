@@ -10,7 +10,7 @@ import (
 // The line below carries the release-please annotation; do not edit by hand
 // outside of release-please PRs. Local development builds keep the source-tree
 // version literal.
-const Version = "0.4.1" // x-release-please-version
+const Version = "0.4.0" // x-release-please-version
 
 var versionCmd = &cobra.Command{
 	Use:   "version",
