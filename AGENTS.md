@@ -131,21 +131,53 @@
     - `aide po [agent] [agent-options...]` (launcher for the PO orchestration session)
 - No `.ai/MODE` file is used.
 
+## Modes
+- `profile` in `.ai/config.json` selects the workflow shape:
+  - `full` is the default profile.
+  - `lite` replaces separate implementer/reviewer sessions with one `aide dev` session.
+- `full` profile:
+  - launch `aide plan`, `aide implement`, and `aide review` yourself in manual mode
+  - optionally launch `aide po` for auto mode orchestration
+  - keep the usual implementer -> reviewer -> implementer commit handoff
+- `lite` profile:
+  - launch `aide plan` and `aide dev`
+  - implementation, review, and commit happen inside the dev session
+  - Human approval still happens at `ready_for_review` in lite mode.
+  - PO orchestration is not available
+- Lite-mode status ownership:
+  - planner still owns planning states
+  - the dev session owns `in_implementation`, `in_review`, `ready_to_commit`, and `done`
+  - `ready_for_review` remains the explicit human checkpoint before `commit_task`
+- Lite-mode test guardrail:
+  - During the review hat, if a test fails you may either change implementation code to make it pass, or add new assertions. You must not weaken or delete existing assertions to make a test pass.
+  - If you believe a test is genuinely wrong for the new behavior, halt to `changes_requested`, do not retry, and write your proposed test change to `REVIEW.md` for human approval — even if you have retries remaining.
+- Refusal policy:
+  - `aide implement`, `aide review`, and `aide po` refuse in lite mode and point you at `aide dev` or `aide profile full`.
+  - `aide dev` refuses in full mode and points you back to `aide implement` and `aide review`.
+- `all_task` commit policy:
+  - `all_task` may commit multiple tasks, but it still creates one real Conventional Commit per task with no batching or squashing.
+
 ## Runtime Modes
-- Manual mode:
-  - you start planner, implementer, and reviewer sessions yourself in separate terminals
-  - you drive task progress by sending the documented text commands directly to each session
-- Auto mode:
-  - you start the PO session with `aide po`
-  - the PO session uses the `aide` MCP server to run the post-planning loop by coordinating implementer and reviewer sessions for the same task flow
-- Both modes use the same `.ai/TASKS.md` board, `.ai/PLAN.md` plan, review artifacts, and status transitions.
+- `full` profile:
+  - Manual mode:
+    - you start planner, implementer, and reviewer sessions yourself in separate terminals
+    - you drive task progress by sending the documented text commands directly to each session
+  - Auto mode:
+    - you start the PO session with `aide po`
+    - the PO session uses the `aide` MCP server to run the post-planning loop by coordinating implementer and reviewer sessions for the same task flow
+- `lite` profile:
+  - manual only
+  - you start the planner and dev sessions yourself in separate terminals
+  - you drive task progress by sending the documented text commands directly to those sessions
+- Both profiles use the same `.ai/TASKS.md` board, `.ai/PLAN.md` plan, review artifacts, and status transitions.
 
 ## Persistent Session Workflow
 - In manual mode, no role autostarts another role.
 - In auto mode, the PO session may start or reconnect to the role sessions it coordinates.
 - Start a new development cycle with `aide cycle start <branch-name>`.
-- Start the planner, implementer, and reviewer once, then keep those sessions open for the rest of the cycle.
-- When using auto mode, let the PO session manage those role sessions instead of driving them directly yourself.
+- Start the planner, implementer, and reviewer once in `full`, or start the planner and dev sessions once in `lite`, then keep those sessions open for the rest of the cycle.
+- When using auto mode, let the PO session manage the `full` profile role sessions instead of driving them directly yourself.
+- `lite` has no PO/session-orchestration path; drive `aide dev` directly.
 - Every role waits in `WAIT_FOR_USER_START` state until you explicitly tell it to begin.
 - After launch, steer the existing sessions with text commands instead of relaunching scripts for each step.
 - Agent choice is manual when you launch each role (`claude` or `codex`) and can vary by session.
@@ -158,10 +190,12 @@
 - Recommended status flow in `.ai/TASKS.md`:
   - `in_planning` -> `ready_for_implement` -> `in_implementation` -> `ready_for_review` -> `in_review` -> `ready_to_commit` -> `done`
   - Rework loop: `changes_requested` -> `in_implementation` -> `ready_for_review` -> `in_review` -> `done`
+- In `lite`, the dev session performs the implement and review hops internally, halts for the human at `ready_for_review`, then resumes with `commit_task`.
 - Every role must re-read `.ai/TASKS.md` before executing any command. Additional files depend on the role and command — see each role's prompt for specifics.
 - Role-specific files to reload as needed:
   - planner: `ROADMAP.md`, `.ai/PLAN.md`
   - implementer: `.ai/PLAN.md`, `.ai/REVIEW.md` when reworking review findings
+  - dev: `.ai/PLAN.md`, `.ai/REVIEW.md` when reworking review findings
   - reviewer: `.ai/PLAN.md`, `.ai/REVIEW.md`
 - Files are the source of truth. No role should rely on hidden session memory when file state disagrees.
 
@@ -169,6 +203,7 @@
 Use these text commands inside the already-running role sessions.
 - PO session:
   - launched with `aide po [agent]` (default agent: `claude`)
+  - full profile only; lite mode refuses because the dev session is driven directly instead
   - uses MCP tools internally (`session_start`, `session_run`, `session_wait`, `session_get_output`, `session_get_result`, `session_status`, `session_list`, `session_stop`, `session_reset`, `session_delete`) to coordinate role sessions
   - `codex` PO runs use inline `-c mcp_servers.aide.*` overrides, so no global Codex MCP registration is required
   - never starts a planner session; if no tasks are in `ready_for_implement` or later, tells the user to run the planner first
@@ -196,6 +231,7 @@ Use these text commands inside the already-running role sessions.
     - when no task ID is supplied, replan the overall roadmap/task breakdown
     - when a task ID is supplied and it does not exist or is not appropriate for replanning, report the current status and abort
 - Implementer session:
+  - full profile only; lite mode refuses and points you at `aide dev`
   - `next_task [TASK_ID]`
     - select the first task in `ready_for_implement` or `in_implementation` when no task ID is supplied
     - if the supplied task is not valid for implementer work, report its current status and abort
@@ -225,6 +261,7 @@ Use these text commands inside the already-running role sessions.
     - when no task ID is supplied, summarize tasks relevant to the caller and the overall board state
     - if no task matches the caller's role, say so explicitly and summarize the board
 - Reviewer session:
+  - full profile only; lite mode refuses because review runs inside the dev session
   - `next_task [TASK_ID]`
     - select the first task in `ready_for_review` or `in_review` when no task ID is supplied
     - if the supplied task is not valid for reviewer work, report its current status and abort
@@ -234,6 +271,21 @@ Use these text commands inside the already-running role sessions.
     - return deterministic task status, current owner role, and next recommended action
     - when no task ID is supplied, summarize tasks relevant to the caller and the overall board state
     - if no task matches the caller's role, say so explicitly and summarize the board
+- dev session:
+  - launched with `aide dev [agent]` (default agent: `codex`)
+  - lite profile only; full mode refuses and points you back to `aide implement` and `aide review`
+  - `next_task [TASK_ID]`
+    - pick one `ready_for_implement` task (or the supplied task), move it to `in_implementation`, run the implement hat, run the review hat, and halt at `ready_for_review` for the human
+  - `all_task`
+    - process every remaining non-`done` task without per-task human review, committing each completed task before moving to the next one
+    - halt only if a semantic concern appears or the 3-attempt mechanical retry cap is exhausted
+  - `rework_task [TASK_ID] [feedback]`
+    - resume a task from `ready_for_review` or `changes_requested`, apply feedback when provided, move it to `in_implementation`, and run the implement/review loop again
+  - `commit_task [TASK_ID]`
+    - valid only when the task is `ready_for_review`; this is the human approval step
+    - move the task through `ready_to_commit` to `done`, then run `git add -A && git commit -m "<message>"` using the commit message already written in `.ai/HANDOFF.md`
+  - `status_cycle [TASK_ID]`
+    - return deterministic task status, current owner role, and next recommended action
 
 ## Commit Conventions
 - Commit behavior by role:
