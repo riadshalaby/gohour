@@ -4,20 +4,14 @@ package web
 
 import (
 	"context"
-	"embed"
-	"encoding/json"
 	"errors"
 	"fmt"
-	"html/template"
 	"io"
 	"io/fs"
-	"math"
 	"net/http"
 	"net/url"
 	"os"
 	"path/filepath"
-	"sort"
-	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -32,12 +26,6 @@ import (
 	"github.com/riadshalaby/gohour/worklog"
 )
 
-//go:embed templates
-var templateFS embed.FS
-
-//go:embed static
-var staticFS embed.FS
-
 type Server struct {
 	store  *storage.SQLiteStore
 	client onepoint.Client
@@ -45,278 +33,26 @@ type Server struct {
 
 	submitOptions onepoint.ResolveOptions
 	audit         auditLogger
+	cache         *dataCache
 	mux           *http.ServeMux
 
-	mu          sync.RWMutex
-	dayCache    map[string][]onepoint.DayWorklog
-	dayFetched  map[string]bool
-	dayRefresh  map[string]time.Time
-	localByDay  map[string][]worklog.Entry
-	localLoaded bool
-
-	remoteFetchMu sync.Mutex
-	localLoadMu   sync.Mutex
-	createMu      sync.Mutex
-
-	lookupMu      sync.Mutex
-	lookupSnap    *onepoint.LookupSnapshot
-	lookupFetched bool
+	createMu sync.Mutex
 
 	configMu sync.RWMutex
 }
 
-type monthRowView struct {
-	Date               string  `json:"date"`
-	IsWeekend          bool    `json:"isWeekend"`
-	IsToday            bool    `json:"isToday"`
-	HasLockedRemote    bool    `json:"hasLockedRemote"`
-	LocalHours         float64 `json:"localHours"`
-	RemoteHours        float64 `json:"remoteHours"`
-	LocalWorked        float64 `json:"localWorked"`
-	RemoteWorked       float64 `json:"remoteWorked"`
-	WorkedDeltaHours   float64 `json:"workedDeltaHours"`
-	BillableDeltaHours float64 `json:"billableDeltaHours"`
-	DayLink            string  `json:"dayLink"`
-}
-
-type monthPageView struct {
-	Title         string
-	CurrentMonth  string
-	PreviousMonth string
-	NextMonth     string
-	// Day is intentionally empty for month pages; defined here so the shared
-	// base.html template can safely access .Day without causing a template error.
-	Day                string
-	AuthErrorMsg       string
-	Rows               []monthRowView
-	TotalLocal         float64
-	TotalRemote        float64
-	TotalLocalWorked   float64
-	TotalRemoteWorked  float64
-	TotalWorkedDelta   float64
-	TotalBillableDelta float64
-	RemoteRefreshedAt  string
-}
-
-type dayPageView struct {
-	Title             string
-	CurrentMonth      string
-	Day               string
-	AuthErrorMsg      string
-	DayRow            DayRow
-	RemoteRefreshedAt string
-}
-
-type dayAPIResponse struct {
-	Date              string     `json:"date"`
-	LocalHours        float64    `json:"localHours"`
-	RemoteHours       float64    `json:"remoteHours"`
-	LocalWorkedHours  float64    `json:"localWorkedHours"`
-	RemoteWorkedHours float64    `json:"remoteWorkedHours"`
-	Entries           []EntryRow `json:"entries"`
-	RemoteRefreshedAt string     `json:"remoteRefreshedAt,omitempty"`
-}
-
-type configPageView struct {
-	Title        string
-	CurrentMonth string
-	Day          string
-	AuthErrorMsg string
-	Config       config.Config
-	Rules        []config.Rule
-}
-
-type configAPIResponse struct {
-	OnePointURL string        `json:"onepointUrl"`
-	Rules       []rulePayload `json:"rules"`
-}
-
-type configPatchRequest struct {
-	OnePointURL *string `json:"onepointUrl"`
-}
-
-type rulePayload struct {
-	Name         string `json:"name"`
-	Mapper       string `json:"mapper"`
-	FileTemplate string `json:"fileTemplate"`
-	Billable     *bool  `json:"billable,omitempty"`
-	ProjectID    int64  `json:"projectId"`
-	Project      string `json:"project"`
-	ActivityID   int64  `json:"activityId"`
-	Activity     string `json:"activity"`
-	SkillID      int64  `json:"skillId"`
-	Skill        string `json:"skill"`
-}
-
-type monthAPIResponse struct {
-	Month              string         `json:"month"`
-	Rows               []monthRowView `json:"rows"`
-	TotalLocal         float64        `json:"totalLocal"`
-	TotalRemote        float64        `json:"totalRemote"`
-	TotalLocalWorked   float64        `json:"totalLocalWorked"`
-	TotalRemoteWorked  float64        `json:"totalRemoteWorked"`
-	TotalWorkedDelta   float64        `json:"totalWorkedDelta"`
-	TotalBillableDelta float64        `json:"totalBillableDelta"`
-	AuthErrorMsg       string         `json:"authErrorMsg,omitempty"`
-	RemoteRefreshedAt  string         `json:"remoteRefreshedAt,omitempty"`
-}
-
-type worklogMutationRequest struct {
-	Start       string `json:"start"`
-	End         string `json:"end"`
-	Project     string `json:"project"`
-	Activity    string `json:"activity"`
-	Skill       string `json:"skill"`
-	Billable    int    `json:"billable"`
-	Description string `json:"description"`
-	Date        string `json:"date"`
-}
-
-type importResponse struct {
-	FilesProcessed   int    `json:"filesProcessed"`
-	RowsRead         int    `json:"rowsRead"`
-	RowsMapped       int    `json:"rowsMapped"`
-	RowsSkipped      int    `json:"rowsSkipped"`
-	RowsPersisted    int    `json:"rowsPersisted"`
-	ReconcileWarning string `json:"reconcileWarning,omitempty"`
-	OverlapsSkipped  int    `json:"overlapsSkipped,omitempty"`
-}
-
-type importPreviewEntry struct {
-	Index        int    `json:"index"`
-	Date         string `json:"date"`
-	Start        string `json:"start"`
-	End          string `json:"end"`
-	Project      string `json:"project"`
-	Activity     string `json:"activity"`
-	Skill        string `json:"skill"`
-	BillableMins int    `json:"billableMins"`
-	DurationMins int    `json:"durationMins"`
-	Description  string `json:"description"`
-	Status       string `json:"status"`
-	ConflictID   int64  `json:"conflictId,omitempty"`
-}
-
-type importPreviewResponse struct {
-	RowsMapped  int                  `json:"rowsMapped"`
-	RowsSkipped int                  `json:"rowsSkipped"`
-	Entries     []importPreviewEntry `json:"entries"`
-	MatchedRule *rulePayload         `json:"matchedRule,omitempty"`
-	Selection   rulePayload          `json:"selection"`
-	Mappers     []string             `json:"mappers"`
-	Lookup      *lookupResponse      `json:"lookup,omitempty"`
-}
-
-type importRuleMatchResponse struct {
-	MatchedRule *rulePayload    `json:"matchedRule,omitempty"`
-	Selection   rulePayload     `json:"selection"`
-	Mappers     []string        `json:"mappers"`
-	Lookup      *lookupResponse `json:"lookup,omitempty"`
-}
-
-type importFormResult struct {
-	tmpPath     string
-	result      *importer.Result
-	mapperName  string
-	matchedRule config.Rule
-	selection   rulePayload
-	updateRule  bool
-}
-
-type importOverlapItem struct {
-	Date       string `json:"date"`
-	Start      string `json:"start"`
-	End        string `json:"end"`
-	Project    string `json:"project"`
-	Activity   string `json:"activity"`
-	Skill      string `json:"skill"`
-	ExistingID int64  `json:"existingId"`
-}
-
-type importConflictResponse struct {
-	Error      string              `json:"error"`
-	Overlaps   []importOverlapItem `json:"overlaps"`
-	CleanCount int                 `json:"cleanCount"`
-	Duplicates int                 `json:"duplicates"`
-}
-
-type submitDayResult struct {
-	Date       string `json:"date"`
-	Added      int    `json:"added"`
-	Duplicates int    `json:"duplicates"`
-	Overlaps   int    `json:"overlaps"`
-	Locked     bool   `json:"locked"`
-}
-
-type submitResponse struct {
-	DryRun     bool              `json:"dryRun,omitempty"`
-	Submitted  int               `json:"submitted"`
-	Duplicates int               `json:"duplicates"`
-	Overlaps   int               `json:"overlaps"`
-	LockedDays []string          `json:"lockedDays"`
-	Days       []submitDayResult `json:"days"`
-}
-
-type worklogConflictResponse struct {
-	Error      string `json:"error"`
-	Type       string `json:"type"`
-	ExistingID int64  `json:"existingId"`
-}
-
-type submitPartialView struct {
-	Scope   string
-	Target  string
-	DryRun  bool
-	Result  submitResponse
-	Error   string
-	IsError bool
-}
-
-type lookupProject struct {
-	ID       int64  `json:"id"`
-	Name     string `json:"name"`
-	Archived bool   `json:"archived"`
-}
-
-type lookupActivity struct {
-	ID        int64  `json:"id"`
-	Name      string `json:"name"`
-	ProjectID int64  `json:"projectId"`
-	Locked    bool   `json:"locked"`
-}
-
-type lookupSkill struct {
-	ID         int64  `json:"id"`
-	Name       string `json:"name"`
-	ActivityID int64  `json:"activityId"`
-}
-
-type lookupResponse struct {
-	Projects   []lookupProject  `json:"projects"`
-	Activities []lookupActivity `json:"activities"`
-	Skills     []lookupSkill    `json:"skills"`
-}
-
 var (
-	errOnePointUpstream = errors.New("onepoint upstream error")
-	errRuleDuplicate    = errors.New("rule already exists")
-	errRuleNotFound     = errors.New("rule not found")
+	errRuleDuplicate = errors.New("rule already exists")
+	errRuleNotFound  = errors.New("rule not found")
 )
-
-type upstreamErrorClient struct {
-	base onepoint.Client
-}
 
 func NewServer(store *storage.SQLiteStore, client onepoint.Client, cfg config.Config) http.Handler {
 	server := &Server{
-		store:      store,
-		client:     client,
-		cfg:        cfg,
-		audit:      newFileAuditLogger(defaultAuditLogPath()),
-		dayCache:   make(map[string][]onepoint.DayWorklog),
-		dayFetched: make(map[string]bool),
-		dayRefresh: make(map[string]time.Time),
-		localByDay: make(map[string][]worklog.Entry),
+		store:  store,
+		client: client,
+		cfg:    cfg,
+		audit:  newFileAuditLogger(defaultAuditLogPath()),
+		cache:  newDataCache(store, client),
 	}
 
 	mux := http.NewServeMux()
@@ -393,13 +129,13 @@ func (s *Server) handleMonth(w http.ResponseWriter, r *http.Request) {
 	}
 	monthEnd := endOfMonth(monthStart)
 
-	localEntries, err := s.loadLocalRange(monthStart, monthEnd)
+	localEntries, err := s.cache.LoadLocalRange(monthStart, monthEnd)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
 	authErrorMsg := ""
-	remoteEntries, refreshedAt, err := s.loadRemoteRange(r.Context(), monthStart, monthEnd, false)
+	remoteEntries, refreshedAt, err := s.cache.LoadRemoteRange(r.Context(), monthStart, monthEnd, false)
 	if err != nil {
 		authErrorMsg = fmt.Sprintf(
 			"OnePoint session may have expired (%v). In a new terminal run: gohour auth login",
@@ -438,13 +174,13 @@ func (s *Server) handleDay(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	localEntries, err := s.loadLocalRange(day, day)
+	localEntries, err := s.cache.LoadLocalRange(day, day)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
 	authErrorMsg := ""
-	remoteEntries, refreshedAt, err := s.loadRemoteRange(r.Context(), day, day, false)
+	remoteEntries, refreshedAt, err := s.cache.LoadRemoteRange(r.Context(), day, day, false)
 	if err != nil {
 		authErrorMsg = fmt.Sprintf(
 			"OnePoint session may have expired (%v). In a new terminal run: gohour auth login",
@@ -496,13 +232,13 @@ func (s *Server) handlePartialMonth(w http.ResponseWriter, r *http.Request) {
 	monthEnd := endOfMonth(monthStart)
 	refresh := strings.TrimSpace(r.URL.Query().Get("refresh")) == "1"
 
-	localEntries, err := s.loadLocalRange(monthStart, monthEnd)
+	localEntries, err := s.cache.LoadLocalRange(monthStart, monthEnd)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
 	authErrorMsg := ""
-	remoteEntries, refreshedAt, err := s.loadRemoteRange(r.Context(), monthStart, monthEnd, refresh)
+	remoteEntries, refreshedAt, err := s.cache.LoadRemoteRange(r.Context(), monthStart, monthEnd, refresh)
 	if err != nil {
 		if refresh {
 			writePartialTableError(w, http.StatusBadGateway, 6, fmt.Sprintf("load remote worklogs: %v", err))
@@ -578,7 +314,7 @@ func (s *Server) handlePartialWorklogCreate(w http.ResponseWriter, r *http.Reque
 	s.createMu.Lock()
 	defer s.createMu.Unlock()
 
-	existingEntries, err := s.loadLocalRange(day, day)
+	existingEntries, err := s.cache.LoadLocalRange(day, day)
 	if err != nil {
 		http.Error(w, fmt.Sprintf("load local worklogs: %v", err), http.StatusInternalServerError)
 		return
@@ -597,7 +333,7 @@ func (s *Server) handlePartialWorklogCreate(w http.ResponseWriter, r *http.Reque
 		return
 	}
 
-	s.invalidateLocalCache()
+	s.cache.InvalidateLocal()
 	w.Header().Set(
 		"HX-Trigger",
 		fmt.Sprintf(`{"day-worklog-changed":{"day":"%s","action":"created","id":%d}}`, dayRaw, id),
@@ -651,7 +387,7 @@ func (s *Server) handlePartialWorklogUpdate(w http.ResponseWriter, r *http.Reque
 	s.createMu.Lock()
 	defer s.createMu.Unlock()
 
-	existingEntries, err := s.loadLocalRange(day, day)
+	existingEntries, err := s.cache.LoadLocalRange(day, day)
 	if err != nil {
 		http.Error(w, fmt.Sprintf("load local worklogs: %v", err), http.StatusInternalServerError)
 		return
@@ -669,7 +405,7 @@ func (s *Server) handlePartialWorklogUpdate(w http.ResponseWriter, r *http.Reque
 		return
 	}
 
-	s.invalidateLocalCache()
+	s.cache.InvalidateLocal()
 	w.Header().Set(
 		"HX-Trigger",
 		fmt.Sprintf(`{"day-worklog-changed":{"day":"%s","action":"updated","id":%d}}`, dayRaw, id),
@@ -702,7 +438,7 @@ func (s *Server) handlePartialWorklogDelete(w http.ResponseWriter, r *http.Reque
 		return
 	}
 
-	s.invalidateLocalCache()
+	s.cache.InvalidateLocal()
 	w.Header().Set(
 		"HX-Trigger",
 		fmt.Sprintf(`{"day-worklog-changed":{"day":"%s","action":"deleted","id":%d}}`, dayRaw, id),
@@ -813,22 +549,12 @@ func (s *Server) renderDayPartial(w http.ResponseWriter, r *http.Request, day ti
 	return renderPartialTemplate(w, "partials/day_tbody.html", view)
 }
 
-func writePartialTableError(w http.ResponseWriter, statusCode int, colspan int, message string) {
-	if colspan < 1 {
-		colspan = 1
-	}
-	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	w.WriteHeader(statusCode)
-	escaped := template.HTMLEscapeString(message)
-	_, _ = fmt.Fprintf(w, `<tr><td colspan="%d"><div class="dialog-error">%s</div></td></tr>`, colspan, escaped)
-}
-
 func (s *Server) buildDayPartialView(ctx context.Context, day time.Time, refresh bool, failOnRemoteErr bool) (dayPageView, error) {
-	localEntries, err := s.loadLocalRange(day, day)
+	localEntries, err := s.cache.LoadLocalRange(day, day)
 	if err != nil {
 		return dayPageView{}, err
 	}
-	remoteEntries, refreshedAt, err := s.loadRemoteRange(ctx, day, day, refresh)
+	remoteEntries, refreshedAt, err := s.cache.LoadRemoteRange(ctx, day, day, refresh)
 	if err != nil {
 		if failOnRemoteErr {
 			return dayPageView{}, err
@@ -858,13 +584,13 @@ func (s *Server) handleAPIMonth(w http.ResponseWriter, r *http.Request) {
 	monthEnd := endOfMonth(monthStart)
 	refresh := strings.TrimSpace(r.URL.Query().Get("refresh")) == "1"
 
-	localEntries, err := s.loadLocalRange(monthStart, monthEnd)
+	localEntries, err := s.cache.LoadLocalRange(monthStart, monthEnd)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
 	authErrorMsg := ""
-	remoteEntries, refreshedAt, err := s.loadRemoteRange(r.Context(), monthStart, monthEnd, refresh)
+	remoteEntries, refreshedAt, err := s.cache.LoadRemoteRange(r.Context(), monthStart, monthEnd, refresh)
 	if err != nil {
 		// Local-only month refreshes should still succeed when remote auth is
 		// unavailable, mirroring page rendering behavior.
@@ -902,13 +628,13 @@ func (s *Server) handleAPIDay(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	localEntries, err := s.loadLocalRange(day, day)
+	localEntries, err := s.cache.LoadLocalRange(day, day)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
 	refresh := strings.TrimSpace(r.URL.Query().Get("refresh")) == "1"
-	remoteEntries, refreshedAt, err := s.loadRemoteRange(r.Context(), day, day, refresh)
+	remoteEntries, refreshedAt, err := s.cache.LoadRemoteRange(r.Context(), day, day, refresh)
 	if err != nil {
 		http.Error(w, fmt.Sprintf("load remote worklogs: %v", err), http.StatusBadGateway)
 		return
@@ -933,7 +659,7 @@ func (s *Server) handleAPIDay(w http.ResponseWriter, r *http.Request) {
 func (s *Server) handleAPILookup(w http.ResponseWriter, r *http.Request) {
 	refresh := strings.TrimSpace(r.URL.Query().Get("refresh")) == "1"
 
-	snapshot, err := s.loadLookupSnapshot(r.Context(), refresh)
+	snapshot, err := s.cache.LookupSnapshot(r.Context(), refresh)
 	if err != nil {
 		http.Error(w, fmt.Sprintf("load lookup snapshot: %v", err), http.StatusBadGateway)
 		return
@@ -941,37 +667,6 @@ func (s *Server) handleAPILookup(w http.ResponseWriter, r *http.Request) {
 
 	resp := lookupResponseFromSnapshot(snapshot)
 	writeJSON(w, http.StatusOK, resp)
-}
-
-func lookupResponseFromSnapshot(snapshot onepoint.LookupSnapshot) lookupResponse {
-	resp := lookupResponse{
-		Projects:   make([]lookupProject, 0, len(snapshot.Projects)),
-		Activities: make([]lookupActivity, 0, len(snapshot.Activities)),
-		Skills:     make([]lookupSkill, 0, len(snapshot.Skills)),
-	}
-	for _, p := range snapshot.Projects {
-		resp.Projects = append(resp.Projects, lookupProject{
-			ID:       p.ID,
-			Name:     p.Name,
-			Archived: p.IsArchived(),
-		})
-	}
-	for _, a := range snapshot.Activities {
-		resp.Activities = append(resp.Activities, lookupActivity{
-			ID:        a.ID,
-			Name:      a.Name,
-			ProjectID: a.ProjectNodeID,
-			Locked:    a.Locked,
-		})
-	}
-	for _, sk := range snapshot.Skills {
-		resp.Skills = append(resp.Skills, lookupSkill{
-			ID:         sk.SkillID,
-			Name:       sk.Name,
-			ActivityID: sk.ActivityID,
-		})
-	}
-	return resp
 }
 
 func (s *Server) handleAPIConfig(w http.ResponseWriter, r *http.Request) {
@@ -1131,7 +826,7 @@ func (s *Server) handleAPIWorklogCreate(w http.ResponseWriter, r *http.Request) 
 	defer s.createMu.Unlock()
 
 	day := timeutil.StartOfDay(entry.StartDateTime)
-	existingEntries, err := s.loadLocalRange(day, day)
+	existingEntries, err := s.cache.LoadLocalRange(day, day)
 	if err != nil {
 		http.Error(w, fmt.Sprintf("load local worklogs: %v", err), http.StatusInternalServerError)
 		return
@@ -1150,7 +845,7 @@ func (s *Server) handleAPIWorklogCreate(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	s.invalidateLocalCache()
+	s.cache.InvalidateLocal()
 	writeJSON(w, http.StatusCreated, map[string]int64{"id": id})
 }
 
@@ -1191,7 +886,7 @@ func (s *Server) handleAPIWorklogPatch(w http.ResponseWriter, r *http.Request) {
 	defer s.createMu.Unlock()
 
 	day := timeutil.StartOfDay(entry.StartDateTime)
-	existingEntries, err := s.loadLocalRange(day, day)
+	existingEntries, err := s.cache.LoadLocalRange(day, day)
 	if err != nil {
 		http.Error(w, fmt.Sprintf("load local worklogs: %v", err), http.StatusInternalServerError)
 		return
@@ -1209,7 +904,7 @@ func (s *Server) handleAPIWorklogPatch(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	s.invalidateLocalCache()
+	s.cache.InvalidateLocal()
 	w.WriteHeader(http.StatusNoContent)
 }
 
@@ -1230,7 +925,7 @@ func (s *Server) handleAPIWorklogDelete(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	s.invalidateLocalCache()
+	s.cache.InvalidateLocal()
 	w.WriteHeader(http.StatusNoContent)
 }
 
@@ -1281,7 +976,7 @@ func (s *Server) handleAPIImport(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 
-		existingEntries, err := s.loadLocalRange(minDay, maxDay)
+		existingEntries, err := s.cache.LoadLocalRange(minDay, maxDay)
 		if err != nil {
 			http.Error(w, fmt.Sprintf("load local worklogs: %v", err), http.StatusInternalServerError)
 			return
@@ -1358,7 +1053,7 @@ func (s *Server) handleAPIImport(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	s.invalidateLocalCache()
+	s.cache.InvalidateLocal()
 	writeJSON(w, http.StatusOK, importResponse{
 		FilesProcessed:   result.FilesProcessed,
 		RowsRead:         result.RowsRead,
@@ -1390,7 +1085,7 @@ func (s *Server) handleAPIImportPreview(w http.ResponseWriter, r *http.Request) 
 		matched := rulePayloadFromRule(formResult.matchedRule)
 		response.MatchedRule = &matched
 	}
-	if snapshot, err := s.loadLookupSnapshot(r.Context(), false); err == nil {
+	if snapshot, err := s.cache.LookupSnapshot(r.Context(), false); err == nil {
 		lookup := lookupResponseFromSnapshot(snapshot)
 		response.Lookup = &lookup
 	}
@@ -1412,7 +1107,7 @@ func (s *Server) handleAPIImportPreview(w http.ResponseWriter, r *http.Request) 
 		}
 	}
 
-	existingEntries, err := s.loadLocalRange(minDay, maxDay)
+	existingEntries, err := s.cache.LoadLocalRange(minDay, maxDay)
 	if err != nil {
 		http.Error(w, fmt.Sprintf("load local worklogs: %v", err), http.StatusInternalServerError)
 		return
@@ -1475,7 +1170,7 @@ func (s *Server) handleAPIImportRuleMatch(w http.ResponseWriter, r *http.Request
 	}
 
 	lookup := &lookupResponse{}
-	if snapshot, err := s.loadLookupSnapshot(r.Context(), false); err == nil {
+	if snapshot, err := s.cache.LookupSnapshot(r.Context(), false); err == nil {
 		resp := lookupResponseFromSnapshot(snapshot)
 		lookup = &resp
 	}
@@ -1501,7 +1196,7 @@ func (s *Server) handleAPIDeleteMonthWorklogs(w http.ResponseWriter, r *http.Req
 		return
 	}
 
-	s.invalidateLocalCache()
+	s.cache.InvalidateLocal()
 	writeJSON(w, http.StatusOK, map[string]int{"deleted": deleted})
 }
 
@@ -1567,7 +1262,7 @@ func (s *Server) handleAPIDeleteMonthRemoteWorklogs(w http.ResponseWriter, r *ht
 		clearedDays = append(clearedDays, day)
 	}
 
-	s.invalidateRemoteDays(clearedDays)
+	s.cache.InvalidateRemoteDays(clearedDays)
 	s.logAudit(auditRecord{
 		Operation:     "delete_remote_month",
 		Scope:         "month",
@@ -1593,13 +1288,13 @@ func (s *Server) handleAPICopyMonthRemote(w http.ResponseWriter, r *http.Request
 	}
 	monthEnd := endOfMonth(monthStart)
 
-	snapshot, err := s.loadLookupSnapshot(r.Context(), false)
+	snapshot, err := s.cache.LookupSnapshot(r.Context(), false)
 	if err != nil {
 		http.Error(w, fmt.Sprintf("load lookup snapshot: %v", err), http.StatusBadGateway)
 		return
 	}
 
-	remoteEntries, _, err := s.loadRemoteRange(r.Context(), monthStart, monthEnd, false)
+	remoteEntries, _, err := s.cache.LoadRemoteRange(r.Context(), monthStart, monthEnd, false)
 	if err != nil {
 		http.Error(w, fmt.Sprintf("load remote worklogs: %v", err), http.StatusBadGateway)
 		return
@@ -1632,7 +1327,7 @@ func (s *Server) handleAPICopyMonthRemote(w http.ResponseWriter, r *http.Request
 		})
 	}
 
-	existingLocal, err := s.loadLocalRange(monthStart, monthEnd)
+	existingLocal, err := s.cache.LoadLocalRange(monthStart, monthEnd)
 	if err != nil {
 		http.Error(w, fmt.Sprintf("load local worklogs: %v", err), http.StatusInternalServerError)
 		return
@@ -1654,7 +1349,7 @@ func (s *Server) handleAPICopyMonthRemote(w http.ResponseWriter, r *http.Request
 		return
 	}
 
-	s.invalidateLocalCache()
+	s.cache.InvalidateLocal()
 	writeJSON(w, http.StatusOK, map[string]int{
 		"copied": inserted,
 		"total":  len(entries),
@@ -1760,7 +1455,7 @@ func (s *Server) submitRange(ctx context.Context, from, to time.Time, dryRun boo
 	}
 	client := upstreamErrorClient{base: s.client}
 
-	entries, err := s.loadLocalRange(from, to)
+	entries, err := s.cache.LoadLocalRange(from, to)
 	if err != nil {
 		return response, err
 	}
@@ -1817,196 +1512,9 @@ func (s *Server) submitRange(ctx context.Context, from, to time.Time, dryRun boo
 	}
 
 	if !dryRun {
-		s.invalidateRemoteDays(submittedDays)
+		s.cache.InvalidateRemoteDays(submittedDays)
 	}
 	return response, nil
-}
-
-func (s *Server) loadLocalRange(from, to time.Time) ([]worklog.Entry, error) {
-	if err := s.ensureLocalCache(); err != nil {
-		return nil, err
-	}
-
-	filtered := make([]worklog.Entry, 0, 64)
-	s.mu.RLock()
-	for _, day := range rangeDays(from, to) {
-		key := day.Format("2006-01-02")
-		filtered = append(filtered, s.localByDay[key]...)
-	}
-	s.mu.RUnlock()
-	return filtered, nil
-}
-
-func (s *Server) loadRemoteRange(ctx context.Context, from, to time.Time, refresh bool) ([]onepoint.DayWorklog, time.Time, error) {
-	days := rangeDays(from, to)
-	if refresh {
-		s.invalidateRemoteDays(days)
-	}
-	if s.hasRemoteCacheMiss(days) {
-		// Serialize miss handling so concurrent requests don't trigger duplicate fetches.
-		s.remoteFetchMu.Lock()
-		if s.hasRemoteCacheMiss(days) {
-			loaded, err := s.client.GetFilteredWorklogs(ctx, from, to)
-			if err != nil {
-				s.remoteFetchMu.Unlock()
-				return nil, time.Time{}, err
-			}
-			byKey := make(map[string][]onepoint.DayWorklog, len(days))
-			for _, day := range days {
-				byKey[day.Format("2006-01-02")] = nil
-			}
-			for _, item := range loaded {
-				parsed, err := onepoint.ParseDay(item.WorklogDate)
-				if err != nil {
-					continue
-				}
-				key := timeutil.StartOfDay(parsed).Format("2006-01-02")
-				if _, ok := byKey[key]; !ok {
-					continue
-				}
-				byKey[key] = append(byKey[key], item)
-			}
-			for key := range byKey {
-				sortDayWorklogs(byKey[key])
-			}
-
-			refreshedAt := time.Now().UTC()
-			s.mu.Lock()
-			for _, day := range days {
-				key := day.Format("2006-01-02")
-				s.dayCache[key] = append([]onepoint.DayWorklog(nil), byKey[key]...)
-				s.dayFetched[key] = true
-				s.dayRefresh[key] = refreshedAt
-			}
-			s.mu.Unlock()
-		}
-		s.remoteFetchMu.Unlock()
-	}
-
-	out := make([]onepoint.DayWorklog, 0, 64)
-	s.mu.RLock()
-	for _, day := range days {
-		key := day.Format("2006-01-02")
-		out = append(out, s.dayCache[key]...)
-	}
-	s.mu.RUnlock()
-	refreshedAt, _ := s.remoteRangeRefreshTime(days)
-	return out, refreshedAt, nil
-}
-
-func (s *Server) ensureLocalCache() error {
-	s.mu.RLock()
-	loaded := s.localLoaded
-	s.mu.RUnlock()
-	if loaded {
-		return nil
-	}
-
-	s.localLoadMu.Lock()
-	defer s.localLoadMu.Unlock()
-
-	s.mu.RLock()
-	loaded = s.localLoaded
-	s.mu.RUnlock()
-	if loaded {
-		return nil
-	}
-
-	allEntries, err := s.store.ListWorklogs()
-	if err != nil {
-		return fmt.Errorf("list local worklogs: %w", err)
-	}
-
-	index := make(map[string][]worklog.Entry, len(allEntries))
-	for _, entry := range allEntries {
-		key := timeutil.StartOfDay(entry.StartDateTime).Format("2006-01-02")
-		index[key] = append(index[key], entry)
-	}
-
-	s.mu.Lock()
-	s.localByDay = index
-	s.localLoaded = true
-	s.mu.Unlock()
-	return nil
-}
-
-func (s *Server) hasRemoteCacheMiss(days []time.Time) bool {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-	for _, day := range days {
-		key := day.Format("2006-01-02")
-		if !s.dayFetched[key] {
-			return true
-		}
-	}
-	return false
-}
-
-func (s *Server) invalidateLocalCache() {
-	s.mu.Lock()
-	s.localByDay = make(map[string][]worklog.Entry)
-	s.localLoaded = false
-	s.mu.Unlock()
-}
-
-func (s *Server) invalidateRemoteDays(days []time.Time) {
-	if len(days) == 0 {
-		return
-	}
-
-	s.mu.Lock()
-	for _, day := range days {
-		key := timeutil.StartOfDay(day).Format("2006-01-02")
-		delete(s.dayCache, key)
-		delete(s.dayFetched, key)
-		delete(s.dayRefresh, key)
-	}
-	s.mu.Unlock()
-}
-
-func (s *Server) remoteRangeRefreshTime(days []time.Time) (time.Time, bool) {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-
-	var latest time.Time
-	for _, day := range days {
-		key := day.Format("2006-01-02")
-		ts, ok := s.dayRefresh[key]
-		if !ok {
-			continue
-		}
-		if latest.IsZero() || ts.After(latest) {
-			latest = ts
-		}
-	}
-	if latest.IsZero() {
-		return time.Time{}, false
-	}
-	return latest, true
-}
-
-func (s *Server) loadLookupSnapshot(ctx context.Context, refresh bool) (onepoint.LookupSnapshot, error) {
-	if !refresh {
-		s.lookupMu.Lock()
-		if s.lookupFetched && s.lookupSnap != nil {
-			snapshot := *s.lookupSnap
-			s.lookupMu.Unlock()
-			return snapshot, nil
-		}
-		s.lookupMu.Unlock()
-	}
-
-	snapshot, err := s.client.FetchLookupSnapshot(ctx)
-	if err != nil {
-		return onepoint.LookupSnapshot{}, err
-	}
-
-	s.lookupMu.Lock()
-	s.lookupSnap = &snapshot
-	s.lookupFetched = true
-	s.lookupMu.Unlock()
-
-	return snapshot, nil
 }
 
 func (s *Server) autoReconcileImportedRange(ctx context.Context, from, to time.Time) (*reconcile.Result, error) {
@@ -2026,7 +1534,7 @@ func (s *Server) autoReconcileImportedRange(ctx context.Context, from, to time.T
 		return &reconcile.Result{}, nil
 	}
 
-	remoteEntries, _, err := s.loadRemoteRange(ctx, from, to, true)
+	remoteEntries, _, err := s.cache.LoadRemoteRange(ctx, from, to, true)
 	if err != nil {
 		return nil, fmt.Errorf("load remote range: %w", err)
 	}
@@ -2057,63 +1565,6 @@ func (s *Server) autoReconcileImportedRange(ctx context.Context, from, to time.T
 	}
 
 	return reconcile.RunForEligibleIDs(s.store, eligibleIDs)
-}
-
-func localEntryIsSynced(entry worklog.Entry, remote []onepoint.PersistWorklog) bool {
-	candidate := localEntryToPersistWorklog(entry)
-	for _, item := range remote {
-		if hasSameTimeRange(candidate, item) {
-			return true
-		}
-	}
-	return false
-}
-
-func buildMonthRows(monthStart time.Time, localEntries []worklog.Entry, remoteEntries []onepoint.DayWorklog) ([]monthRowView, MonthSummary) {
-	dayRows := BuildDailyView(localEntries, remoteEntries)
-	dayRows = fillMonthDays(monthStart, dayRows)
-	summary := BuildMonthlyView(dayRows)
-	lockedByDay := make(map[string]bool)
-	for _, item := range remoteEntries {
-		if item.Locked == 0 {
-			continue
-		}
-		day, err := onepoint.ParseDay(item.WorklogDate)
-		if err != nil {
-			continue
-		}
-		lockedByDay[timeutil.StartOfDay(day).Format("2006-01-02")] = true
-	}
-
-	now := timeutil.StartOfDay(time.Now())
-	rows := make([]monthRowView, 0, len(summary.Days))
-	for _, day := range summary.Days {
-		dayDate := timeutil.StartOfDay(day.Date)
-		dayISO := dayDate.Format("2006-01-02")
-		wd := dayDate.Weekday()
-		rows = append(rows, monthRowView{
-			Date:               dayISO,
-			IsWeekend:          wd == time.Saturday || wd == time.Sunday,
-			IsToday:            dayDate.Equal(now),
-			HasLockedRemote:    lockedByDay[dayISO],
-			LocalHours:         day.LocalHours,
-			RemoteHours:        day.RemoteHours,
-			LocalWorked:        day.LocalWorkedHours,
-			RemoteWorked:       day.RemoteWorkedHours,
-			WorkedDeltaHours:   day.LocalWorkedHours - day.RemoteWorkedHours,
-			BillableDeltaHours: day.DeltaHours,
-			DayLink:            "/day/" + dayISO,
-		})
-	}
-
-	return rows, summary
-}
-
-func formatRefreshTime(value time.Time) string {
-	if value.IsZero() {
-		return ""
-	}
-	return value.UTC().Format(time.RFC3339)
 }
 
 func (s *Server) parseAndRunImportForm(r *http.Request) (importFormResult, error) {
@@ -2436,339 +1887,8 @@ func validateOnePointURL(value string) error {
 	return nil
 }
 
-func templateFuncMap() template.FuncMap {
-	return template.FuncMap{
-		"fmtHours": func(value float64) string {
-			return fmt.Sprintf("%.2f", value)
-		},
-		"fmtDelta": func(value float64) string {
-			return fmt.Sprintf("%+.2f", value)
-		},
-		"isZeroDelta": func(value float64) bool {
-			return math.Abs(value) < 0.0001
-		},
-		"toMins": func(hours float64) int {
-			return int(math.Round(hours * 60))
-		},
-		// dayOffset returns the ISO date string offset by n days from the given ISO date.
-		// Used in day.html for prev/next navigation links.
-		"dayOffset": func(isoDate string, n int) string {
-			t, err := time.ParseInLocation("2006-01-02", strings.TrimSpace(isoDate), time.Local)
-			if err != nil {
-				return isoDate
-			}
-			return t.AddDate(0, 0, n).Format("2006-01-02")
-		},
-	}
-}
-
-func renderTemplate(w http.ResponseWriter, pageTemplate string, data any) error {
-	tmpl, err := template.New("base.html").Funcs(templateFuncMap()).ParseFS(
-		templateFS, "templates/base.html", "templates/"+pageTemplate,
-	)
-	if err != nil {
-		return fmt.Errorf("parse template %s: %w", pageTemplate, err)
-	}
-	if err := tmpl.ExecuteTemplate(w, "base", data); err != nil {
-		return fmt.Errorf("render template %s: %w", pageTemplate, err)
-	}
-	return nil
-}
-
-// renderPartialTemplate renders an HTML partial (no base wrapper).
-// The partial template must define a template named "partial".
-func renderPartialTemplate(w http.ResponseWriter, partialTemplate string, data any) error {
-	tmpl, err := template.New("partial").Funcs(templateFuncMap()).ParseFS(
-		templateFS, "templates/"+partialTemplate,
-	)
-	if err != nil {
-		return fmt.Errorf("parse partial template %s: %w", partialTemplate, err)
-	}
-	if err := tmpl.ExecuteTemplate(w, "partial", data); err != nil {
-		return fmt.Errorf("render partial template %s: %w", partialTemplate, err)
-	}
-	return nil
-}
-
-func parseMonth(value string) (time.Time, error) {
-	parsed, err := time.ParseInLocation("2006-01", strings.TrimSpace(value), time.Local)
-	if err != nil {
-		return time.Time{}, err
-	}
-	return timeutil.StartOfDay(parsed), nil
-}
-
-func parseISODate(value string) (time.Time, error) {
-	parsed, err := time.ParseInLocation("2006-01-02", strings.TrimSpace(value), time.Local)
-	if err != nil {
-		return time.Time{}, err
-	}
-	return timeutil.StartOfDay(parsed), nil
-}
-
-func parsePositiveInt64(value string) (int64, error) {
-	parsed, err := strconv.ParseInt(strings.TrimSpace(value), 10, 64)
-	if err != nil {
-		return 0, err
-	}
-	if parsed <= 0 {
-		return 0, fmt.Errorf("value must be > 0")
-	}
-	return parsed, nil
-}
-
-func parseMutationFromForm(r *http.Request, fallbackDate string) (worklogMutationRequest, error) {
-	if err := r.ParseForm(); err != nil {
-		return worklogMutationRequest{}, fmt.Errorf("parse form: %w", err)
-	}
-
-	date := strings.TrimSpace(r.FormValue("date"))
-	if date == "" {
-		date = strings.TrimSpace(fallbackDate)
-	}
-
-	billable := 0
-	if rawMins := strings.TrimSpace(r.FormValue("billable")); rawMins != "" {
-		parsed, err := strconv.Atoi(rawMins)
-		if err != nil {
-			return worklogMutationRequest{}, fmt.Errorf("invalid billable minutes")
-		}
-		billable = parsed
-	} else {
-		rawHours := strings.TrimSpace(r.FormValue("billableHours"))
-		if rawHours == "" {
-			return worklogMutationRequest{}, fmt.Errorf("missing billable hours")
-		}
-		hours, err := strconv.ParseFloat(rawHours, 64)
-		if err != nil {
-			return worklogMutationRequest{}, fmt.Errorf("invalid billable hours")
-		}
-		billable = int(math.Round(hours * 60))
-	}
-
-	return worklogMutationRequest{
-		Start:       strings.TrimSpace(r.FormValue("start")),
-		End:         strings.TrimSpace(r.FormValue("end")),
-		Project:     strings.TrimSpace(r.FormValue("project")),
-		Activity:    strings.TrimSpace(r.FormValue("activity")),
-		Skill:       strings.TrimSpace(r.FormValue("skill")),
-		Billable:    billable,
-		Description: strings.TrimSpace(r.FormValue("description")),
-		Date:        date,
-	}, nil
-}
-
-func buildEntryFromMutation(body worklogMutationRequest) (worklog.Entry, error) {
-	day, err := parseISODate(body.Date)
-	if err != nil {
-		return worklog.Entry{}, fmt.Errorf("invalid date format (expected YYYY-MM-DD)")
-	}
-
-	startMinutes, err := parseClockMinutes(body.Start)
-	if err != nil {
-		return worklog.Entry{}, fmt.Errorf("invalid start time (expected HH:MM)")
-	}
-	endMinutes, err := parseClockMinutes(body.End)
-	if err != nil {
-		return worklog.Entry{}, fmt.Errorf("invalid end time (expected HH:MM)")
-	}
-	if endMinutes <= startMinutes {
-		return worklog.Entry{}, fmt.Errorf("end time must be after start time")
-	}
-	if body.Billable < 0 {
-		return worklog.Entry{}, fmt.Errorf("billable must be >= 0")
-	}
-	project := strings.TrimSpace(body.Project)
-	activity := strings.TrimSpace(body.Activity)
-	skill := strings.TrimSpace(body.Skill)
-	if project == "" {
-		return worklog.Entry{}, fmt.Errorf("project must not be empty")
-	}
-	if activity == "" {
-		return worklog.Entry{}, fmt.Errorf("activity must not be empty")
-	}
-	if skill == "" {
-		return worklog.Entry{}, fmt.Errorf("skill must not be empty")
-	}
-
-	start := day.Add(time.Duration(startMinutes) * time.Minute)
-	end := day.Add(time.Duration(endMinutes) * time.Minute)
-
-	return worklog.Entry{
-		StartDateTime: start,
-		EndDateTime:   end,
-		Billable:      body.Billable,
-		Description:   strings.TrimSpace(body.Description),
-		Project:       project,
-		Activity:      activity,
-		Skill:         skill,
-	}, nil
-}
-
-func detectLocalConflict(candidate worklog.Entry, existing []worklog.Entry) (conflictType string, existingID int64, ok bool) {
-	for _, entry := range existing {
-		if sameLocalWorklogKey(candidate, entry) {
-			return "duplicate", entry.ID, true
-		}
-	}
-	for _, entry := range existing {
-		if timesOverlap(candidate.StartDateTime, candidate.EndDateTime, entry.StartDateTime, entry.EndDateTime) {
-			return "overlap", entry.ID, true
-		}
-	}
-	return "", 0, false
-}
-
-func sameLocalWorklogKey(left, right worklog.Entry) bool {
-	return left.StartDateTime.Equal(right.StartDateTime) &&
-		left.EndDateTime.Equal(right.EndDateTime) &&
-		normalizeConflictName(left.Project) == normalizeConflictName(right.Project) &&
-		normalizeConflictName(left.Activity) == normalizeConflictName(right.Activity) &&
-		normalizeConflictName(left.Skill) == normalizeConflictName(right.Skill)
-}
-
-func containsSameLocalWorklogKey(candidate worklog.Entry, existing []worklog.Entry) bool {
-	for _, item := range existing {
-		if sameLocalWorklogKey(candidate, item) {
-			return true
-		}
-	}
-	return false
-}
-
-func timesOverlap(leftStart, leftEnd, rightStart, rightEnd time.Time) bool {
-	return leftStart.Before(rightEnd) && leftEnd.After(rightStart)
-}
-
-func sortDayWorklogs(values []onepoint.DayWorklog) {
-	sort.Slice(values, func(i, j int) bool {
-		if values[i].StartTime == values[j].StartTime {
-			return values[i].FinishTime < values[j].FinishTime
-		}
-		return values[i].StartTime < values[j].StartTime
-	})
-}
-
-func normalizeConflictName(value string) string {
-	return strings.ToLower(strings.Join(strings.Fields(strings.TrimSpace(value)), " "))
-}
-
-func parseSkipIndicesSet(value string) map[int]bool {
-	out := make(map[int]bool)
-	trimmed := strings.TrimSpace(value)
-	if trimmed == "" {
-		return out
-	}
-
-	for _, part := range strings.Split(trimmed, ",") {
-		part = strings.TrimSpace(part)
-		if part == "" {
-			continue
-		}
-		index, err := strconv.Atoi(part)
-		if err != nil || index < 0 {
-			continue
-		}
-		out[index] = true
-	}
-	return out
-}
-
-func parseClockMinutes(value string) (int, error) {
-	parsed, err := time.Parse("15:04", strings.TrimSpace(value))
-	if err != nil {
-		return 0, err
-	}
-	return parsed.Hour()*60 + parsed.Minute(), nil
-}
-
-func lookupProjectName(snap onepoint.LookupSnapshot, id int64) string {
-	for _, project := range snap.Projects {
-		if project.ID == id {
-			return project.Name
-		}
-	}
-	return fmt.Sprintf("id:%d", id)
-}
-
-func lookupActivityName(snap onepoint.LookupSnapshot, id int64) string {
-	for _, activity := range snap.Activities {
-		if activity.ID == id {
-			return activity.Name
-		}
-	}
-	return fmt.Sprintf("id:%d", id)
-}
-
-func lookupSkillName(snap onepoint.LookupSnapshot, id int64) string {
-	for _, skill := range snap.Skills {
-		if skill.SkillID == id {
-			return skill.Name
-		}
-	}
-	return fmt.Sprintf("id:%d", id)
-}
-
-func parseBoolFormValue(value string) bool {
-	normalized := strings.ToLower(strings.TrimSpace(value))
-	switch normalized {
-	case "1", "true", "yes", "on":
-		return true
-	default:
-		return false
-	}
-}
-
-func parseInt64FormValue(value string) int64 {
-	parsed, err := strconv.ParseInt(strings.TrimSpace(value), 10, 64)
-	if err != nil || parsed < 0 {
-		return 0
-	}
-	return parsed
-}
-
-func firstNonEmptyString(values ...string) string {
-	for _, value := range values {
-		if strings.TrimSpace(value) != "" {
-			return strings.TrimSpace(value)
-		}
-	}
-	return ""
-}
-
-func firstNonZeroInt64(values ...int64) int64 {
-	for _, value := range values {
-		if value != 0 {
-			return value
-		}
-	}
-	return 0
-}
-
-func boolValuePtr(value bool) *bool {
-	return &value
-}
-
 func importMapperNames() []string {
 	return []string{"epm", "generic", "atwork"}
-}
-
-func decodeJSON(r *http.Request, out any) error {
-	decoder := json.NewDecoder(r.Body)
-	decoder.DisallowUnknownFields()
-	if err := decoder.Decode(out); err != nil {
-		return err
-	}
-	if err := decoder.Decode(&struct{}{}); err != io.EOF {
-		return fmt.Errorf("request body must contain a single JSON object")
-	}
-	return nil
-}
-
-func writeJSON(w http.ResponseWriter, status int, payload any) {
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(status)
-	_ = json.NewEncoder(w).Encode(payload)
 }
 
 func submitErrorStatus(err error) int {
@@ -2776,53 +1896,6 @@ func submitErrorStatus(err error) int {
 		return http.StatusBadGateway
 	}
 	return http.StatusInternalServerError
-}
-
-func wrapUpstreamError(err error) error {
-	if err == nil {
-		return nil
-	}
-	return fmt.Errorf("%w: %w", errOnePointUpstream, err)
-}
-
-func (c upstreamErrorClient) ListProjects(ctx context.Context) ([]onepoint.Project, error) {
-	values, err := c.base.ListProjects(ctx)
-	return values, wrapUpstreamError(err)
-}
-
-func (c upstreamErrorClient) ListActivities(ctx context.Context) ([]onepoint.Activity, error) {
-	values, err := c.base.ListActivities(ctx)
-	return values, wrapUpstreamError(err)
-}
-
-func (c upstreamErrorClient) ListSkills(ctx context.Context) ([]onepoint.Skill, error) {
-	values, err := c.base.ListSkills(ctx)
-	return values, wrapUpstreamError(err)
-}
-
-func (c upstreamErrorClient) GetFilteredWorklogs(ctx context.Context, from, to time.Time) ([]onepoint.DayWorklog, error) {
-	values, err := c.base.GetFilteredWorklogs(ctx, from, to)
-	return values, wrapUpstreamError(err)
-}
-
-func (c upstreamErrorClient) GetDayWorklogs(ctx context.Context, day time.Time) ([]onepoint.DayWorklog, error) {
-	values, err := c.base.GetDayWorklogs(ctx, day)
-	return values, wrapUpstreamError(err)
-}
-
-func (c upstreamErrorClient) PersistWorklogs(ctx context.Context, day time.Time, worklogs []onepoint.PersistWorklog) ([]onepoint.PersistResult, error) {
-	values, err := c.base.PersistWorklogs(ctx, day, worklogs)
-	return values, wrapUpstreamError(err)
-}
-
-func (c upstreamErrorClient) FetchLookupSnapshot(ctx context.Context) (onepoint.LookupSnapshot, error) {
-	value, err := c.base.FetchLookupSnapshot(ctx)
-	return value, wrapUpstreamError(err)
-}
-
-func (c upstreamErrorClient) ResolveIDs(ctx context.Context, projectName, activityName, skillName string, options onepoint.ResolveOptions) (onepoint.ResolvedIDs, error) {
-	value, err := c.base.ResolveIDs(ctx, projectName, activityName, skillName, options)
-	return value, wrapUpstreamError(err)
 }
 
 func tempUploadPattern(filename string) string {
@@ -2840,35 +1913,4 @@ func tempUploadPattern(filename string) string {
 		return stem + "-*"
 	}
 	return stem + "-*" + ext
-}
-
-func endOfMonth(monthStart time.Time) time.Time {
-	return monthStart.AddDate(0, 1, -1)
-}
-
-func rangeDays(from, to time.Time) []time.Time {
-	out := make([]time.Time, 0, 32)
-	for day := timeutil.StartOfDay(from); !day.After(to); day = day.AddDate(0, 0, 1) {
-		out = append(out, day)
-	}
-	return out
-}
-
-func fillMonthDays(monthStart time.Time, rows []DayRow) []DayRow {
-	index := make(map[string]DayRow, len(rows))
-	for _, row := range rows {
-		index[timeutil.StartOfDay(row.Date).Format("2006-01-02")] = row
-	}
-
-	monthEnd := endOfMonth(monthStart)
-	out := make([]DayRow, 0, monthEnd.Day())
-	for day := monthStart; !day.After(monthEnd); day = day.AddDate(0, 0, 1) {
-		key := day.Format("2006-01-02")
-		if row, ok := index[key]; ok {
-			out = append(out, row)
-			continue
-		}
-		out = append(out, DayRow{Date: day})
-	}
-	return out
 }
