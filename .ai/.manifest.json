@@ -1,7 +1,11 @@
 {
-  "version": "v0.9.0",
-  "generated_at": "2026-05-04T18:05:30Z",
+  "version": "v0.10.0",
+  "generated_at": "2026-05-20T16:42:41Z",
   "files": [
+    {
+      "path": ".ai/prompts/dev.md",
+      "management": "full"
+    },
     {
       "path": ".ai/prompts/implementer.md",
       "management": "full"
