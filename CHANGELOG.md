@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.4.2](https://github.com/riadshalaby/gohour/compare/v0.4.1...v0.4.2) (2026-05-20)
+
+
+### Chore
+
+* **ai:** close cycle ([04c5f88](https://github.com/riadshalaby/gohour/commit/04c5f88fdf33c3d74e3efcb567f8526f10f3b292))
+
 ## [0.4.1](https://github.com/riadshalaby/gohour/compare/v0.4.0...v0.4.1) (2026-05-13)
 
 
