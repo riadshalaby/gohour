@@ -23,6 +23,11 @@
 ## Architecture Layers
 - CLI flow: `cmd/serve` -> `web` -> `storage` + `onepoint` + `submitter`
 - Web flow: `cmd/serve` -> `web` -> `storage` + `onepoint` + `submitter`
+- Web layout:
+  - `routes.go`: `Server`, route registration, and cross-component coordination.
+  - `handlers_*.go`: page, partial, API, import, submit, config, and worklog handlers grouped by route surface.
+  - `cache.go`, `config_store.go`, `import_service.go`: stateful web support components.
+  - `parsing.go`, `conflict.go`, `views.go`, `render.go`, `upstream.go`: stateless parsing, conflict, view, rendering, and upstream helpers.
 - Shared utilities: `internal/classify`, `internal/timeutil`
 
 ## Submit Command Invariants

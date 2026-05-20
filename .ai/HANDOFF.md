@@ -106,3 +106,12 @@ Each entry uses this exact structure. Omit fields marked as role-specific when t
 - Verdict: PASS
 - Blocking Findings: none
 - Next Role: none
+### Task T-005 — commit_task — 2026-05-20T17:25:59Z
+- Agent: codex
+- Summary: Split `web/server.go` into `routes.go` plus route-group handler files, removed `web/server.go`, and documented the web layout in `AGENTS.md`.
+- Files Changed: `AGENTS.md`, `.ai/TASKS.md`, `.ai/REVIEW.md`, `.ai/HANDOFF.md`, `web/routes.go`, `web/handlers_pages.go`, `web/handlers_partials.go`, `web/handlers_api_month.go`, `web/handlers_api_day.go`, `web/handlers_api_worklog.go`, `web/handlers_api_config.go`, `web/handlers_api_import.go`, `web/handlers_api_submit.go`, `web/server.go`
+- Validation: `go fmt ./...` PASS; `go vet ./...` PASS after retry 1 import fix; `go test ./...` PASS; `npm run test --prefix e2e` PASS; smoke `go run . serve` with `/month/2026-05` and `/config` PASS; `wc -l web/*.go` PASS for production files
+- Commit: `refactor(web): split web handlers by route group`
+- Verdict: PASS
+- Blocking Findings: none
+- Next Role: none
