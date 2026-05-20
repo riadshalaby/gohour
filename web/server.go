@@ -6,11 +6,9 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"io"
 	"io/fs"
 	"net/http"
 	"os"
-	"path/filepath"
 	"strings"
 	"sync"
 	"time"
@@ -33,6 +31,7 @@ type Server struct {
 	audit         auditLogger
 	cache         *dataCache
 	config        *configStore
+	imports       *importService
 	mux           *http.ServeMux
 
 	createMu sync.Mutex
@@ -44,12 +43,14 @@ var (
 )
 
 func NewServer(store *storage.SQLiteStore, client onepoint.Client, cfg config.Config) http.Handler {
+	configStore := newConfigStore(cfg)
 	server := &Server{
-		store:  store,
-		client: client,
-		audit:  newFileAuditLogger(defaultAuditLogPath()),
-		cache:  newDataCache(store, client),
-		config: newConfigStore(cfg),
+		store:   store,
+		client:  client,
+		audit:   newFileAuditLogger(defaultAuditLogPath()),
+		cache:   newDataCache(store, client),
+		config:  configStore,
+		imports: newImportService(store, configStore),
 	}
 
 	mux := http.NewServeMux()
@@ -927,7 +928,7 @@ func (s *Server) handleAPIWorklogDelete(w http.ResponseWriter, r *http.Request) 
 }
 
 func (s *Server) handleAPIImport(w http.ResponseWriter, r *http.Request) {
-	formResult, err := s.parseAndRunImportForm(r)
+	formResult, err := s.imports.ParseAndRunForm(r)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
@@ -1036,7 +1037,7 @@ func (s *Server) handleAPIImport(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, fmt.Sprintf("insert imported worklogs: %v", err), http.StatusInternalServerError)
 		return
 	}
-	if err := s.persistImportRuleUpdate(formResult); err != nil {
+	if err := s.imports.PersistRuleUpdate(formResult); err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
@@ -1063,7 +1064,7 @@ func (s *Server) handleAPIImport(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleAPIImportPreview(w http.ResponseWriter, r *http.Request) {
-	formResult, err := s.parseAndRunImportForm(r)
+	formResult, err := s.imports.ParseAndRunForm(r)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
@@ -1564,178 +1565,6 @@ func (s *Server) autoReconcileImportedRange(ctx context.Context, from, to time.T
 	return reconcile.RunForEligibleIDs(s.store, eligibleIDs)
 }
 
-func (s *Server) parseAndRunImportForm(r *http.Request) (importFormResult, error) {
-	if err := r.ParseMultipartForm(32 << 20); err != nil {
-		return importFormResult{}, fmt.Errorf("parse multipart form: %w", err)
-	}
-
-	file, header, err := r.FormFile("file")
-	if err != nil {
-		return importFormResult{}, fmt.Errorf("missing file upload")
-	}
-	defer file.Close()
-
-	cfg := s.config.Snapshot()
-	matchedRule := importer.MatchRuleByTemplate(header.Filename, cfg.Rules)
-	mapperName := strings.TrimSpace(r.FormValue("mapper"))
-	if mapperName == "" {
-		mapperName = strings.TrimSpace(matchedRule.Mapper)
-	}
-	if mapperName == "" {
-		mapperName = "epm"
-	}
-	mapper, err := importer.MapperByName(mapperName)
-	if err != nil {
-		return importFormResult{}, err
-	}
-	mapperName = mapper.Name()
-	selection, err := importSelectionFromForm(r, mapperName, matchedRule)
-	if err != nil {
-		return importFormResult{}, err
-	}
-
-	tmp, err := os.CreateTemp("", tempUploadPattern(header.Filename))
-	if err != nil {
-		return importFormResult{}, fmt.Errorf("create temp upload: %w", err)
-	}
-	tmpPath := tmp.Name()
-
-	if _, err := io.Copy(tmp, file); err != nil {
-		_ = tmp.Close()
-		_ = os.Remove(tmpPath)
-		return importFormResult{}, fmt.Errorf("save upload: %w", err)
-	}
-	if err := tmp.Close(); err != nil {
-		_ = os.Remove(tmpPath)
-		return importFormResult{}, fmt.Errorf("close upload temp file: %w", err)
-	}
-
-	result, err := importer.Run(
-		[]string{tmpPath},
-		"",
-		mapper,
-		cfg,
-		importer.RunOptions{
-			EPMProject:  selection.Project,
-			EPMActivity: selection.Activity,
-			EPMSkill:    selection.Skill,
-		},
-	)
-	if err != nil {
-		_ = os.Remove(tmpPath)
-		return importFormResult{}, err
-	}
-
-	applyImportSelection(result.Entries, selection)
-
-	return importFormResult{
-		tmpPath:     tmpPath,
-		result:      result,
-		mapperName:  mapperName,
-		matchedRule: matchedRule,
-		selection:   selection,
-		updateRule:  parseBoolFormValue(r.FormValue("updateRule")),
-	}, nil
-}
-
-func shouldAutoReconcileImport(result importFormResult) bool {
-	return strings.EqualFold(strings.TrimSpace(result.mapperName), "epm")
-}
-
-func worklogRange(entries []worklog.Entry) (time.Time, time.Time, bool) {
-	if len(entries) == 0 {
-		return time.Time{}, time.Time{}, false
-	}
-	minDay := timeutil.StartOfDay(entries[0].StartDateTime)
-	maxDay := minDay
-	for _, entry := range entries[1:] {
-		day := timeutil.StartOfDay(entry.StartDateTime)
-		if day.Before(minDay) {
-			minDay = day
-		}
-		if day.After(maxDay) {
-			maxDay = day
-		}
-	}
-	return minDay, maxDay, true
-}
-
-func importSelectionFromForm(r *http.Request, mapperName string, matchedRule config.Rule) (rulePayload, error) {
-	selection := rulePayloadFromRule(matchedRule)
-	selection.Mapper = firstNonEmptyString(strings.TrimSpace(r.FormValue("mapper")), selection.Mapper, mapperName)
-	selection.Mapper = strings.ToLower(strings.TrimSpace(selection.Mapper))
-	selection.Project = firstNonEmptyString(strings.TrimSpace(r.FormValue("project")), selection.Project)
-	selection.Activity = firstNonEmptyString(strings.TrimSpace(r.FormValue("activity")), selection.Activity)
-	selection.Skill = firstNonEmptyString(strings.TrimSpace(r.FormValue("skill")), selection.Skill)
-	selection.ProjectID = firstNonZeroInt64(parseInt64FormValue(r.FormValue("projectId")), selection.ProjectID)
-	selection.ActivityID = firstNonZeroInt64(parseInt64FormValue(r.FormValue("activityId")), selection.ActivityID)
-	selection.SkillID = firstNonZeroInt64(parseInt64FormValue(r.FormValue("skillId")), selection.SkillID)
-	billableValue := strings.ToLower(strings.TrimSpace(r.FormValue("billable")))
-	switch billableValue {
-	case "billable":
-		selection.Billable = boolValuePtr(true)
-	case "non-billable":
-		selection.Billable = boolValuePtr(false)
-	case "":
-		if selection.Billable == nil {
-			selection.Billable = boolValuePtr(true)
-		}
-	default:
-		return rulePayload{}, fmt.Errorf("invalid billable value: %q (expected billable or non-billable)", billableValue)
-	}
-	return selection, nil
-}
-
-func applyImportSelection(entries []worklog.Entry, selection rulePayload) {
-	for i := range entries {
-		if strings.TrimSpace(selection.Project) != "" {
-			entries[i].Project = selection.Project
-		}
-		if strings.TrimSpace(selection.Activity) != "" {
-			entries[i].Activity = selection.Activity
-		}
-		if strings.TrimSpace(selection.Skill) != "" {
-			entries[i].Skill = selection.Skill
-		}
-		if selection.Billable != nil {
-			if *selection.Billable {
-				entries[i].Billable = max(0, int(entries[i].EndDateTime.Sub(entries[i].StartDateTime).Minutes()))
-			} else {
-				entries[i].Billable = 0
-			}
-		}
-	}
-}
-
-func (s *Server) persistImportRuleUpdate(result importFormResult) error {
-	if !result.updateRule {
-		return nil
-	}
-	if result.matchedRule.FileTemplate == "" {
-		return fmt.Errorf("updateRule requires a matched rule")
-	}
-	rule, err := ruleFromPayload(result.selection, result.matchedRule.Name, true)
-	if err != nil {
-		return fmt.Errorf("update import rule: %w", err)
-	}
-	if rule.FileTemplate == "" {
-		rule.FileTemplate = result.matchedRule.FileTemplate
-	}
-
-	_, err = s.config.Update(func(next *config.Config) error {
-		index := findRuleIndex(next.Rules, result.matchedRule.Name)
-		if index < 0 {
-			return errRuleNotFound
-		}
-		next.Rules[index] = rule
-		return nil
-	})
-	if err != nil {
-		return fmt.Errorf("update import rule: %w", err)
-	}
-	return nil
-}
-
 func (s *Server) writeMutationConflictIfAny(w http.ResponseWriter, r *http.Request, entry worklog.Entry, existingEntries []worklog.Entry, ignoreID int64) bool {
 	filtered := make([]worklog.Entry, 0, len(existingEntries))
 	for _, item := range existingEntries {
@@ -1768,30 +1597,9 @@ func (s *Server) writeMutationConflictIfAny(w http.ResponseWriter, r *http.Reque
 	return false
 }
 
-func importMapperNames() []string {
-	return []string{"epm", "generic", "atwork"}
-}
-
 func submitErrorStatus(err error) int {
 	if errors.Is(err, errOnePointUpstream) {
 		return http.StatusBadGateway
 	}
 	return http.StatusInternalServerError
-}
-
-func tempUploadPattern(filename string) string {
-	base := filepath.Base(strings.TrimSpace(filename))
-	if base == "" || base == "." {
-		return "upload-*"
-	}
-
-	ext := filepath.Ext(base)
-	stem := strings.TrimSuffix(base, ext)
-	if stem == "" {
-		stem = "upload"
-	}
-	if ext == "" {
-		return stem + "-*"
-	}
-	return stem + "-*" + ext
 }
