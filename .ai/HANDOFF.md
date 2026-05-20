@@ -97,3 +97,12 @@ Each entry uses this exact structure. Omit fields marked as role-specific when t
 - Verdict: PASS
 - Blocking Findings: none
 - Next Role: none
+### Task T-004 — commit_task — 2026-05-20T17:12:58Z
+- Agent: codex
+- Summary: Introduced `importService`, moved import form parsing and rule update persistence out of `Server`, and updated import handlers to delegate.
+- Files Changed: `.ai/TASKS.md`, `.ai/REVIEW.md`, `.ai/HANDOFF.md`, `web/import_service.go`, `web/server.go`
+- Validation: `go fmt ./...` PASS; `go vet ./...` PASS; `go test ./...` PASS; `npm run test --prefix e2e` PASS
+- Commit: `refactor(web): isolate import form service`
+- Verdict: PASS
+- Blocking Findings: none
+- Next Role: none

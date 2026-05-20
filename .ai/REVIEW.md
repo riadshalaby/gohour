@@ -101,3 +101,17 @@ Reviewed: 2026-05-20
   - `npm run test --prefix e2e`: PASS
 - Risks: Low residual risk; the change is a mechanical state/helper extraction with unchanged handler behavior.
 - Verdict: PASS
+## Task: T-004
+
+### Review Round 1
+- Status: **passed**
+- Reviewed: 2026-05-20
+- Findings: None.
+- Verification: confirmed `web/import_service.go` owns multipart import parsing, import selection application, mapper/temp helpers, and rule-update persistence; import handlers delegate through `s.imports`; `Server.parseAndRunImportForm` and `Server.persistImportRuleUpdate` are removed.
+- Validation:
+  - `go fmt ./...`: PASS
+  - `go vet ./...`: PASS
+  - `go test ./...`: PASS
+  - `npm run test --prefix e2e`: PASS
+- Risks: Low residual risk; the change is a mechanical extraction with handler response behavior left in place.
+- Verdict: PASS
