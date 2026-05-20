@@ -3190,11 +3190,11 @@ func TestLoadRemoteRange_SortsOnceAndUsesCache(t *testing.T) {
 	from := time.Date(2026, 3, 1, 0, 0, 0, 0, time.Local)
 	to := time.Date(2026, 3, 2, 0, 0, 0, 0, time.Local)
 
-	first, firstRefreshedAt, err := server.loadRemoteRange(context.Background(), from, to, false)
+	first, firstRefreshedAt, err := server.cache.LoadRemoteRange(context.Background(), from, to, false)
 	if err != nil {
 		t.Fatalf("first loadRemoteRange: %v", err)
 	}
-	second, secondRefreshedAt, err := server.loadRemoteRange(context.Background(), from, to, false)
+	second, secondRefreshedAt, err := server.cache.LoadRemoteRange(context.Background(), from, to, false)
 	if err != nil {
 		t.Fatalf("second loadRemoteRange: %v", err)
 	}
