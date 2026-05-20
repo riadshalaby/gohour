@@ -87,3 +87,17 @@ Reviewed: 2026-05-20
 
 #### Verdict
 `PASS`
+## Task: T-003
+
+### Review Round 1
+- Status: **passed**
+- Reviewed: 2026-05-20
+- Findings: None.
+- Verification: confirmed `web/config_store.go` owns config locking and rule helpers, `Server` now holds `config *configStore`, call sites use `Snapshot`/`Update`, and `Server` no longer holds `cfg`/`configMu`.
+- Validation:
+  - `go fmt ./...`: PASS
+  - `go vet ./...`: PASS
+  - `go test ./...`: PASS
+  - `npm run test --prefix e2e`: PASS
+- Risks: Low residual risk; the change is a mechanical state/helper extraction with unchanged handler behavior.
+- Verdict: PASS

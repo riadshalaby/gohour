@@ -9,7 +9,6 @@ import (
 	"io"
 	"io/fs"
 	"net/http"
-	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
@@ -29,16 +28,14 @@ import (
 type Server struct {
 	store  *storage.SQLiteStore
 	client onepoint.Client
-	cfg    config.Config
 
 	submitOptions onepoint.ResolveOptions
 	audit         auditLogger
 	cache         *dataCache
+	config        *configStore
 	mux           *http.ServeMux
 
 	createMu sync.Mutex
-
-	configMu sync.RWMutex
 }
 
 var (
@@ -50,9 +47,9 @@ func NewServer(store *storage.SQLiteStore, client onepoint.Client, cfg config.Co
 	server := &Server{
 		store:  store,
 		client: client,
-		cfg:    cfg,
 		audit:  newFileAuditLogger(defaultAuditLogPath()),
 		cache:  newDataCache(store, client),
+		config: newConfigStore(cfg),
 	}
 
 	mux := http.NewServeMux()
@@ -208,7 +205,7 @@ func (s *Server) handleDay(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleConfig(w http.ResponseWriter, r *http.Request) {
-	cfg := s.configSnapshot()
+	cfg := s.config.Snapshot()
 	view := configPageView{
 		Title:        "gohour - config",
 		CurrentMonth: time.Now().Format("2006-01"),
@@ -670,7 +667,7 @@ func (s *Server) handleAPILookup(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleAPIConfig(w http.ResponseWriter, r *http.Request) {
-	writeJSON(w, http.StatusOK, configResponseFromConfig(s.configSnapshot()))
+	writeJSON(w, http.StatusOK, configResponseFromConfig(s.config.Snapshot()))
 }
 
 func (s *Server) handleAPIConfigPatch(w http.ResponseWriter, r *http.Request) {
@@ -689,7 +686,7 @@ func (s *Server) handleAPIConfigPatch(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	cfg, err := s.updateConfig(func(next *config.Config) error {
+	cfg, err := s.config.Update(func(next *config.Config) error {
 		next.OnePoint.URL = nextURL
 		return nil
 	})
@@ -701,7 +698,7 @@ func (s *Server) handleAPIConfigPatch(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleAPIRules(w http.ResponseWriter, r *http.Request) {
-	writeJSON(w, http.StatusOK, rulePayloadsFromRules(s.configSnapshot().Rules))
+	writeJSON(w, http.StatusOK, rulePayloadsFromRules(s.config.Snapshot().Rules))
 }
 
 func (s *Server) handleAPIRuleCreate(w http.ResponseWriter, r *http.Request) {
@@ -716,7 +713,7 @@ func (s *Server) handleAPIRuleCreate(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	cfg, err := s.updateConfig(func(next *config.Config) error {
+	cfg, err := s.config.Update(func(next *config.Config) error {
 		if findRuleIndex(next.Rules, rule.Name) >= 0 {
 			return errRuleDuplicate
 		}
@@ -753,7 +750,7 @@ func (s *Server) handleAPIRulePatch(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	cfg, err := s.updateConfig(func(next *config.Config) error {
+	cfg, err := s.config.Update(func(next *config.Config) error {
 		index := findRuleIndex(next.Rules, name)
 		if index < 0 {
 			return errRuleNotFound
@@ -787,7 +784,7 @@ func (s *Server) handleAPIRuleDelete(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	_, err := s.updateConfig(func(next *config.Config) error {
+	_, err := s.config.Update(func(next *config.Config) error {
 		index := findRuleIndex(next.Rules, name)
 		if index < 0 {
 			return errRuleNotFound
@@ -1156,7 +1153,7 @@ func (s *Server) handleAPIImportRuleMatch(w http.ResponseWriter, r *http.Request
 		return
 	}
 
-	cfg := s.configSnapshot()
+	cfg := s.config.Snapshot()
 	matched := importer.MatchRuleByTemplate(filename, cfg.Rules)
 	selection := rulePayloadFromRule(matched)
 	if strings.TrimSpace(selection.Mapper) == "" {
@@ -1463,7 +1460,7 @@ func (s *Server) submitRange(ctx context.Context, from, to time.Time, dryRun boo
 		return response, nil
 	}
 
-	idMap, err := submitter.ResolveIDsForEntries(ctx, client, s.cfg.Rules, entries, s.submitOptions)
+	idMap, err := submitter.ResolveIDsForEntries(ctx, client, s.config.Snapshot().Rules, entries, s.submitOptions)
 	if err != nil {
 		return response, err
 	}
@@ -1578,7 +1575,7 @@ func (s *Server) parseAndRunImportForm(r *http.Request) (importFormResult, error
 	}
 	defer file.Close()
 
-	cfg := s.configSnapshot()
+	cfg := s.config.Snapshot()
 	matchedRule := importer.MatchRuleByTemplate(header.Filename, cfg.Rules)
 	mapperName := strings.TrimSpace(r.FormValue("mapper"))
 	if mapperName == "" {
@@ -1725,7 +1722,7 @@ func (s *Server) persistImportRuleUpdate(result importFormResult) error {
 		rule.FileTemplate = result.matchedRule.FileTemplate
 	}
 
-	_, err = s.updateConfig(func(next *config.Config) error {
+	_, err = s.config.Update(func(next *config.Config) error {
 		index := findRuleIndex(next.Rules, result.matchedRule.Name)
 		if index < 0 {
 			return errRuleNotFound
@@ -1769,122 +1766,6 @@ func (s *Server) writeMutationConflictIfAny(w http.ResponseWriter, r *http.Reque
 		return true
 	}
 	return false
-}
-
-func (s *Server) configSnapshot() config.Config {
-	s.configMu.RLock()
-	defer s.configMu.RUnlock()
-	return cloneConfig(s.cfg)
-}
-
-func (s *Server) updateConfig(mutator func(*config.Config) error) (config.Config, error) {
-	s.configMu.Lock()
-	defer s.configMu.Unlock()
-
-	next := cloneConfig(s.cfg)
-	if err := mutator(&next); err != nil {
-		return config.Config{}, err
-	}
-	if err := config.WriteConfig(&next); err != nil {
-		return config.Config{}, fmt.Errorf("persist config: %w", err)
-	}
-	s.cfg = next
-	return cloneConfig(s.cfg), nil
-}
-
-func cloneConfig(cfg config.Config) config.Config {
-	cfg.Rules = append([]config.Rule(nil), cfg.Rules...)
-	return cfg
-}
-
-func configResponseFromConfig(cfg config.Config) configAPIResponse {
-	return configAPIResponse{
-		OnePointURL: cfg.OnePoint.URL,
-		Rules:       rulePayloadsFromRules(cfg.Rules),
-	}
-}
-
-func rulePayloadsFromRules(rules []config.Rule) []rulePayload {
-	out := make([]rulePayload, 0, len(rules))
-	for _, rule := range rules {
-		out = append(out, rulePayloadFromRule(rule))
-	}
-	return out
-}
-
-func rulePayloadFromRule(rule config.Rule) rulePayload {
-	return rulePayload{
-		Name:         rule.Name,
-		Mapper:       rule.Mapper,
-		FileTemplate: rule.FileTemplate,
-		Billable:     rule.Billable,
-		ProjectID:    rule.ProjectID,
-		Project:      rule.Project,
-		ActivityID:   rule.ActivityID,
-		Activity:     rule.Activity,
-		SkillID:      rule.SkillID,
-		Skill:        rule.Skill,
-	}
-}
-
-func ruleFromPayload(payload rulePayload, fallbackName string, requireName bool) (config.Rule, error) {
-	name := strings.TrimSpace(payload.Name)
-	if name == "" {
-		name = strings.TrimSpace(fallbackName)
-	}
-	if name == "" && requireName {
-		return config.Rule{}, fmt.Errorf("rule name is required")
-	}
-	mapper := strings.ToLower(strings.TrimSpace(payload.Mapper))
-	if _, err := importer.MapperByName(mapper); err != nil {
-		return config.Rule{}, err
-	}
-	fileTemplate := strings.TrimSpace(payload.FileTemplate)
-	if fileTemplate == "" {
-		return config.Rule{}, fmt.Errorf("fileTemplate is required")
-	}
-	project := strings.TrimSpace(payload.Project)
-	activity := strings.TrimSpace(payload.Activity)
-	skill := strings.TrimSpace(payload.Skill)
-	if project == "" || activity == "" || skill == "" {
-		return config.Rule{}, fmt.Errorf("project, activity, and skill are required")
-	}
-	if payload.ProjectID <= 0 || payload.ActivityID <= 0 || payload.SkillID <= 0 {
-		return config.Rule{}, fmt.Errorf("projectId, activityId, and skillId must be > 0")
-	}
-	return config.Rule{
-		Name:         name,
-		Mapper:       mapper,
-		FileTemplate: fileTemplate,
-		Billable:     payload.Billable,
-		ProjectID:    payload.ProjectID,
-		Project:      project,
-		ActivityID:   payload.ActivityID,
-		Activity:     activity,
-		SkillID:      payload.SkillID,
-		Skill:        skill,
-	}, nil
-}
-
-func findRuleIndex(rules []config.Rule, name string) int {
-	for i, rule := range rules {
-		if sameRuleName(rule.Name, name) {
-			return i
-		}
-	}
-	return -1
-}
-
-func sameRuleName(left, right string) bool {
-	return strings.EqualFold(strings.TrimSpace(left), strings.TrimSpace(right))
-}
-
-func validateOnePointURL(value string) error {
-	parsed, err := url.ParseRequestURI(value)
-	if err != nil || parsed.Scheme == "" || parsed.Host == "" {
-		return fmt.Errorf("onepointUrl must be a valid absolute URL")
-	}
-	return nil
 }
 
 func importMapperNames() []string {

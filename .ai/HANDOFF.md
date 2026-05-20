@@ -88,3 +88,12 @@ Each entry uses this exact structure. Omit fields marked as role-specific when t
 | Next Role | none |
 
 ---
+### Task T-003 — commit_task — 2026-05-20T17:08:59Z
+- Agent: codex
+- Summary: Introduced `configStore`, moved config state/rule helpers out of `Server`, and updated call sites.
+- Files Changed: `.ai/TASKS.md`, `.ai/REVIEW.md`, `.ai/HANDOFF.md`, `web/config_store.go`, `web/server.go`
+- Validation: `go fmt ./...` PASS; `go vet ./...` PASS; `go test ./...` PASS; `npm run test --prefix e2e` PASS
+- Commit: `refactor(web): isolate web config store`
+- Verdict: PASS
+- Blocking Findings: none
+- Next Role: none
